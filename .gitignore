@@ -1,0 +1,14 @@
+# ビルド成果物
+/dist/
+*.exe
+
+# テスト、カバレッジ
+*.test
+*.out
+coverage.*
+
+# エディターと OS
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
