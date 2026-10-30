@@ -27,6 +27,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/bridge"
 	"github.com/hondarer/host-shell-mcp/internal/config"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
+	"github.com/hondarer/host-shell-mcp/internal/proc"
 	"github.com/hondarer/host-shell-mcp/internal/server"
 	"github.com/hondarer/host-shell-mcp/internal/version"
 )
@@ -113,6 +114,10 @@ func main() {
 }
 
 func run(cfg config.Config) error {
+	// Commands must not outlive host-shell, even when it is killed.
+	if err := proc.KillChildrenOnExit(); err != nil {
+		log.Printf("warning: commands may outlive host-shell if it is killed: %v", err)
+	}
 	al, err := audit.Open(cfg.LogFile)
 	if err != nil {
 		return fmt.Errorf("open audit log: %w", err)
