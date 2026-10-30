@@ -35,6 +35,7 @@ type FsEditInput struct {
 	Edits      []EditOp `json:"edits,omitempty" jsonschema:"several edits applied in order, each to the result of the previous one. All succeed or the file is left unchanged. Use instead of old_string/new_string"`
 	Charset    string   `json:"charset,omitempty" jsonschema:"encoding of the file: auto (default: BOM, then UTF-8 if valid, otherwise the host file code page), utf-8, system, or a charset name. The file is written back in the same encoding and BOM"`
 	DryRun     bool     `json:"dry_run,omitempty" jsonschema:"check the edits and return the snippet without writing the file"`
+	Atomic     bool     `json:"atomic,omitempty" jsonschema:"write a temporary file and rename it over the file, so readers never see a partial file (as in fs_write)"`
 }
 
 // AuditArgs logs the lengths of the replacements instead of their content.
@@ -109,7 +110,11 @@ func (d *Deps) fsEdit(_ context.Context, _ *mcp.CallToolRequest, in FsEditInput)
 	}
 	data := append(append([]byte{}, tf.bom...), b...)
 	if !in.DryRun {
-		if err := overwriteFile(in.Path, data); err != nil {
+		write := overwriteFile
+		if in.Atomic {
+			write = func(path string, data []byte) error { return replaceAtomically(path, data, 0) }
+		}
+		if err := write(in.Path, data); err != nil {
 			return nil, FsEditOutput{}, err
 		}
 	}

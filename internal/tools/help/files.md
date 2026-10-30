@@ -26,6 +26,11 @@ Three ways to read:
 - `offset`: write at a byte position without truncating (resume an interrupted transfer, patch
   binary data). Not with `append`.
 - `make_dirs: true` creates missing parent directories. `perm` (e.g. `"0755"`) applies to new files on Linux.
+- By default an existing file is truncated and rewritten in place (owner, permissions and links stay).
+  `atomic: true` (also in `fs_edit`) writes a temporary file and renames it over the target, so a
+  running service never reads a half-written file. It keeps permissions and the owner (fails if the
+  owner cannot be kept: then write without it), follows symlinks, but drops ACLs, extended
+  attributes and hard links. Only with `mode: "overwrite"` and no `offset`.
 - `encoding: "base64"` writes binary content. Otherwise `content` is text and may be converted with
   `charset`, `newline` (`lf`/`crlf`) and `bom`. See topic `encoding`.
 - Large files: split into chunks of the size you can send, first chunk with `mode: "overwrite"`,

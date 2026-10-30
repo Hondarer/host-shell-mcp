@@ -354,6 +354,7 @@ type FsWriteInput struct {
 	Perm     string `json:"perm,omitempty" jsonschema:"octal permission for a new file, e.g. 0644 (ignored on Windows)"`
 	Charset  string `json:"charset,omitempty" jsonschema:"text: encoding to write: utf-8 (default), system (host file code page), or a charset name such as shift_jis, euc-jp, utf-16le. Characters that cannot be represented cause an error"`
 	Newline  string `json:"newline,omitempty" jsonschema:"text: convert line endings before writing: keep (default), lf or crlf"`
+	Atomic   bool   `json:"atomic,omitempty" jsonschema:"overwrite mode only: write a temporary file beside the target and rename it over the target, so readers never see a partial file (for config files read by running services). Keeps permissions and owner (fails if the owner cannot be kept), follows symbolic links, but not ACLs, extended attributes or hard links"`
 	BOM      bool   `json:"bom,omitempty" jsonschema:"text: prepend a byte order mark (utf-8, utf-16le, utf-16be only). Only when writing at the start of the file"`
 }
 
@@ -454,7 +455,15 @@ func (d *Deps) fsWrite(_ context.Context, _ *mcp.CallToolRequest, in FsWriteInpu
 		}
 	}
 
-	// TODO: consider replacing atomically with a temporary file and rename when overwriting (conflicts with keeping owner and attributes).
+	if in.Atomic {
+		if in.Mode != "" && in.Mode != "overwrite" || in.Offset != nil {
+			return nil, FsWriteOutput{}, errors.New("atomic works only with mode overwrite and without offset")
+		}
+		if err := replaceAtomically(in.Path, data, perm); err != nil {
+			return nil, FsWriteOutput{}, err
+		}
+		return nil, FsWriteOutput{Path: absPath(in.Path), BytesWritten: len(data), Size: int64(len(data))}, nil
+	}
 	f, err := os.OpenFile(in.Path, flag, perm)
 	if err != nil {
 		return nil, FsWriteOutput{}, err

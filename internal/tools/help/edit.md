@@ -20,6 +20,9 @@ line endings. Nothing is written unless every edit succeeds.
 
 Edits apply in order; each sees the result of the previous one.
 
+`atomic: true` writes the result to a temporary file and renames it over the file, as in `fs_write`
+(see topic `files`): use it for files that running programs read.
+
 ## Rules
 
 - `old_string` must match the file **exactly**, including indentation (tabs vs spaces) and
