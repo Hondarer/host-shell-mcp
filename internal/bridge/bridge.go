@@ -33,7 +33,7 @@ const usage = `usage: host-shell bridge [options] -- COMMAND [ARGS...]
 Run on the local machine as the MCP server registered in the agent. COMMAND starts
 host-shell on the remote host, for example:
 
-  host-shell bridge -- ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp
+  host-shell bridge -- ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp
 
 All tools of the remote host-shell are passed through. transfer_push and transfer_pull
 copy files and directories between this machine and the remote host without passing

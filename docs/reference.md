@@ -1655,7 +1655,7 @@ Table: reg_delete の引数
 host-shell bridge [options] -- COMMAND [ARGS...]
 ```
 
-`COMMAND` は、接続先の host-shell を MCP サーバーとして起動するコマンドです (例: `ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp`)。  
+`COMMAND` は、接続先の host-shell を MCP サーバーとして起動するコマンドです (例: `ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp`)。  
 `COMMAND` の標準エラーは、bridge の標準エラーにそのまま出します (ssh のエラーがエージェントのログに残ります)。
 
 | オプション | 値 | 内容 |

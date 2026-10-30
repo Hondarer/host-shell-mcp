@@ -53,24 +53,24 @@ Table: 提供するツール
     make dist
     ```
 
-2. 接続先に実行ファイルを置きます。SFTP がなくても SSH で送れます。
+2. 接続先に実行ファイルを置きます。SFTP がなくても SSH で送れます。システムを汚さないよう、既定では自分専用の `/tmp/host-shell-<uid>/` に置きます (`1000` は接続先で `id -u` が返す番号)。
 
     ```bash
-    ssh target 'mkdir -p /opt/host-shell && cat > /opt/host-shell/host-shell && chmod 755 /opt/host-shell/host-shell' \
+    ssh target 'mkdir -m 700 /tmp/host-shell-1000 && cat > /tmp/host-shell-1000/host-shell && chmod 755 /tmp/host-shell-1000/host-shell' \
         < dist/host-shell-linux-amd64
-    ssh -T target /opt/host-shell/host-shell --version
+    ssh -T target /tmp/host-shell-1000/host-shell --version
     ```
 
 3. エージェントに登録します。手元の実行ファイルを `bridge` として挟むと、手元と接続先の間でファイルを送るツールも使えます。
 
     ```bash
-    claude mcp add host-shell -- /path/to/host-shell bridge -- ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp
+    claude mcp add host-shell -- /path/to/host-shell bridge -- ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp
     ```
 
     bridge を使わない場合は、`ssh` から始まるコマンドをそのまま登録します。
 
     ```bash
-    claude mcp add host-shell -- ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp
+    claude mcp add host-shell -- ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp
     ```
 
 4. エージェントに「host-shell の sys_info で接続先の OS を確認して」と頼みます。

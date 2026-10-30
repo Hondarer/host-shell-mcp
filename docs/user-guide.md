@@ -118,16 +118,25 @@ make dist
 
 ## 接続先への配置
 
-実行ファイルを、接続先の固定の場所に置きます。以降の説明では次の場所を使います。
+実行ファイルは、接続先のシステムを汚さないよう、接続に使うユーザーのものである場所に置きます。次の順に選ぶのを推奨します。
 
-| 接続先 | 配置する場所 |
-|---|---|
-| Linux | `/opt/host-shell/host-shell` |
-| Windows | `C:/tools/host-shell.exe` |
+| 接続先 | 1. 一時的な場所 (推奨) | 2. ホーム ディレクトリ |
+|---|---|---|
+| Linux | `/tmp/host-shell-<uid>/host-shell` | `.local/bin/host-shell` (ホーム ディレクトリからの相対パス) |
+| Windows | `%TEMP%/host-shell/host-shell.exe` | `%LOCALAPPDATA%/Programs/host-shell/host-shell.exe` |
 
-Table: 配置する場所の例
+Table: 配置する場所
 
-空白を含まないパスを推奨します。SSH の各段でコマンド行が解釈し直されるため、空白を含むパスは引用符の扱いが複雑になります。
+- `<uid>` は接続先のユーザーの番号 (`id -u`) です。以降の説明では `/tmp/host-shell-1000/host-shell` と、`%TEMP%` が `C:/Users/alice/AppData/Local/Temp` の場合の `C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe` を使います。
+- `/tmp` が noexec でマウントされている場合や、Windows の実行の制限 (AppLocker など) で一時的な場所から起動できない場合は、2 番目の場所に置きます。
+- `/tmp` のディレクトリは、ほかの利用者が実行ファイルを差し替えられないよう、自分が持ち主で、権限が 700 のものにします。
+- `/tmp` と `%TEMP%` の中身は、再起動や定期的な掃除で消えることがあります。消えたら置き直してください。エージェントへの登録はそのまま使えます。
+- Linux の `/tmp` の配置先が消えている間は、接続先のほかの利用者が同じ名前のディレクトリを作り、偽の実行ファイルを置けます。登録したコマンドはそれを自分の権限で起動してしまいます。信頼できない利用者もログインできる接続先では、2 番目の場所を使ってください。
+- `/opt` などのシステムの場所は、管理者が専用のユーザーを用意して運用する場合に使います ([運用ガイド](operations.md))。
+- 空白を含まないパスにします。SSH の各段でコマンド行が解釈し直されるため、空白を含むパスは引用符の扱いが複雑になります。
+- Linux の 2 番目の場所は、sshd がホーム ディレクトリでコマンドを始めるため、相対パスのまま使えます。`~` は手元のシェルが展開してしまうため使いません。
+
+エージェントの skill (`.agents/skills/host-shell-connect`) の `scripts/deploy.sh` は、この順に試し、安全の確認、ハッシュの照合、起動の確認までを行います。
 
 ### SSH だけで送る
 
@@ -137,18 +146,21 @@ SFTP やポート転送が使えなくても、SSH のセッションの標準�
 Linux の接続先 (直接):
 
 ```bash
-ssh target 'mkdir -p /opt/host-shell && cat > /opt/host-shell/host-shell && chmod 755 /opt/host-shell/host-shell' \
+ssh target id -u
+ssh target 'mkdir -m 700 /tmp/host-shell-1000 && cat > /tmp/host-shell-1000/host-shell && chmod 755 /tmp/host-shell-1000/host-shell' \
     < dist/host-shell-linux-amd64
-ssh target sha256sum /opt/host-shell/host-shell
+ssh target sha256sum /tmp/host-shell-1000/host-shell
 sha256sum dist/host-shell-linux-amd64
 ```
+
+`mkdir -m 700` は、ディレクトリがすでにあると失敗します。置き直すときは、`ls -ld /tmp/host-shell-1000` で自分が持ち主で `drwx------` であることを確かめてから、`mkdir` を除いて送ってください。
 
 Linux の接続先 (中継サーバーを経由):
 
 ```bash
-ssh hop1 "ssh target 'mkdir -p /opt/host-shell && cat > /opt/host-shell/host-shell && chmod 755 /opt/host-shell/host-shell'" \
+ssh hop1 "ssh target 'mkdir -m 700 /tmp/host-shell-1000 && cat > /tmp/host-shell-1000/host-shell && chmod 755 /tmp/host-shell-1000/host-shell'" \
     < dist/host-shell-linux-amd64
-ssh hop1 "ssh target sha256sum /opt/host-shell/host-shell"
+ssh hop1 "ssh target sha256sum /tmp/host-shell-1000/host-shell"
 ```
 
 外側の `"..."` は手元のシェルが外し、内側の `'...'` は中継サーバーのシェルが外します。  
@@ -157,9 +169,10 @@ ssh hop1 "ssh target sha256sum /opt/host-shell/host-shell"
 Windows の接続先 (sshd の既定のシェルが cmd の場合):
 
 ```bash
-ssh target "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force C:/tools | Out-Null; \$i=[Console]::OpenStandardInput(); \$o=[IO.File]::Create('C:/tools/host-shell.exe'); \$i.CopyTo(\$o); \$o.Close()\"" \
+ssh target "echo %TEMP%"
+ssh target "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force C:/Users/alice/AppData/Local/Temp/host-shell | Out-Null; \$i=[Console]::OpenStandardInput(); \$o=[IO.File]::Create('C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe'); \$i.CopyTo(\$o); \$o.Close()\"" \
     < dist/host-shell-windows-amd64.exe
-ssh target "powershell -NoProfile -Command \"(Get-FileHash C:/tools/host-shell.exe).Hash\""
+ssh target "powershell -NoProfile -Command \"(Get-FileHash C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe).Hash\""
 sha256sum dist/host-shell-windows-amd64.exe
 ```
 
@@ -169,13 +182,18 @@ sha256sum dist/host-shell-windows-amd64.exe
 一度 `host-shell` を配置したあとは、新しい版を `fs_write` の `base64` と `offset` で分割して送り、`exec_run` で置き換えることもできます。  
 実行中の `host-shell.exe` は Windows では上書きできないため、別の名前で送ってから、次の接続の前に名前を変えてください。
 
+### 取り除く
+
+配置したディレクトリ (`/tmp/host-shell-1000/`、`%TEMP%/host-shell/` など) を消します。  
+操作ログを残している場合は、ログ (Linux は `~/.local/state/host-shell/`、Windows は `%LOCALAPPDATA%/host-shell/`) も消します。
+
 ### 接続先の確認
 
 配置したら、SSH 経由で起動できることを確かめます。
 
 ```bash
-ssh -T target /opt/host-shell/host-shell --version
-ssh -T target C:/tools/host-shell.exe --version
+ssh -T target /tmp/host-shell-1000/host-shell --version
+ssh -T target C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe --version
 ```
 
 `host-shell <バージョン>` と表示されれば配置は完了です。
@@ -221,13 +239,13 @@ case $- in *i*) ;; *) return;; esac
 # target への host-shell の接続。hop1 を経由する。
 exec ssh -T -o BatchMode=yes -o ServerAliveInterval=30 hop1 \
     ssh -T -o BatchMode=yes -o ServerAliveInterval=30 target \
-    /opt/host-shell/host-shell --mcp
+    /tmp/host-shell-1000/host-shell --mcp
 ```
 
 ```{.bat caption="C:\Users\me\bin\host-shell-target.cmd (Windows のクライアント)"}
 @echo off
 rem target への host-shell の接続。hop1 を経由する。
-ssh -T -o BatchMode=yes -o ServerAliveInterval=30 hop1 ssh -T -o BatchMode=yes -o ServerAliveInterval=30 target C:/tools/host-shell.exe --mcp
+ssh -T -o BatchMode=yes -o ServerAliveInterval=30 hop1 ssh -T -o BatchMode=yes -o ServerAliveInterval=30 target C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe --mcp
 ```
 
 `BatchMode=yes` は、認証に失敗したときにパスワードを尋ねて止まるのではなく、すぐにエラーで終了させます。  
@@ -236,8 +254,8 @@ ssh -T -o BatchMode=yes -o ServerAliveInterval=30 hop1 ssh -T -o BatchMode=yes -
 `host-shell` のオプションは、コマンドの後ろに続けて指定します。
 
 ```text
-/opt/host-shell/host-shell --mcp --max-output 131072 --timeout 2m
-C:/tools/host-shell.exe --mcp --windows-shell cmd
+/tmp/host-shell-1000/host-shell --mcp --max-output 131072 --timeout 2m
+C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe --mcp --windows-shell cmd
 ```
 
 ## エージェントへの登録
@@ -247,13 +265,13 @@ C:/tools/host-shell.exe --mcp --windows-shell cmd
 bridge を挟む場合 (推奨):
 
 ```bash
-claude mcp add host-shell -- ~/.local/bin/host-shell bridge -- ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp
+claude mcp add host-shell -- ~/.local/bin/host-shell bridge -- ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp
 ```
 
 bridge を挟まない場合:
 
 ```bash
-claude mcp add host-shell -- ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp
+claude mcp add host-shell -- ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp
 ```
 
 `~/.local/bin/host-shell` は、手元の OS 用の実行ファイル (例: macOS の Apple シリコンなら `host-shell-darwin-arm64`) を置いた場所です。  
@@ -304,14 +322,14 @@ Claude Code では、MCP のツールを初めて使うときに承認を求め�
   "servers": {
     "host-shell": {
       "type": "stdio",
-      "command": "C:/tools/local/host-shell.exe",
-      "args": ["bridge", "--", "ssh", "-T", "hop1", "ssh", "-T", "target", "C:/tools/host-shell.exe", "--mcp"]
+      "command": "C:/Users/alice/AppData/Local/Programs/host-shell/host-shell.exe",
+      "args": ["bridge", "--", "ssh", "-T", "hop1", "ssh", "-T", "target", "C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe", "--mcp"]
     }
   }
 }
 ```
 
-bridge を挟まない場合は、`command` を `ssh` にし、`args` を `["-T", "hop1", "ssh", "-T", "target", "C:/tools/host-shell.exe", "--mcp"]` にします。
+bridge を挟まない場合は、`command` を `ssh` にし、`args` を `["-T", "hop1", "ssh", "-T", "target", "C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe", "--mcp"]` にします。
 
 接続用のスクリプトを使う場合は、`command` にスクリプトのパスを指定し、`args` を空にします。
 
@@ -329,7 +347,7 @@ MCP の stdio サーバーに対応したエージェントなら、同じよう
 
 ```bash
 (printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"check","version":"0"}}}'; sleep 2) \
-    | ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp
+    | ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp
 ```
 
 `{"jsonrpc":"2.0","id":1,"result":{...,"serverInfo":{"name":"host-shell",...}}}` の 1 行が返れば、経路と `host-shell` は正常です。  
@@ -338,7 +356,7 @@ MCP の stdio サーバーに対応したエージェントなら、同じよう
 [MCP Inspector](https://github.com/modelcontextprotocol/inspector) を使うと、ツールを画面から呼んで確かめられます。
 
 ```bash
-npx @modelcontextprotocol/inspector ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp
+npx @modelcontextprotocol/inspector ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp
 ```
 
 ### エージェントから確かめる

@@ -1,12 +1,12 @@
 // host-shell is an MCP server that runs on the target machine, reached through the standard input
 // and output of SSH or a similar relay.
 //
-//	ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp
+//	ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp
 //
 // Locally, the bridge subcommand relays to host-shell at the far end of ssh and serves it as an
 // MCP server with extra tools that send files between the local machine and the target.
 //
-//	host-shell bridge -- ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp
+//	host-shell bridge -- ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp
 //
 // Standard output carries MCP JSON-RPC only. Diagnostics go to standard error and the audit record to a log file.
 package main
