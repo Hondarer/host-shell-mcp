@@ -96,8 +96,8 @@ func TestListTools(t *testing.T) {
 	for _, tool := range res.Tools {
 		names[tool.Name] = true
 	}
-	for _, want := range []string{"help", "exec_run", "job_start", "job_read", "job_write", "fs_read", "fs_edit", "fs_write",
-		"fs_mkdir", "fs_move", "fs_copy", "fs_remove", "search_grep", "search_files", "fs_manifest", "sys_info"} {
+	for _, want := range []string{"help_get", "exec_run", "job_start", "job_read", "job_write", "fs_read", "fs_edit", "fs_write",
+		"fs_mkdir", "fs_move", "fs_copy", "fs_remove", "search_grep", "search_find", "fs_manifest", "sys_get_info"} {
 		if !names[want] {
 			t.Errorf("tool %q is not registered", want)
 		}

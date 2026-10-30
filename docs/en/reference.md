@@ -91,46 +91,46 @@ One SSH session corresponds to one `host-shell` process. Simultaneous connection
 ## Restrictions (policy)
 
 Without restriction options, `host-shell` publishes all tools and runs without restriction with the connecting user's permissions.  
-Only what the options specify is restricted, and the restrictions in effect are announced to the agent in `restrictions` of [`sys_info`](#sys_info), the table at the top of `help`, and `instructions` in the initialize response. Calls that violate a restriction are not run and return an error starting with `policy:`.
+Only what the options specify is restricted, and the restrictions in effect are announced to the agent in `restrictions` of [`sys_get_info`](#sys_get_info), the table at the top of `help_get`, and `instructions` in the initialize response. Calls that violate a restriction are not run and return an error starting with `policy:`.
 
 ### Choosing tools (--tools)
 
-Tools are classified into the following groups. `help` and `sys_info` (the `core` group) are always published.
+Tools are classified into the following groups. `help_get` and `sys_get_info` (the `core` group) are always published.
 
 | Group | Tools |
 |---|---|
 | `files` | `fs_list`, `fs_stat`, `fs_read`, `fs_edit`, `fs_write`, `fs_mkdir`, `fs_move`, `fs_copy`, `fs_remove`, `fs_manifest` |
-| `search` | `search_grep`, `search_files` |
-| `exec` | `exec_run`, `sudo_run`, `job_start`, `job_read`, `job_write`, `job_stop`, `job_list` |
-| `net` | `net_http`, `net_tcp`, `net_check`, `net_listen`, `net_interfaces` |
-| `admin` | `sys_processes`, `proc_kill`, `svc_list`, `svc_control`, `log_query`, `sys_disks`, `reg_read`, `reg_write`, `reg_delete` |
+| `search` | `search_grep`, `search_find` |
+| `exec` | `exec_run`, `exec_sudo`, `job_start`, `job_read`, `job_write`, `job_stop`, `job_list` |
+| `net` | `net_request_http`, `net_exchange`, `net_check`, `net_list_listeners`, `net_list_interfaces` |
+| `admin` | `proc_list`, `proc_kill`, `svc_list`, `svc_control`, `log_query`, `disk_list`, `reg_read`, `reg_write`, `reg_delete` |
 
 Table: Tool groups
 
-`--tools` takes group names, tool names, `all`, `destructive` (tools that make changes) and `readonly` (read-only tools), comma-separated, evaluated from left to right. A leading `-` removes and `+` (or no prefix) adds. The names of OS-specific tools (`sudo_run`, `reg_*`) can be given without error on unsupported operating systems (they are not published there).
+`--tools` takes group names, tool names, `all`, `destructive` (tools that make changes) and `readonly` (read-only tools), comma-separated, evaluated from left to right. A leading `-` removes and `+` (or no prefix) adds. The names of OS-specific tools (`exec_sudo`, `reg_*`) can be given without error on unsupported operating systems (they are not published there).
 
 | Value | Published tools |
 |---|---|
 | `all` (default) | All tools |
 | `files,search` | Only the file and search tools |
-| `all,-admin,-sudo_run` | All tools except the administration tools and `sudo_run` |
+| `all,-admin,-exec_sudo` | All tools except the administration tools and `exec_sudo` |
 | `files,exec,-fs_remove` | The file and command tools without `fs_remove` |
 
 Table: Examples of --tools
 
 ### Read-only (--read-only)
 
-Tools without the `readOnlyHint` annotation are not published. However, `net_http` and `net_tcp` are published with these restrictions.
+Tools without the `readOnlyHint` annotation are not published. However, `net_request_http` and `net_exchange` are published with these restrictions.
 
-- `net_http`: only the methods `GET`, `HEAD` and `OPTIONS` are allowed, and `save_to` cannot be used
-- `net_tcp`: `send` cannot be used (only receiving data the destination sends first)
+- `net_request_http`: only the methods `GET`, `HEAD` and `OPTIONS` are allowed, and `save_to` cannot be used
+- `net_exchange`: `send` cannot be used (only receiving data the destination sends first)
 
 ### User confirmation (--confirm)
 
 When a specified tool is called, the user is asked for approval through MCP elicitation, and the tool runs only if approved (the value format is the same as `--tools`).
 
 - For clients of protocol version `2026-07-28`, a confirmation request (`inputRequests`) is returned as the result, following multi round-trip requests (SEP-2322). When the client sends the same call again with the answer, it runs (a `requestState` signed with a per-startup secret key makes only a resend of the same tool with the same arguments valid).
-- For clients of earlier versions, the SDK sends `elicitation/create`, receives the answer and continues.
+- For clients using other supported protocol versions, the SDK sends `elicitation/create`, receives the answer and continues.
 - If the client does not support elicitation, the tool is not run and an error is returned.
 - Confirmation requests are recorded in the audit log as `<tool name> (confirmation requested)`.
 
@@ -141,9 +141,9 @@ Arguments that take file paths are checked.
 | Category | Checked as read | Checked as write |
 |---|---|---|
 | File operations | `path` of `fs_list`, `fs_stat`, `fs_read`, `fs_manifest`, and `source` of `fs_copy` | `path` of `fs_edit`, `fs_write`, `fs_mkdir`, `fs_remove`, `source` and `destination` of `fs_move`, and `destination` of `fs_copy` |
-| Search | `path` of `search_grep`, `search_files` | |
-| Running commands | `cwd` of `exec_run`, `job_start`, `sudo_run` | |
-| Network | `body_file`, `ca_cert`, `client_cert`, `client_key` of `net_http` | `save_to` of `net_http` |
+| Search | `path` of `search_grep`, `search_find` | |
+| Running commands | `cwd` of `exec_run`, `job_start`, `exec_sudo` | |
+| Network | `body_file`, `ca_cert`, `client_cert`, `client_key` of `net_request_http` | `save_to` of `net_request_http` |
 
 Table: What the location checks cover
 
@@ -153,16 +153,16 @@ Table: What the location checks cover
 
 ### Commands (--allow-command, --deny-command)
 
-The programs started by `exec_run`, `job_start` and `sudo_run` are checked.
+The programs started by `exec_run`, `job_start` and `exec_sudo` are checked.
 
 - With `--allow-command`, the name of the program to start (the base name; on Windows, lowercased and without an extension such as `.exe`) must match one of the globs.
 - For `command` (a shell command line), the shell itself (`sh`, `bash`, `cmd`, `powershell`, `pwsh`) must be allowed. Allowing a shell allows starting any program through it, so to limit the programs, do not allow shells and have the agent use `argv`.
-- `sudo_run` needs both `sudo` and `sh` to be allowed.
+- `exec_sudo` needs both `sudo` and `sh` to be allowed.
 - `--deny-command` refuses calls whose command line (for `argv`, the arguments joined with spaces) matches a regular expression (writing it differently bypasses it, so it is meant to prevent mistakes).
 
 ### Network destinations (--allow-host)
 
-The destinations of `net_http` (including redirect targets), `net_tcp` and `net_check` are checked.
+The destinations of `net_request_http` (including redirect targets), `net_exchange` and `net_check` are checked.
 
 | Format | Meaning |
 |---|---|
@@ -175,7 +175,7 @@ Table: How to write --allow-host
 
 ### Environment variables (--unset-env)
 
-Environment variables matching the given globs are removed from the child processes started by `exec_run`, `job_start`, `sudo_run` and the administration tools (for example, `--unset-env 'AWS_*,*TOKEN*'`). Variables given explicitly in the `env` tool argument are passed as they are.
+Environment variables matching the given globs are removed from the child processes started by `exec_run`, `job_start`, `exec_sudo` and the administration tools (for example, `--unset-env 'AWS_*,*TOKEN*'`). Variables given explicitly in the `env` tool argument are passed as they are.
 
 ### Masking (--redact, --redact-pattern)
 
@@ -192,7 +192,7 @@ Secret patterns are detected in all strings of tool results (`structuredContent`
 Table: What is masked
 
 `--redact-pattern` adds regular expressions (it works even without `--redact`).  
-Writing masked file contents back with `fs_write` as they are would write `[REDACTED]` into the file, so the `policy` topic of `help` warns the agent.
+Writing masked file contents back with `fs_write` as they are would write `[REDACTED]` into the file, so the `policy` topic of `help_get` warns the agent.
 
 ### Limits of the restrictions
 
@@ -209,7 +209,7 @@ These restrictions are checks on tool arguments, not OS permission boundaries.
 | Protocol versions | `2024-11-05`, `2025-03-26`, `2025-06-18`, `2025-11-25`, `2026-07-28` (chosen according to the client's request) |
 | Server name | `host-shell` |
 | Capabilities | `tools`, `resources`, `logging` |
-| Progress notifications | When a request has a `progressToken`, `exec_run` and `sudo_run` send `notifications/progress` every second, and `save_to` of `net_http` sends them as data arrives |
+| Progress notifications | When a request has a `progressToken`, `exec_run` and `exec_sudo` send `notifications/progress` every second, and `save_to` of `net_request_http` sends them as data arrives |
 | Cancellation | On `notifications/cancelled`, the request is interrupted and the running command is killed with its whole process tree |
 | User confirmation | Elicitation is used for tools covered by `--confirm` ([User confirmation](#user-confirmation---confirm)) |
 | Incoming message limit | 16 MiB per message |
@@ -226,18 +226,18 @@ So that the agent can use it from MCP information alone, without external docume
 | `instructions` in the initialize response | Target host name, OS and architecture, working directory, default shell and encodings, output limit and timeout, how to choose among the published tools, the fact that each call is an independent process, and the restrictions in effect | On connection |
 | Tool `title` and `description` | What the tool does, when to use it, which tools go with it | When `tools/list` is fetched |
 | `description` in the input and output schemas | Meaning and default of each argument, how to continue reading in parts | When `tools/list` is fetched |
-| The [`help`](#help) tool and resources | Procedures by topic, argument examples, Windows notes, limits | When called as needed |
+| The [`help_get`](#help_get) tool and resources | Procedures by topic, argument examples, Windows notes, limits | When called as needed |
 
 Table: Guidance for the agent
 
-Guidance and error messages are written in English for agents, and include information to decide the next step when an error occurs (for example, the line numbers and a pointer to `replace_all` when `fs_edit` matches in several places). The content of `help` is also published as MCP resources (`host-shell://help/<topic>`, `text/markdown`).
+Guidance and error messages are written in English for agents, and include information to decide the next step when an error occurs (for example, the line numbers and a pointer to `replace_all` when `fs_edit` matches in several places). The content of `help_get` is also published as MCP resources (`host-shell://help/<topic>`, `text/markdown`).
 
 ## Common specification of all tools
 
 ### Result format
 
 Tool results are returned as a JSON object in `structuredContent`, and the same JSON as a string in the text of `content`. The output schema of each tool is published in `outputSchema` of `tools/list`.  
-As an exception, `help` returns only Markdown text in `content` and has no `outputSchema`.
+As an exception, `help_get` returns only Markdown text in `content` and has no `outputSchema`.
 
 ### Errors
 
@@ -259,12 +259,12 @@ Every tool has a limit on output size or count. The default byte limit is 64 KiB
 
 | Tool | Unit of the limit | Behavior when the limit is exceeded |
 |---|---|---|
-| `exec_run`, `sudo_run` | Each of standard output and standard error | Keeps half at the head and half at the tail, inserts an omission marker, and sets `stdout_truncated` and so on to `true` |
+| `exec_run`, `exec_sudo` | Each of standard output and standard error | Keeps half at the head and half at the tail, inserts an omission marker, and sets `stdout_truncated` and so on to `true` |
 | `job_read` | Bytes per read | Reading can continue from `next_offset` |
 | `fs_read` | Bytes and lines per read | Returns `truncated: true` and the position for the next read (`next_offset` / `next_line`) |
-| `sys_processes` | The whole output | Keeps the head and tail and inserts an omission marker |
-| `net_http` | Response body | Returns only the head and sets `body_truncated: true` (no limit with `save_to`) |
-| `net_tcp` | Received data | Stops receiving when the limit is reached and sets `truncated: true` |
+| `proc_list` | The whole output | Keeps the head and tail and inserts an omission marker |
+| `net_request_http` | Response body | Returns only the head and sets `body_truncated: true` (no limit with `save_to`) |
+| `net_exchange` | Received data | Stops receiving when the limit is reached and sets `truncated: true` |
 | `log_query` | The whole output | Drops the oldest log entries and sets `truncated: true` |
 | `fs_list`, `search_*`, `fs_manifest` | The maximum count given in the arguments | Sets `truncated: true` |
 
@@ -288,13 +288,13 @@ Each tool carries MCP tool annotations as a guide for approval control on the ag
 
 | Annotation | Tools |
 |---|---|
-| `readOnlyHint: true` | `help`, `job_read`, `job_list`, `fs_list`, `fs_stat`, `fs_read`, `search_grep`, `search_files`, `fs_manifest`, `sys_info`, `sys_processes`, `net_check`, `net_listen`, `net_interfaces`, `svc_list`, `log_query`, `sys_disks`, `reg_read` |
+| `readOnlyHint: true` | `help_get`, `job_read`, `job_list`, `fs_list`, `fs_stat`, `fs_read`, `search_grep`, `search_find`, `fs_manifest`, `sys_get_info`, `proc_list`, `net_check`, `net_list_listeners`, `net_list_interfaces`, `svc_list`, `log_query`, `disk_list`, `reg_read` |
 | `destructiveHint: false`, `idempotentHint: true` | `fs_mkdir` |
-| `destructiveHint: true` | `exec_run`, `job_start`, `job_write`, `job_stop`, `fs_edit`, `fs_write`, `fs_move`, `fs_copy`, `fs_remove`, `sudo_run`, `net_http`, `net_tcp`, `proc_kill`, `svc_control`, `reg_write`, `reg_delete` |
+| `destructiveHint: true` | `exec_run`, `job_start`, `job_write`, `job_stop`, `fs_edit`, `fs_write`, `fs_move`, `fs_copy`, `fs_remove`, `exec_sudo`, `net_request_http`, `net_exchange`, `proc_kill`, `svc_control`, `reg_write`, `reg_delete` |
 
 Table: Tool annotations
 
-Only `net_http`, `net_tcp`, and `net_check`, which can act on external networks, have `openWorldHint: true` (the others have `false`).
+Only `net_request_http`, `net_exchange`, and `net_check`, which can act on external networks, have `openWorldHint: true` (the others have `false`).
 
 ## Encodings and line endings
 
@@ -313,7 +313,7 @@ Table: Default encodings of the target
 
 On Japanese Windows, both are Shift_JIS (CP932) (UTF-8 when Windows' "Use Unicode UTF-8 for worldwide language support" is enabled).  
 On Linux, the encoding name after `.` is taken from the first value set among the environment variables `LC_ALL`, `LC_CTYPE` and `LANG`, in that order (for example, `ja_JP.eucJP` is EUC-JP; `C` and `POSIX` without an encoding part, or no value, mean UTF-8).  
-The actual values can be checked in `console_encoding` and `file_encoding` of [`sys_info`](#sys_info).
+The actual values can be checked in `console_encoding` and `file_encoding` of [`sys_get_info`](#sys_get_info).
 
 ### Specifying encodings
 
@@ -340,7 +340,7 @@ Detection when reading proceeds in this order.
 3. If the bytes are valid UTF-8, it is UTF-8.
 4. Otherwise, it is converted from the target's default encoding.
 
-For command output (`exec_run`, `job_start`, `sudo_run`), `search_grep`, and line-range reads of `fs_read`, steps 3 and 4 are decided per line, so output that mixes UTF-8 and Shift_JIS is also converted correctly (byte-range reads of `fs_read` decide on the whole range read).
+For command output (`exec_run`, `job_start`, `exec_sudo`), `search_grep`, and line-range reads of `fs_read`, steps 3 and 4 are decided per line, so output that mixes UTF-8 and Shift_JIS is also converted correctly (byte-range reads of `fs_read` decide on the whole range read).
 
 BOM-less UTF-16 detection inspects up to the first 4096 bytes (for command output, at the time the first 64 bytes arrive or at exit) in 2-byte units, and treats the data as UTF-16 when all of the following hold.
 
@@ -366,10 +366,10 @@ Giving `lf` or `crlf` in `newline` of `fs_write` unifies the line endings when w
 
 | Tool | Argument | Default |
 |---|---|---|
-| `exec_run`, `job_start`, `sudo_run` | `output_encoding` (standard output and standard error) | `auto` (console) |
+| `exec_run`, `job_start`, `exec_sudo` | `output_encoding` (standard output and standard error) | `auto` (console) |
 | | `stdin_encoding` (standard input) | `utf-8` (for PowerShell on Windows, see [Shells](#shells)) |
 | `job_write` | (inherits `stdin_encoding` of `job_start`) | Same as `job_start` |
-| `sys_processes` | None | `auto` (console) |
+| `proc_list` | None | `auto` (console) |
 | `fs_read` (`text`) | `charset` | `auto` (file) |
 | `fs_edit` | `charset` | `auto` (file; written back with the encoding, BOM and line endings found when reading) |
 | `fs_write` (`text`) | `charset`, `newline`, `bom` | `utf-8`, `keep` (no conversion), `false` (no BOM) |
@@ -383,7 +383,7 @@ Reading and writing in `base64` mode convert neither encodings nor line endings.
 
 | Category | Tool | Description |
 |---|---|---|
-| Usage guidance | [`help`](#help) | Returns usage guidance for agents |
+| Usage guidance | [`help_get`](#help_get) | Returns usage guidance for agents |
 | Running commands | [`exec_run`](#exec_run) | Runs a command, waits for it to end and returns the result |
 | Long-running execution | [`job_start`](#job_start) | Starts a command as a background job |
 | | [`job_read`](#job_read) | Gets the output and status of a job |
@@ -400,21 +400,21 @@ Reading and writing in `base64` mode convert neither encodings nor line endings.
 | | [`fs_copy`](#fs_copy) | Copies files and directories |
 | | [`fs_remove`](#fs_remove) | Deletes files and directories |
 | Search | [`search_grep`](#search_grep) | Searches file contents by regular expression or string |
-| | [`search_files`](#search_files) | Searches file names and paths by glob |
+| | [`search_find`](#search_find) | Searches file names and paths by glob |
 | Checking differences | [`fs_manifest`](#fs_manifest) | Gets a list of SHA-256 hashes of files |
-| Privileged execution | [`sudo_run`](#sudo_run) | Runs a command with `sudo` (Linux only) |
-| Environment information | [`sys_info`](#sys_info) | Gets the target's environment, the published tool groups and the restrictions in effect |
-| Network | [`net_http`](#net_http) | Sends HTTP / HTTPS requests from the target |
-| | [`net_tcp`](#net_tcp) | Sends and receives over TCP / TLS / Unix sockets from the target |
+| Privileged execution | [`exec_sudo`](#exec_sudo) | Runs a command with `sudo` (Linux only) |
+| Environment information | [`sys_get_info`](#sys_get_info) | Gets the target's environment, the published tool groups and the restrictions in effect |
+| Network | [`net_request_http`](#net_request_http) | Sends HTTP / HTTPS requests from the target |
+| | [`net_exchange`](#net_exchange) | Sends and receives over TCP / TLS / Unix sockets from the target |
 | | [`net_check`](#net_check) | Checks name resolution, TCP connections and TLS certificates in parallel |
-| | [`net_listen`](#net_listen) | Lists listening ports and the processes that own them |
-| | [`net_interfaces`](#net_interfaces) | Lists network interfaces |
-| Administration | [`sys_processes`](#sys_processes) | Lists processes |
+| | [`net_list_listeners`](#net_list_listeners) | Lists listening ports and the processes that own them |
+| | [`net_list_interfaces`](#net_list_interfaces) | Lists network interfaces |
+| Administration | [`proc_list`](#proc_list) | Lists processes |
 | | [`proc_kill`](#proc_kill) | Sends a signal to a process or ends it |
 | | [`svc_list`](#svc_list) | Lists services |
 | | [`svc_control`](#svc_control) | Gets the status of, starts, stops or restarts a service |
 | | [`log_query`](#log_query) | Searches and gets the system log (journald / Event Log) |
-| | [`sys_disks`](#sys_disks) | Gets disk usage |
+| | [`disk_list`](#disk_list) | Gets disk usage |
 | Windows registry | [`reg_read`](#reg_read) | Reads registry keys and values (Windows only) |
 | | [`reg_write`](#reg_write) | Writes registry keys and values (Windows only) |
 | | [`reg_delete`](#reg_delete) | Deletes registry keys and values (Windows only) |
@@ -427,7 +427,7 @@ Only the tools published by [`--tools`](#choosing-tools---tools) and [`--read-on
 
 ## Usage guidance
 
-### help
+### help_get
 
 Returns usage guidance for agents as Markdown text.
 
@@ -442,8 +442,8 @@ Table: Arguments of help
 | `overview` | How it works, a quick tool reference, recommended procedures (with the target summary at the top) |
 | `files` | `fs_read`, `fs_write`, the file operation tools, `fs_manifest` |
 | `edit` | How to use `fs_edit` and its replacement rules |
-| `search` | Glob syntax, the output modes of `search_grep`, `search_files` |
-| `commands` | `exec_run`, `sudo_run`, when to use which tool |
+| `search` | Glob syntax, the output modes of `search_grep`, `search_find` |
+| `commands` | `exec_run`, `exec_sudo`, when to use which tool |
 | `jobs` | Background jobs, wait conditions (`until`, `idle_ms`), sending input, pseudo-terminals, signals |
 | `network` | How to use the `net_*` tools, with argument examples |
 | `admin` | Processes, services, the system log, disks, registry operations |
@@ -789,7 +789,7 @@ Table: Output of fs_read
 ```
 
 ```json
-{"path": "C:/work/legacy.bat", "charset": "shift_jis", "line_start": 1}
+{"path": "C:/work/script.bat", "charset": "shift_jis", "line_start": 1}
 ```
 
 ```json
@@ -992,7 +992,7 @@ Table: Output of fs_remove
 
 ## Search
 
-`search_grep`, `search_files` and `fs_manifest` walk the given directory recursively in name order.
+`search_grep`, `search_find` and `fs_manifest` walk the given directory recursively in name order.
 
 - Symbolic links are not followed.
 - They do not descend into the directory names given in `exclude_dirs` (`[".git", ".hg", ".svn"]` when omitted; nothing is excluded with an empty array `[]`).
@@ -1001,7 +1001,7 @@ Table: Output of fs_remove
 
 ### glob
 
-The glob syntax used in `include` of `search_grep` and `fs_manifest` and in `pattern` of `search_files` is as follows (on Windows, case is ignored and `\` is also a separator).
+The glob syntax used in `include` of `search_grep` and `fs_manifest` and in `pattern` of `search_find` is as follows (on Windows, case is ignored and `\` is also a separator).
 
 | Format | Meaning |
 |---|---|
@@ -1069,7 +1069,7 @@ With `multiline: true`, the whole file is converted to UTF-8 and matched in RE2'
 
 ### Handling of .gitignore
 
-By default (`gitignore: true`), `search_grep` and `search_files` evaluate the following rule files in order and skip what they ignore (the global `core.excludesFile` is not read).
+By default (`gitignore: true`), `search_grep` and `search_find` evaluate the following rule files in order and skip what they ignore (the global `core.excludesFile` is not read).
 
 1. The repository's `.git/info/exclude` (when the search starts inside a repository)
 2. The `.gitignore` of each level from the repository root (the directory with `.git`) down to where the search starts
@@ -1077,7 +1077,7 @@ By default (`gitignore: true`), `search_grep` and `search_files` evaluate the fo
 
 Rules of deeper levels and later lines in the same file take precedence (negation with `!pattern`, directory-only rules with `pattern/`, and `**` are supported; ignored directories are not entered, so files inside them cannot be brought back with `!`).
 
-### search_files
+### search_find
 
 Searches for entries whose file name or relative path matches a [glob](#glob).
 
@@ -1091,7 +1091,7 @@ Searches for entries whose file name or relative path matches a [glob](#glob).
 | `sort` | string | | `path` (default, walk order) or `mtime` (most recently modified first; up to 100,000 entries are collected and sorted) |
 | `max_results` | integer | | Maximum number of results (`1000` when omitted) |
 
-Table: Arguments of search_files
+Table: Arguments of search_find
 
 | Output | Type | Description |
 |---|---|---|
@@ -1099,7 +1099,7 @@ Table: Arguments of search_files
 | `skipped` | integer | Number of entries that could not be read |
 | `truncated` | boolean | `true` when cut off at `max_results` (or the 100,000 limit when sorting by `mtime`) |
 
-Table: Output of search_files
+Table: Output of search_find
 
 ## Checking differences
 
@@ -1127,7 +1127,7 @@ Table: Output of fs_manifest
 
 ## Privileged execution
 
-### sudo_run
+### exec_sudo
 
 Runs a command through `sudo` on a Linux target (not published on Windows). The output schema is the same as [`exec_run`](#exec_run).
 
@@ -1141,9 +1141,9 @@ Runs a command through `sudo` on a Linux target (not published on Windows). The 
 | `timeout_sec` | integer | | Timeout in seconds (`--timeout` when omitted; the upper limit is `--max-timeout`) |
 | `output_encoding`, `stdin_encoding` | string | | Encodings of input and output (same as [`exec_run`](#exec_run)) |
 
-Table: Arguments of sudo_run
+Table: Arguments of exec_sudo
 
-Without `password`, it runs `sudo -n [-u <user>] -- sh -c '<command>'`. If the configuration needs a password, it ends with an error and the message is returned in `stderr`. Where only specific commands are allowed with `NOPASSWD`, call `sudo -n` directly through `argv` of `exec_run` instead of `sudo_run` (see the [Operations Guide](operations.md#configuring-sudo)).
+Without `password`, it runs `sudo -n [-u <user>] -- sh -c '<command>'`. If the configuration needs a password, it ends with an error and the message is returned in `stderr`. Where only specific commands are allowed with `NOPASSWD`, call `sudo -n` directly through `argv` of `exec_run` instead of `exec_sudo` (see the [Operations Guide](operations.md#configuring-sudo)).
 
 ```json
 {"argv": ["sudo", "-n", "/usr/bin/systemctl", "restart", "nginx"]}
@@ -1161,7 +1161,7 @@ This way, the password never gets into the command's standard input, even with `
 
 ## Environment information
 
-### sys_info
+### sys_get_info
 
 Returns the target's environment, the published tool groups and the policy restrictions in effect (no arguments).
 
@@ -1180,13 +1180,13 @@ Returns the target's environment, the published tool groups and the policy restr
 | `tool_groups` | string[] | List of published tool groups |
 | `restrictions` | string[] | List of restrictions in effect (`item: value`, omitted when there are none) |
 
-Table: Output of sys_info
+Table: Output of sys_get_info
 
 ## Network
 
 All network tools originate connections from the target machine (`localhost` means the target itself). Destinations can be restricted with [`--allow-host`](#network-destinations---allow-host).
 
-### net_http
+### net_request_http
 
 Sends an HTTP / HTTPS request and returns the status, headers and response body.
 
@@ -1209,7 +1209,7 @@ Sends an HTTP / HTTPS request and returns the status, headers and response body.
 | `max_bytes` | integer | | Maximum bytes of the response body to get (the default and upper limit are `--max-output`) |
 | `save_to` | string | | Save the response body directly to a file on the target instead of including it in the result (no size limit) |
 
-Table: Arguments of net_http
+Table: Arguments of net_request_http
 
 | Output | Type | Description |
 |---|---|---|
@@ -1222,7 +1222,7 @@ Table: Arguments of net_http
 | `tls` | object | TLS version and server certificate information (`subject`, `issuer`, `dns_names`, `not_before`, `not_after`, `days_left`, `verified`, `verify_error`) |
 | `duration_ms` | integer | Time taken (milliseconds) |
 
-Table: Output of net_http
+Table: Output of net_request_http
 
 ```json
 {"url": "http://localhost:8080/health"}
@@ -1232,7 +1232,7 @@ Table: Output of net_http
 {"url": "http://localhost/v1.43/containers/json", "unix_socket": "/var/run/docker.sock"}
 ```
 
-### net_tcp
+### net_exchange
 
 Connects over TCP, TLS or a Unix domain socket and sends and receives data.
 
@@ -1250,7 +1250,7 @@ Connects over TCP, TLS or a Unix domain socket and sends and receives data.
 | `max_bytes` | integer | | Maximum bytes to receive |
 | `receive_encoding` | string | | `auto` (default; `text` if valid UTF-8, otherwise `base64`), `text`, `base64` |
 
-Table: Arguments of net_tcp (* exactly one of `port` and `unix_socket` is required)
+Table: Arguments of net_exchange (* exactly one of `port` and `unix_socket` is required)
 
 The output is `remote_addr`, `sent_bytes`, `received`, `receive_encoding`, `received_bytes`, `matched`, `closed_by_peer`, `truncated`, `tls` and `duration_ms`.
 
@@ -1270,9 +1270,9 @@ Runs name resolution, TCP connections and TLS handshakes with certificate checks
 
 Table: Arguments of net_check
 
-Each element of `results` in the output contains `target`, `host`, `port`, `addresses`, `dns_ms`, `connected`, `connect_ms`, `tls` (same format as [`net_http`](#net_http)) and `error`.
+Each element of `results` in the output contains `target`, `host`, `port`, `addresses`, `dns_ms`, `connected`, `connect_ms`, `tls` (same format as [`net_request_http`](#net_request_http)) and `error`.
 
-### net_listen
+### net_list_listeners
 
 Returns the listening TCP and UDP sockets and the processes that own them (from `/proc/net/{tcp,tcp6,udp,udp6}` and `/proc/<pid>/fd` on Linux, and `netstat -ano` and `tasklist` on Windows).
 
@@ -1282,11 +1282,11 @@ Returns the listening TCP and UDP sockets and the processes that own them (from 
 | `protocol` | string | | `tcp` or `udp` |
 | `process` | string | | Only those whose process name contains this string (case-insensitive) |
 
-Table: Arguments of net_listen
+Table: Arguments of net_list_listeners
 
 Each element of `listeners` in the output is `protocol` (`tcp`, `tcp6`, `udp`, `udp6`), `address`, `port`, `pid` and `process` (on Linux without root, `pid` is empty for processes of other users, and `note` says so).
 
-### net_interfaces
+### net_list_interfaces
 
 Returns the list of network interfaces (`name`, `index`, `mtu`, `mac`, `flags`, `addresses` [CIDR notation]) (no arguments).
 
@@ -1294,7 +1294,7 @@ Returns the list of network interfaces (`name`, `index`, `mtu`, `mac`, `flags`, 
 
 Tools (the `admin` group) that handle processes, services, the system log and disks in a format common to the operating systems.
 
-### sys_processes
+### proc_list
 
 Returns the list of processes (from `/proc` on Linux, the Win32 API on Windows, and `ps` on macOS).
 
@@ -1304,7 +1304,7 @@ Returns the list of processes (from `/proc` on Linux, the Win32 API on Windows, 
 | `pid` | integer | | Only the given PID and its descendant processes |
 | `max` | integer | | Maximum number of results (`500` when omitted) |
 
-Table: Arguments of sys_processes
+Table: Arguments of proc_list
 
 | Field | Type | Description | Linux | Windows |
 |---|---|---|---|---|
@@ -1316,7 +1316,7 @@ Table: Arguments of sys_processes
 | `start_time` | string | Start time (RFC 3339) | `/proc/<pid>/stat` | `GetProcessTimes` |
 | `memory_bytes` | integer | Physical memory used (RSS / working set) | `/proc/<pid>/statm` | `GetProcessMemoryInfo` |
 
-Table: Fields of sys_processes
+Table: Fields of proc_list
 
 The output is `processes` (in PID order), `total` (the total after filtering) and `truncated`. Fields that cannot be obtained, for example because of insufficient permissions, are omitted.
 
@@ -1398,7 +1398,7 @@ Table: Arguments of log_query
 
 Each element of `entries` in the output is `time` (RFC 3339), `priority`, `source`, `pid`, `event_id` (Windows) and `message`. When the output size limit is exceeded, the oldest entries are dropped and `truncated: true` is set.
 
-### sys_disks
+### disk_list
 
 Returns the disk usage of file systems (Linux) or drives (Windows).
 
@@ -1406,7 +1406,7 @@ Returns the disk usage of file systems (Linux) or drives (Windows).
 |---|---|---|---|
 | `all` | boolean | | On Linux, also include pseudo file systems (`proc`, `sysfs`, `cgroup` and so on) |
 
-Table: Arguments of sys_disks
+Table: Arguments of disk_list
 
 Each element of `disks` in the output is `mount`, `device` (Linux), `type`, `total_bytes`, `used_bytes`, `free_bytes`, `used_percent`, `total` and `free`.
 
@@ -1656,7 +1656,7 @@ Table: Default base path of the audit log
 
 The log is written to `<base name>-YYYY-MM-DD<extension>` (for example `audit-2026-10-31.log`) per local date of the target.
 
-- In addition to the current day, the 5 most recent days are kept, and older `<base name>-YYYY-MM-DD<extension>` files are deleted automatically at startup and when the date changes (an `audit.log` without a date from before the daily rotation is not deleted).
+- In addition to the current day, the 5 most recent days are kept, and older `<base name>-YYYY-MM-DD<extension>` files are deleted automatically at startup and when the date changes (an `audit.log` without a date is not deleted).
 - The directory is created with mode `0700` and log files with mode `0600`. Each record opens, appends and closes the file, so lines do not get mixed even when several sessions write at the same time.
 - If the log file cannot be opened, `host-shell` fails to start (use `--no-log` when no records are needed).
 
@@ -1680,13 +1680,13 @@ Table: Audit log records
 
 | Tool | Argument | Value recorded |
 |---|---|---|
-| `exec_run`, `job_start`, `sudo_run` | `stdin` | `<N chars>` |
-| `sudo_run` | `password` | `<redacted>` |
+| `exec_run`, `job_start`, `exec_sudo` | `stdin` | `<N chars>` |
+| `exec_sudo` | `password` | `<redacted>` |
 | `job_write` | `input` | `<N chars>` |
 | `fs_edit` | `old_string`, `new_string` (including inside `edits`) | `<N chars>` |
 | `fs_write` | `content` | `<N chars, sha256 ...>` |
-| `net_http` | `body`, and `Authorization`, `Proxy-Authorization`, `Cookie`, `X-Api-Key` of `headers` | `<N chars>` |
-| `net_tcp` | `send` | `<N chars>` |
+| `net_request_http` | `body`, and `Authorization`, `Proxy-Authorization`, `Cookie`, `X-Api-Key` of `headers` | `<N chars>` |
+| `net_exchange` | `send` | `<N chars>` |
 
 Table: Values replaced in the audit log
 
@@ -1697,6 +1697,6 @@ Table: Values replaced in the audit log
 - Pseudo-terminals are available only with `pty: true` of `job_start` (`exec_run` runs non-interactively with pipes). Get the display of full-screen programs (`vi`, `top` and so on) with `screen: true` of `job_read`.
 - Encoding detection checks only BOMs, the byte distribution of UTF-16 and UTF-8 validity; it does not tell non-UTF-8 encodings such as Shift_JIS and EUC-JP apart. For files in an encoding different from the target's default, give `charset` explicitly.
 - Rarely, a short non-UTF-8 byte sequence happens to be valid UTF-8 and is garbled. In that case, give `output_encoding` or `charset` explicitly.
-- `net_listen`, `svc_list`, `svc_control`, `log_query` and `sys_disks` support only Linux and Windows (service and log operations on Linux assume systemd).
+- `net_list_listeners`, `svc_list`, `svc_control`, `log_query` and `disk_list` support only Linux and Windows (service and log operations on Linux assume systemd).
 - Restrictions by startup options (policy) are checks on tool arguments, not OS permission boundaries (see [Limits of the restrictions](#limits-of-the-restrictions)).
 - Based on the requirements of Go 1.26, the supported operating systems are Windows 10 / Windows Server 2016 or later (`pty` needs Windows 10 1809 / Windows Server 2019 or later), Linux kernel 3.2 or later, and macOS 12 or later (`bridge` only).

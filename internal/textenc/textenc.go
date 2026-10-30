@@ -109,9 +109,7 @@ const detectUTF16Bytes = 4096
 //
 // UTF-16 text has a zero byte in one half of every ASCII code unit (including line breaks) and
 // rarely contains U+0000, whereas binary data has either many all-zero units or few zero bytes
-// on either side. Across 2026-10 samples, UTF-16 English source has zero bytes in 100% of units,
-// Japanese prose in 64%, and kanji-only lines in 7% (line breaks); executables/databases have
-// 30-87% all-zero units; and zip/gzip/PNG/JPEG/PDF have <=2% zero bytes per side. DetectUTF16
+// on either side. DetectUTF16
 // requires <=1% U+0000 units, >=5% zero bytes on one side, <=2% (+1 unit for short text) on the
 // other, and valid surrogate pairing.
 func DetectUTF16(b []byte) (Encoding, bool) {

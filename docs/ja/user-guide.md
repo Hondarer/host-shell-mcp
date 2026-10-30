@@ -276,20 +276,20 @@ Claude Code で読み取り専用ツールのみを自動許可する場合は�
 {
   "permissions": {
     "allow": [
-      "mcp__host-shell__help",
-      "mcp__host-shell__sys_info",
-      "mcp__host-shell__sys_processes",
-      "mcp__host-shell__sys_disks",
+      "mcp__host-shell__help_get",
+      "mcp__host-shell__sys_get_info",
+      "mcp__host-shell__proc_list",
+      "mcp__host-shell__disk_list",
       "mcp__host-shell__svc_list",
       "mcp__host-shell__log_query",
       "mcp__host-shell__net_check",
-      "mcp__host-shell__net_listen",
-      "mcp__host-shell__net_interfaces",
+      "mcp__host-shell__net_list_listeners",
+      "mcp__host-shell__net_list_interfaces",
       "mcp__host-shell__fs_list",
       "mcp__host-shell__fs_stat",
       "mcp__host-shell__fs_read",
       "mcp__host-shell__search_grep",
-      "mcp__host-shell__search_files",
+      "mcp__host-shell__search_find",
       "mcp__host-shell__fs_manifest",
       "mcp__host-shell__job_read",
       "mcp__host-shell__job_list"
@@ -339,11 +339,11 @@ npx @modelcontextprotocol/inspector ssh -T hop1 ssh -T target /tmp/host-shell-10
 
 ### エージェントから確かめる
 
-エージェントに「host-shell の sys_info を呼び出して、接続先の OS とホスト名を教えて」と指示し、接続先のホスト名が返ることを確認します。
+エージェントに「host-shell の sys_get_info を呼び出して、接続先の OS とホスト名を教えて」と指示し、接続先のホスト名が返ることを確認します。
 
 ## 使い方
 
-エージェントは初期化応答の案内 (`instructions`)、各ツールの説明、`help` ツールを参照して自律的にツールを選択するため、利用者がツールの使い方を指示する必要はありません。
+エージェントは初期化応答の案内 (`instructions`)、各ツールの説明、`help_get` ツールを参照して自律的にツールを選択するため、利用者がツールの使い方を指示する必要はありません。
 
 ### エージェントへの案内
 
@@ -351,7 +351,7 @@ npx @modelcontextprotocol/inspector ssh -T hop1 ssh -T target /tmp/host-shell-10
 
 - 初期化応答の `instructions`: 接続先のホスト名、OS、既定シェル、文字コード、出力上限、ツールの選択方法、および適用中のポリシー制限。
 - ツールと引数の説明 (`description`): 各ツールの役割、使い分け、分割読み取りの継続方法。
-- `help` ツールとリソース: トピック別 (`files`、`edit`、`search`、`jobs`、`network`、`admin`、`transfer`、`policy` など) の手順、引数例、Windows 固有の注意点。同一内容を MCP リソース `host-shell://help/<topic>` としても公開します。
+- `help_get` ツールとリソース: トピック別 (`files`、`edit`、`search`、`jobs`、`network`、`admin`、`transfer`、`policy` など) の手順、引数例、Windows 固有の注意点。同一内容を MCP リソース `host-shell://help/<topic>` としても公開します。
 
 エージェントが適切なツールを選択できない場合は、「host-shell の help を読んでから作業して」と指示してください (Claude Code では `@` でリソースを会話に添付することも可能です)。
 
@@ -359,15 +359,15 @@ npx @modelcontextprotocol/inspector ssh -T hop1 ssh -T target /tmp/host-shell-10
 
 | 指示の例 | 主に使用されるツール |
 |---|---|
-| 接続先の OS、ディスク空き容量、稼働中サービスを調べて | `sys_info`、`sys_disks`、`svc_list` |
+| 接続先の OS、ディスク空き容量、稼働中サービスを調べて | `sys_get_info`、`disk_list`、`svc_list` |
 | nginx が直近 1 時間に出力した警告ログを表示して | `log_query` (`unit`、`since`、`priority`) |
-| 接続先の `localhost:8080/health` にアクセスして | `net_http` |
+| 接続先の `localhost:8080/health` にアクセスして | `net_request_http` |
 | DB サーバーのポート 5432 への疎通と TLS 証明書の有効期限を確認して | `net_check` (`tls`) |
-| ポート 8080 を待ち受けているプロセスを特定して | `net_listen` |
-| `/var/log/app` 内で本日の ERROR を含む行を探して | `search_files` (`sort: mtime`)、`search_grep` |
+| ポート 8080 を待ち受けているプロセスを特定して | `net_list_listeners` |
+| `/var/log/app` 内で本日の ERROR を含む行を探して | `search_find` (`sort: mtime`)、`search_grep` |
 | `nginx.conf` の `server` ブロックを読んで説明して | `search_grep` (`context`)、`fs_read` |
 | リポジトリ内で `connect(` を呼び出している C ファイル数を数えて | `search_grep` (`literal`、`output_mode: count`) |
-| 稼働中の Java プロセス数を確認して | `sys_processes` |
+| 稼働中の Java プロセス数を確認して | `proc_list` |
 
 Table: 調査の例
 
@@ -391,10 +391,10 @@ Table: 調査の例
 | 設定ファイルの `max_connections` を 200 に変更して | `fs_read`、`fs_edit` |
 | 関数名をソース全体で一括置換して | `search_grep` (`output_mode: files`)、`fs_edit` (`replace_all`) |
 | サービスを再起動して状態を確認して | `svc_control` (`restart`、Linux では `sudo`) |
-| 暴走しているプロセスを停止して | `sys_processes`、`proc_kill` |
+| 暴走しているプロセスを停止して | `proc_list`、`proc_kill` |
 | レジストリ値を変更して (Windows) | `reg_read`、`reg_write` |
 | スクリプトを接続先の `/opt/tools/` に配置して実行権限を付与して | `fs_mkdir`、`fs_write` (`perm`) |
-| 古いログを `archive` に移動し、1 年以上前のログを削除して | `search_files`、`fs_move`、`fs_remove` |
+| 古いログを `archive` に移動し、1 年以上前のログを削除して | `search_find`、`fs_move`、`fs_remove` |
 
 Table: 変更の例
 
@@ -438,7 +438,7 @@ SSH セッションが切断されると実行中のジョブはすべて停止�
 - 転送先に同一内容のファイルが存在する場合は転送を省略するため、再実行すると差分同期として動作します。
 - 転送先に内容の異なるファイルが存在する場合は、`overwrite: true` を指定しない限り上書きしません。`exclude` で `.git` や `node_modules` 等を除外でき、Linux の実行権限も維持されます。
 
-接続先から直接到達できる URL のファイルは、`net_http` の `save_to` で接続先へ直接ダウンロードできます。
+接続先から直接到達できる URL のファイルは、`net_request_http` の `save_to` で接続先へ直接ダウンロードできます。
 
 `bridge` を使わない場合も、`fs_read` (`base64`、`offset`) と `fs_write` (`base64`、`offset`) で分割転送できますが、データがエージェントのコンテキストを通過するため数 MB 程度までの利用にとどめてください (`offset` 指定の書き込みはべき等なため、中断時は `fs_stat` の `size` から再開できます)。
 
@@ -455,7 +455,7 @@ SSH セッションが切断されると実行中のジョブはすべて停止�
 - `exec_run` と `job_start` の既定シェルは PowerShell です。`cmd` 構文を使う場合は呼び出しごとに `"shell": "cmd"` を指定するか、起動オプション `--windows-shell cmd` で既定シェルを変更します。
 - PowerShell コマンドは base64 で渡されるため、SSH や `cmd` による引用符解釈の影響を受けません。エラーと警告はプレーン テキストで返ります (警告は標準出力)。
 - `cmd` やネイティブ コマンドの Shift_JIS 出力は自動で UTF-8 に変換され、元の文字コード名が `stdout_encoding` に返ります。
-- `sudo_run` は存在しません。管理者権限を要する操作 (サービス変更、HKLM レジストリ書き込みなど) は、管理者アカウントで起動した `host-shell` から実行します。
+- `exec_sudo` は存在しません。管理者権限を要する操作 (サービス変更、HKLM レジストリ書き込みなど) は、管理者アカウントで起動した `host-shell` から実行します。
 - サービス (`svc_list`、`svc_control`)、イベント ログ (`log_query`)、レジストリ (`reg_read`、`reg_write`、`reg_delete`) を専用ツールで直接操作できます。
 - `pty` ジョブは ConPTY を使用します (Windows 10 1809 / Windows Server 2019 以降)。
 
@@ -468,13 +468,13 @@ SSH セッションが切断されると実行中のジョブはすべて停止�
 | 接続が応答せず停止する | 経路途中でパスワードやホスト鍵確認を待機している。ローカルで一度 `ssh hop1 ssh target` を実行してホスト鍵を登録し、`BatchMode=yes` を指定する |
 | 疑似端末の警告が表示される、改行が崩れる | 各段の `ssh` に `-T` を指定し、`~/.ssh/config` の `RequestTTY` 設定を確認する |
 | 起動直後に `open audit log` エラーで終了する | 操作ログの保存先に書き込めない。`--log-file` で書き込み可能なパスを指定するか、`--no-log` を指定する |
-| `sudo: a password is required` が返る | sudoers に `NOPASSWD` 規則がない ([運用ガイド](operations.md#sudo-の設定))。パスワードを渡す場合は `sudo_run` の `password` 引数を使用する |
-| ツールが `policy:` で始まるエラーを返す | 接続先の起動オプションで制限されている。`sys_info` の `restrictions` で制限内容を確認する |
+| `sudo: a password is required` が返る | sudoers に `NOPASSWD` 規則がない ([運用ガイド](operations.md#sudo-の設定))。パスワードを渡す場合は `exec_sudo` の `password` 引数を使用する |
+| ツールが `policy:` で始まるエラーを返す | 接続先の起動オプションで制限されている。`sys_get_info` の `restrictions` で制限内容を確認する |
 | `--confirm` 対象ツールが `cannot ask the user` で失敗する | エージェントが MCP の elicitation に対応していない。`--confirm` を外し、エージェント側の承認機能を使用する |
 | `transfer_push`、`transfer_pull` がツール一覧にない | `bridge` を挟まずに登録しているか、接続先で `files` グループが非公開になっている (`bridge` 起動時にエラー出力) |
 | `bridge` が `remote host-shell disconnected` で終了する | 接続先との SSH セッションが切断された。エージェントの MCP ログ (`bridge` の標準エラー) に出力された `ssh` のエラーを確認する |
 | コマンドが `timed_out` で停止する | `timeout_sec` を増やすか (`--max-timeout` が上限)、`job_start` でジョブとして実行する |
-| 日本語が文字化けする | `sys_info` の `console_encoding` と `file_encoding` を確認し、既定と異なる文字コードの場合は `output_encoding` や `charset` を明示する ([リファレンスの文字コードと改行](reference.md#文字コードと改行)) |
+| 日本語が文字化けする | `sys_get_info` の `console_encoding` と `file_encoding` を確認し、既定と異なる文字コードの場合は `output_encoding` や `charset` を明示する ([リファレンスの文字コードと改行](reference.md#文字コードと改行)) |
 | Windows で `host-shell.exe` が削除される、または起動できない | ウイルス対策ソフトによる誤検知の可能性があるため、除外設定またはコード署名を検討する |
 | Windows の管理者アカウントで公開鍵認証が通らない | Windows OpenSSH サーバーは Administrators グループ所属ユーザーの公開鍵を `C:\ProgramData\ssh\administrators_authorized_keys` から読み取る |
 

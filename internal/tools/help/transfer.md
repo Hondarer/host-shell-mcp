@@ -25,4 +25,4 @@ Transfer small files through `fs_read` and `fs_write` (contents pass through the
 
 - Text files: `fs_read` then `fs_write`.
 - Binary files: read chunks with `fs_read` (`encoding: "base64"`, `offset`, `length`), write chunks with `fs_write` (`encoding: "base64"`, `offset`), and verify SHA-256 hashes with `fs_manifest`.
-- Remote downloads: if the remote host can reach the URL directly, download it on the host with `net_http` (`save_to`).
+- Remote downloads: if the remote host can reach the URL directly, download it on the host with `net_request_http` (`save_to`).

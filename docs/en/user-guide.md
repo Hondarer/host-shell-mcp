@@ -275,20 +275,20 @@ To auto-approve read-only tools in Claude Code, add the following to `.claude/se
 {
   "permissions": {
     "allow": [
-      "mcp__host-shell__help",
-      "mcp__host-shell__sys_info",
-      "mcp__host-shell__sys_processes",
-      "mcp__host-shell__sys_disks",
+      "mcp__host-shell__help_get",
+      "mcp__host-shell__sys_get_info",
+      "mcp__host-shell__proc_list",
+      "mcp__host-shell__disk_list",
       "mcp__host-shell__svc_list",
       "mcp__host-shell__log_query",
       "mcp__host-shell__net_check",
-      "mcp__host-shell__net_listen",
-      "mcp__host-shell__net_interfaces",
+      "mcp__host-shell__net_list_listeners",
+      "mcp__host-shell__net_list_interfaces",
       "mcp__host-shell__fs_list",
       "mcp__host-shell__fs_stat",
       "mcp__host-shell__fs_read",
       "mcp__host-shell__search_grep",
-      "mcp__host-shell__search_files",
+      "mcp__host-shell__search_find",
       "mcp__host-shell__fs_manifest",
       "mcp__host-shell__job_read",
       "mcp__host-shell__job_list"
@@ -338,11 +338,11 @@ npx @modelcontextprotocol/inspector ssh -T hop1 ssh -T target /tmp/host-shell-10
 
 ### From the agent
 
-Ask the agent to "call sys_info of host-shell and report the target's OS and host name".
+Ask the agent to "call sys_get_info of host-shell and report the target's OS and host name".
 
 ## Usage
 
-Agents select tools automatically using the initialize `instructions`, tool descriptions, and the `help` tool, so you do not need to specify tool names in prompts.
+Agents select tools automatically using the initialize `instructions`, tool descriptions, and the `help_get` tool, so you do not need to specify tool names in prompts.
 
 ### What the agent is told
 
@@ -350,7 +350,7 @@ Agents select tools automatically using the initialize `instructions`, tool desc
 
 - Initialize `instructions`: target host name, OS, default shell, encodings, output limit, tool selection guidelines, and active policy restrictions.
 - Tool and argument `description` fields: each tool's role, when to prefer it, and how to paginate reads.
-- `help` tool and resources: step-by-step usage, argument examples, and Windows notes by topic (`files`, `edit`, `search`, `jobs`, `network`, `admin`, `transfer`, `policy`, etc.), also exposed as `host-shell://help/<topic>` resources.
+- `help_get` tool and resources: step-by-step usage, argument examples, and Windows notes by topic (`files`, `edit`, `search`, `jobs`, `network`, `admin`, `transfer`, `policy`, etc.), also exposed as `host-shell://help/<topic>` resources.
 
 If an agent picks suboptimal tools, prompt it to "read host-shell's help before working" (in Claude Code, you can also reference resources with `@`).
 
@@ -358,15 +358,15 @@ If an agent picks suboptimal tools, prompt it to "read host-shell's help before 
 
 | Example prompt | Primary tools used |
 |---|---|
-| Check the target's OS, free disk space, and running services | `sys_info`, `sys_disks`, `svc_list` |
+| Check the target's OS, free disk space, and running services | `sys_get_info`, `disk_list`, `svc_list` |
 | Show warnings logged by nginx in the last hour | `log_query` (`unit`, `since`, `priority`) |
-| Request `localhost:8080/health` on the target | `net_http` |
+| Request `localhost:8080/health` on the target | `net_request_http` |
 | Check connectivity to DB port 5432 and TLS certificate expiration | `net_check` (`tls`) |
-| Find the process listening on port 8080 | `net_listen` |
-| Find today's ERROR lines in `/var/log/app` | `search_files` (`sort: mtime`), `search_grep` |
+| Find the process listening on port 8080 | `net_list_listeners` |
+| Find today's ERROR lines in `/var/log/app` | `search_find` (`sort: mtime`), `search_grep` |
 | Read and explain the `server` blocks in `nginx.conf` | `search_grep` (`context`), `fs_read` |
 | Count C files calling `connect(` in the repository | `search_grep` (`literal`, `output_mode: count`) |
-| Count running Java processes | `sys_processes` |
+| Count running Java processes | `proc_list` |
 
 Table: Investigation examples
 
@@ -390,10 +390,10 @@ read only the files that differ with fs_read, and explain the differences.
 | Set `max_connections` to 200 in the config file | `fs_read`, `fs_edit` |
 | Rename a function across the source tree | `search_grep` (`output_mode: files`), `fs_edit` (`replace_all`) |
 | Restart the service and verify its status | `svc_control` (`restart`, with `sudo` on Linux) |
-| Terminate a runaway process | `sys_processes`, `proc_kill` |
+| Terminate a runaway process | `proc_list`, `proc_kill` |
 | Update a registry value (Windows) | `reg_read`, `reg_write` |
 | Deploy a script to `/opt/tools/` and mark it executable | `fs_mkdir`, `fs_write` (`perm`) |
-| Move old logs to `archive` and delete logs older than a year | `search_files`, `fs_move`, `fs_remove` |
+| Move old logs to `archive` and delete logs older than a year | `search_find`, `fs_move`, `fs_remove` |
 
 Table: Change examples
 
@@ -437,7 +437,7 @@ When registered with `bridge`, prompts such as "transfer local `dist/` to `/srv/
 - Identical files at the destination are skipped automatically, allowing repeated runs to act as a differential sync.
 - Existing files with different content are skipped unless `overwrite: true` is set. `exclude` filters out patterns such as `.git` or `node_modules`, and Linux executable bits are preserved.
 
-Files accessible via HTTP/HTTPS from the target can be downloaded directly to a target path using `save_to` in `net_http`.
+Files accessible via HTTP/HTTPS from the target can be downloaded directly to a target path using `save_to` in `net_request_http`.
 
 Without `bridge`, files can be transferred in chunks via `fs_read` and `fs_write` (`base64`, `offset`), though this passes data through the agent context and is practical only up to a few megabytes (`offset` writes are idempotent and can resume from `fs_stat` `size`).
 
@@ -454,7 +454,7 @@ Even on Shift_JIS or EUC-JP targets, `host-shell` converts text to and from UTF-
 - `exec_run` and `job_start` default to PowerShell. To use `cmd` syntax, pass `"shell": "cmd"` per call or start the server with `--windows-shell cmd`.
 - PowerShell commands are encoded in base64, avoiding SSH and `cmd` quoting issues. Errors and warnings are returned as plain text (warnings on standard output).
 - Shift_JIS output from `cmd` and native binaries is converted to UTF-8 automatically, with the source encoding reported in `stdout_encoding`.
-- `sudo_run` is unavailable on Windows. Run privileged operations (service control, `HKLM` registry writes, etc.) from a `host-shell` instance started under an administrator account.
+- `exec_sudo` is unavailable on Windows. Run privileged operations (service control, `HKLM` registry writes, etc.) from a `host-shell` instance started under an administrator account.
 - Dedicated tools handle Windows services (`svc_list`, `svc_control`), Event Log (`log_query`), and registry keys (`reg_read`, `reg_write`, `reg_delete`).
 - `pty` jobs use ConPTY (Windows 10 1809 / Windows Server 2019 or later).
 
@@ -467,13 +467,13 @@ Even on Shift_JIS or EUC-JP targets, `host-shell` converts text to and from UTF-
 | Connection hangs without responding | An SSH hop is waiting for a password or host key confirmation. Run `ssh hop1 ssh target` interactively once to record host keys, and add `BatchMode=yes` |
 | Pseudo-terminal warning or corrupted line breaks | Pass `-T` to every `ssh` hop and check `RequestTTY` in `~/.ssh/config` |
 | Server exits immediately with `open audit log` | The audit log directory is not writable. Pass a writable path with `--log-file` or disable logging with `--no-log` |
-| `sudo: a password is required` | No `NOPASSWD` rule matches in `sudoers` ([Operations Guide](operations.md#configuring-sudo)). Pass the password via `password` in `sudo_run` |
-| Tool returns an error starting with `policy:` | Blocked by target startup options. Check active rules in `restrictions` of `sys_info` |
+| `sudo: a password is required` | No `NOPASSWD` rule matches in `sudoers` ([Operations Guide](operations.md#configuring-sudo)). Pass the password via `password` in `exec_sudo` |
+| Tool returns an error starting with `policy:` | Blocked by target startup options. Check active rules in `restrictions` of `sys_get_info` |
 | Tool covered by `--confirm` fails with `cannot ask the user` | The agent client does not support MCP elicitation. Remove `--confirm` and use agent-side approval settings |
 | `transfer_push` and `transfer_pull` are missing | Registered without `bridge`, or the `files` group is disabled on the target (`bridge` logs the reason to standard error at startup) |
 | `bridge` exits with `remote host-shell disconnected` | The underlying SSH session closed. Inspect the `ssh` error in the agent's MCP log (`bridge` standard error) |
 | Command stops with `timed_out` | Increase `timeout_sec` (up to `--max-timeout`) or run the command as a background job with `job_start` |
-| Garbled Japanese text | Check `console_encoding` and `file_encoding` in `sys_info`, and specify `output_encoding` or `charset` explicitly when files or commands use a non-default encoding ([Encodings and line endings in the Reference](reference.md#encodings-and-line-endings)) |
+| Garbled Japanese text | Check `console_encoding` and `file_encoding` in `sys_get_info`, and specify `output_encoding` or `charset` explicitly when files or commands use a non-default encoding ([Encodings and line endings in the Reference](reference.md#encodings-and-line-endings)) |
 | `host-shell.exe` is deleted or blocked on Windows | Antivirus false positive; configure an exclusion or sign the binary |
 | Public key authentication fails for a Windows administrator | Windows OpenSSH reads public keys for `Administrators` group members from `C:\ProgramData\ssh\administrators_authorized_keys` |
 

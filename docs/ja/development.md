@@ -51,12 +51,12 @@ internal/tools/        各ツールの実装
   files.go             fs_list、fs_stat、fs_read、fs_write
   edit.go              fs_edit
   fsops.go             fs_mkdir、fs_move、fs_copy、fs_remove
-  search.go            search_grep、search_files、fs_manifest
+  search.go            search_grep、search_find、fs_manifest
   glob.go              glob 照合 (**、{a,b})
-  system.go            sudo_run、sys_info、sys_processes
-  net.go               net_http、net_tcp、net_check、net_listen、net_interfaces
-  listen_*.go          net_listen の OS 別実装 (/proc/net、netstat)
-  admin.go             proc_kill、svc_*、log_query、sys_disks の入出力定義と共通処理
+  system.go            exec_sudo、sys_get_info、proc_list
+  net.go               net_request_http、net_exchange、net_check、net_list_listeners、net_list_interfaces
+  listen_*.go          net_list_listeners の OS 別実装 (/proc/net、netstat)
+  admin.go             proc_kill、svc_*、log_query、disk_list の入出力定義と共通処理
   admin_*.go           OS 別管理実装 (systemd / journald、サービス コントロール マネージャー / イベント ログ)
   registry*.go         reg_read、reg_write、reg_delete (Windows)
 internal/bridge/       host-shell bridge (ローカル中継、transfer_push、transfer_pull)
@@ -87,7 +87,7 @@ docs/en/               文書の英語版 (docs/ja/ の英訳)
 - **出力サイズの上限設定**: ツールの出力は `limit` パッケージまたは件数上限により `--max-output` 程度に収め、切り詰めた場合は `truncated` フィールド等で明示します。
 - **機密引数のログ出力抑制**: 書き込み内容や標準入力など操作ログに残すべきでない引数は、入力型に `AuditArgs() any` (`audit.Redactor`) を実装してマスクします。
 - **ツール内部での文字コード変換**: ツールの入出力は常に UTF-8 とします。接続先の文字コードとの変換には `textenc` パッケージを、文字コード指定引数の解決には `textenc.Parse` を使用し、分割読み取り時はマルチバイト文字の境界を分断しないようにします。
-- **MCP 情報のみでの自己完結**: ツール説明、引数説明、`help` 本文、エラー メッセージは、エージェントが次の操作を判断できるよう具体的に記述します。
+- **MCP 情報のみでの自己完結**: ツール説明、引数説明、`help_get` 本文、エラー メッセージは、エージェントが次の操作を判断できるよう具体的に記述します。
 - **OS 差異の内部吸収**: OS 固有処理は `runtime.GOOS` 分岐または `_unix.go`、`_windows.go` ファイルに分離します。
 - **既定は無制限・明示指定のみ制限**: 起動オプションで指定されたポリシーのみを適用します。新規ツールで制限が回避されないよう、パス引数を持つ入力型には `PathArgs`、プログラムを起動する入力型には `CommandArgs` を実装し、ネットワーク接続先は `d.Policy.CheckHost` で検査します。
 - **長時間処理のキャンセル対応**: ハンドラーの `ctx` はクライアントからのキャンセル通知で完了するため、子プロセスや通信処理はすべて `ctx` に紐付けます。

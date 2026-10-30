@@ -38,7 +38,7 @@ type Deps struct {
 
 // Tool groups. --tools selects which groups are exposed.
 const (
-	groupCore   = "core"   // help, sys_info (always exposed)
+	groupCore   = "core"   // help_get, sys_get_info (always exposed)
 	groupFiles  = "files"  // reading, writing and managing files
 	groupSearch = "search" // searching files and their contents
 	groupExec   = "exec"   // running commands and jobs
@@ -49,14 +49,14 @@ const (
 // Groups are the group names and descriptions.
 var Groups = [][2]string{
 	{groupFiles, "fs_* file reading, writing and file operations"},
-	{groupSearch, "search_grep, search_files"},
-	{groupExec, "exec_run, sudo_run and job_* (commands, background jobs, pseudo terminals)"},
+	{groupSearch, "search_grep, search_find"},
+	{groupExec, "exec_run, exec_sudo and job_* (commands, background jobs, pseudo terminals)"},
 	{groupNet, "net_* HTTP requests, TCP connections, reachability, listening ports, interfaces"},
 	{groupAdmin, "processes, services, system logs, disks, Windows registry"},
 }
 
 // readOnlyCapable are tools exposed under --read-only too, limited to uses that change nothing.
-var readOnlyCapable = map[string]bool{"net_http": true, "net_tcp": true}
+var readOnlyCapable = map[string]bool{"net_request_http": true, "net_exchange": true}
 
 // Catalog returns the names and groups of all tools, including OS-specific ones.
 func Catalog() map[string]string {
@@ -97,19 +97,19 @@ func Register(s *mcp.Server, d *Deps) {
 
 	// Usage
 	add(s, d, groupCore, &mcp.Tool{
-		Name:  "help",
+		Name:  "help_get",
 		Title: "Usage guide",
 		Description: "Return usage guidance for host-shell: tool selection, argument details, examples, and active policy restrictions. " +
 			"Topics: " + strings.Join(helpTopics, ", ") + ", all.",
 		Annotations: readOnly(),
-	}, d.help)
+	}, d.helpGet)
 
 	// Running commands
 	add(s, d, groupExec, &mcp.Tool{
 		Name:  "exec_run",
 		Title: "Run command",
 		Description: "Run a command on the remote host and wait for completion (up to timeout_sec), returning exit_code, stdout and stderr. " +
-			"Pass command for a shell command line (default_shell in sys_info) or argv to run a program directly without a shell. " +
+			"Pass command for a shell command line (default_shell in sys_get_info) or argv to run a program directly without a shell. " +
 			"Each call is a separate process (pass cwd and env; cd/export do not persist) with closed stdin unless stdin is set. " +
 			"Streams progress notifications and kills the process tree on cancellation. " +
 			"Use job_start for long-running, interactive, or TTY commands; prefer fs_read/fs_edit/fs_write for file operations.",
@@ -159,19 +159,19 @@ func Register(s *mcp.Server, d *Deps) {
 	// Running as root (not on Windows)
 	if d.catalog != nil || runtime.GOOS != "windows" {
 		add(s, d, groupExec, &mcp.Tool{
-			Name:  "sudo_run",
+			Name:  "exec_sudo",
 			Title: "Run as root",
 			Description: "Run a shell command via sudo as root or user. Without password, uses sudo -n (requires NOPASSWD for sh; for command-specific sudoers rules, use exec_run with argv [\"sudo\", \"-n\", ...]). " +
 				"When password is provided by the user, passes it to sudo via askpass without exposing it to the command, logs, or output.",
 			Annotations: destructive(),
-		}, d.sudoRun)
+		}, d.execSudo)
 	}
 
 	// File operations
 	add(s, d, groupFiles, &mcp.Tool{
 		Name:        "fs_list",
 		Title:       "List directory",
-		Description: "List entries in a single directory (name, type, size, mode, mod_time). Non-recursive; use search_files to search directory trees.",
+		Description: "List entries in a single directory (name, type, size, mode, mod_time). Non-recursive; use search_find to search directory trees.",
 		Annotations: readOnly(),
 	}, d.fsList)
 	add(s, d, groupFiles, &mcp.Tool{
@@ -247,24 +247,24 @@ func Register(s *mcp.Server, d *Deps) {
 		Annotations: readOnly(),
 	}, d.searchGrep)
 	add(s, d, groupSearch, &mcp.Tool{
-		Name:  "search_files",
+		Name:  "search_find",
 		Title: "Find files",
 		Description: "Find files or directories recursively by glob (base name without '/', or relative path with '/'). " +
 			"Filter by type (file, dir) and sort by path or mtime (newest first).",
 		Annotations: readOnly(),
-	}, d.searchFiles)
+	}, d.searchFind)
 
 	registerNet(s, d)
 	registerAdmin(s, d)
 
 	// Environment information
 	add(s, d, groupCore, &mcp.Tool{
-		Name:  "sys_info",
+		Name:  "sys_get_info",
 		Title: "Host information",
 		Description: "Get remote host OS, architecture, hostname, user, home/working directories, path separator, default shell, default encodings, " +
 			"enabled tool groups and active policy restrictions. Call first to determine paths, shell syntax and encodings.",
 		Annotations: readOnly(),
-	}, d.sysInfo)
+	}, d.sysGetInfo)
 
 	if s != nil {
 		registerHelp(s, d)

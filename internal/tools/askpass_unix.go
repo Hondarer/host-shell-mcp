@@ -17,7 +17,7 @@ const askpassEnv = "HOST_SHELL_ASKPASS"
 // passwordTries is the number of password lines queued for sudo (up to 3 prompts).
 const passwordTries = 3
 
-// Askpass runs host-shell as the sudo -A askpass helper when invoked by sudo_run,
+// Askpass runs host-shell as the sudo -A askpass helper when invoked by exec_sudo,
 // reading one line from the HOST_SHELL_ASKPASS FIFO and writing it to stdout.
 // If ran is true, the caller must exit with code.
 //

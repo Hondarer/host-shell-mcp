@@ -51,7 +51,7 @@ func TestPowerShellExitCode(t *testing.T) {
 	}
 }
 
-// psStdin is text that no single legacy code page can represent.
+// psStdin is text that no single Windows code page can represent.
 const psStdin = "日本語 😀 Ελληνικά"
 
 // needUTF8Console skips the test when host-shell has no UTF-8 console for PowerShell, which happens

@@ -26,12 +26,12 @@ var helpTopics = []string{"overview", "files", "edit", "search", "commands", "jo
 // helpResourcePrefix is the MCP resource URI prefix for help topics.
 const helpResourcePrefix = "host-shell://help/"
 
-// HelpInput defines arguments for the help tool.
-type HelpInput struct {
+// HelpGetInput defines arguments for the help_get tool.
+type HelpGetInput struct {
 	Topic string `json:"topic,omitempty" jsonschema:"overview (default), files, edit, search, commands, jobs, network, admin, transfer, encoding, windows, policy, limits, or all"`
 }
 
-func (d *Deps) help(_ context.Context, _ *mcp.CallToolRequest, in HelpInput) (*mcp.CallToolResult, any, error) {
+func (d *Deps) helpGet(_ context.Context, _ *mcp.CallToolRequest, in HelpGetInput) (*mcp.CallToolResult, any, error) {
 	topic := orDefault(in.Topic, "overview")
 	var text string
 	switch {
@@ -126,17 +126,17 @@ func Instructions(d *Deps) string {
 	fmt.Fprintf(&sb, "Defaults: exec_run shell %q; console encoding %s; file encoding %s; output limit %s per call; command timeout %s (max %s).\n",
 		d.DefaultShell, textenc.Console().Name, textenc.File().Name,
 		formatBytes(d.Cfg.MaxOutputBytes), d.Cfg.DefaultTimeout, d.Cfg.MaxTimeout)
-	sb.WriteString("\nWorkflow:\n- Call sys_info first.\n")
+	sb.WriteString("\nWorkflow:\n- Call sys_get_info first.\n")
 	for _, l := range []struct {
 		tool, text string
 	}{
-		{"search_grep", "Locate files with search_files (globs such as **/*.py) and search content with search_grep (regex, context lines, output_mode files/count) instead of shell find/grep."},
+		{"search_grep", "Locate files with search_find (globs such as **/*.py) and search content with search_grep (regex, context lines, output_mode files/count) instead of shell find/grep."},
 		{"fs_read", "Read files with fs_read: line_start + line_numbers for source code, offset/length for large files (negative offset in job_read for tails), and encoding base64 for binary data."},
 		{"fs_edit", "Edit files with fs_edit (exact old_string -> new_string; preserves encoding, BOM, and line endings). Use fs_write for new files or full rewrites, and fs_mkdir/fs_move/fs_copy/fs_remove instead of shell commands."},
 		{"exec_run", "Run commands with exec_run (pass argv to avoid shell quoting). Each call spawns a new process: pass cwd and env instead of cd/export. stdin is closed unless provided, so interactive prompts fail immediately."},
 		{"job_start", "Use job_start/job_read (wait_sec with until or idle_ms) for long-running commands; stdin_open + job_write for piped input; pty for terminal-dependent programs (password prompts, REPLs, ssh)."},
-		{"net_http", "Access host-reachable services directly with net_http (e.g. http://localhost:8080; unix_socket for Docker), net_tcp for raw TCP/TLS, and net_check for DNS/ports/certificates without port forwarding."},
-		{"svc_control", "Manage services with svc_list/svc_control, query logs with log_query, inspect or signal processes with sys_processes/proc_kill, and check disk usage with sys_disks."},
+		{"net_request_http", "Access host-reachable services directly with net_request_http (e.g. http://localhost:8080; unix_socket for Docker), net_exchange for raw TCP/TLS, and net_check for DNS/ports/certificates without port forwarding."},
+		{"svc_control", "Manage services with svc_list/svc_control, query logs with log_query, inspect or signal processes with proc_list/proc_kill, and check disk usage with disk_list."},
 	} {
 		if d.Enabled(l.tool) {
 			sb.WriteString("- " + l.text + "\n")
@@ -149,7 +149,7 @@ func Instructions(d *Deps) string {
 			fmt.Fprintf(&sb, "- %s: %s\n", kv[0], kv[1])
 		}
 	}
-	fmt.Fprintf(&sb, "\nCall the help tool (topics: %s) for details and examples.", strings.Join(helpTopics, ", "))
+	fmt.Fprintf(&sb, "\nCall the help_get tool (topics: %s) for details and examples.", strings.Join(helpTopics, ", "))
 	return sb.String()
 }
 

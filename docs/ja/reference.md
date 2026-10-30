@@ -91,46 +91,46 @@ Table: 入出力と終了
 ## 制限 (方針)
 
 制限オプションを指定しない場合、`host-shell` は全ツールを公開し、接続ユーザーの権限で制限なく動作します。  
-オプションで指定した項目のみを制限し、適用中の制限は [`sys_info`](#sys_info) の `restrictions`、`help` 先頭の表、初期化応答の `instructions` でエージェントへ通知します。制限に違反する呼び出しは実行せず、`policy:` で始まるエラーを返します。
+オプションで指定した項目のみを制限し、適用中の制限は [`sys_get_info`](#sys_get_info) の `restrictions`、`help_get` 先頭の表、初期化応答の `instructions` でエージェントへ通知します。制限に違反する呼び出しは実行せず、`policy:` で始まるエラーを返します。
 
 ### ツールの選択 (--tools)
 
-ツールは次のグループに分類されます。`help` と `sys_info` (`core` グループ) は常に公開されます。
+ツールは次のグループに分類されます。`help_get` と `sys_get_info` (`core` グループ) は常に公開されます。
 
 | グループ | ツール |
 |---|---|
 | `files` | `fs_list`、`fs_stat`、`fs_read`、`fs_edit`、`fs_write`、`fs_mkdir`、`fs_move`、`fs_copy`、`fs_remove`、`fs_manifest` |
-| `search` | `search_grep`、`search_files` |
-| `exec` | `exec_run`、`sudo_run`、`job_start`、`job_read`、`job_write`、`job_stop`、`job_list` |
-| `net` | `net_http`、`net_tcp`、`net_check`、`net_listen`、`net_interfaces` |
-| `admin` | `sys_processes`、`proc_kill`、`svc_list`、`svc_control`、`log_query`、`sys_disks`、`reg_read`、`reg_write`、`reg_delete` |
+| `search` | `search_grep`、`search_find` |
+| `exec` | `exec_run`、`exec_sudo`、`job_start`、`job_read`、`job_write`、`job_stop`、`job_list` |
+| `net` | `net_request_http`、`net_exchange`、`net_check`、`net_list_listeners`、`net_list_interfaces` |
+| `admin` | `proc_list`、`proc_kill`、`svc_list`、`svc_control`、`log_query`、`disk_list`、`reg_read`、`reg_write`、`reg_delete` |
 
 Table: ツールのグループ
 
-`--tools` にはグループ名、ツール名、`all`、`destructive` (変更系ツール)、`readonly` (読み取り系ツール) をカンマ区切りで指定し、左から順に評価します。先頭の `-` は除外、`+` (または接頭辞なし) は追加を表します。OS 固有ツール (`sudo_run`、`reg_*`) の名前は非対応 OS 上でもエラーにならず指定できます (非対応 OS では公開されません)。
+`--tools` にはグループ名、ツール名、`all`、`destructive` (変更系ツール)、`readonly` (読み取り系ツール) をカンマ区切りで指定し、左から順に評価します。先頭の `-` は除外、`+` (または接頭辞なし) は追加を表します。OS 固有ツール (`exec_sudo`、`reg_*`) の名前は非対応 OS 上でもエラーにならず指定できます (非対応 OS では公開されません)。
 
 | 指定 | 公開されるツール |
 |---|---|
 | `all` (既定値) | 全ツール |
 | `files,search` | ファイル操作・検索ツールのみ |
-| `all,-admin,-sudo_run` | 管理ツールと `sudo_run` を除く全ツール |
+| `all,-admin,-exec_sudo` | 管理ツールと `exec_sudo` を除く全ツール |
 | `files,exec,-fs_remove` | ファイル操作・コマンド実行ツールから `fs_remove` を除いたもの |
 
 Table: --tools の例
 
 ### 読み取り専用 (--read-only)
 
-`readOnlyHint` 注釈を持たないツールを非公開にします。ただし `net_http` と `net_tcp` は次の制限付きで公開します。
+`readOnlyHint` 注釈を持たないツールを非公開にします。ただし `net_request_http` と `net_exchange` は次の制限付きで公開します。
 
-- `net_http`: メソッドは `GET`、`HEAD`、`OPTIONS` のみ許可し、`save_to` は使用不可
-- `net_tcp`: `send` は使用不可 (接続先が先に送信するデータの受信のみ)
+- `net_request_http`: メソッドは `GET`、`HEAD`、`OPTIONS` のみ許可し、`save_to` は使用不可
+- `net_exchange`: `send` は使用不可 (接続先が先に送信するデータの受信のみ)
 
 ### 利用者の確認 (--confirm)
 
 指定したツールの呼び出し時に MCP の elicitation で利用者に承認を求め、承認された場合のみ実行します (指定書式は `--tools` と同じ)。
 
 - プロトコル バージョン `2026-07-28` のクライアントには、multi round-trip requests (SEP-2322) に従い確認要求 (`inputRequests`) を結果として返します。クライアントが回答を添えて同一呼び出しを再送すると実行します (起動ごとの秘密鍵で署名した `requestState` により、同一ツール・同一引数の再送のみを有効とします)。
-- それ以前のバージョンのクライアントには、SDK が `elicitation/create` を送信して回答を受け取り、処理を継続します。
+- その他の対応プロトコル バージョンのクライアントには、SDK が `elicitation/create` を送信して回答を受け取り、処理を継続します。
 - クライアントが elicitation 非対応の場合は実行せずにエラーを返します。
 - 確認要求の発生は操作ログに `<ツール名> (confirmation requested)` として記録されます。
 
@@ -141,9 +141,9 @@ Table: --tools の例
 | 分類 | 読み取りとして検査 | 書き込みとして検査 |
 |---|---|---|
 | ファイル操作 | `fs_list`、`fs_stat`、`fs_read`、`fs_manifest` の `path`、`fs_copy` の `source` | `fs_edit`、`fs_write`、`fs_mkdir`、`fs_remove` の `path`、`fs_move` の `source`・`destination`、`fs_copy` の `destination` |
-| 検索 | `search_grep`、`search_files` の `path` | |
-| コマンド実行 | `exec_run`、`job_start`、`sudo_run` の `cwd` | |
-| ネットワーク | `net_http` の `body_file`、`ca_cert`、`client_cert`、`client_key` | `net_http` の `save_to` |
+| 検索 | `search_grep`、`search_find` の `path` | |
+| コマンド実行 | `exec_run`、`job_start`、`exec_sudo` の `cwd` | |
+| ネットワーク | `net_request_http` の `body_file`、`ca_cert`、`client_cert`、`client_key` | `net_request_http` の `save_to` |
 
 Table: 場所の検査の対象
 
@@ -153,16 +153,16 @@ Table: 場所の検査の対象
 
 ### コマンド (--allow-command、--deny-command)
 
-`exec_run`、`job_start`、`sudo_run` で起動するプログラムを検査します。
+`exec_run`、`job_start`、`exec_sudo` で起動するプログラムを検査します。
 
 - `--allow-command` 指定時は、起動プログラム名 (ベース名。Windows では小文字化し `.exe` 等の拡張子を除いた名前) がいずれかの glob に一致する必要があります。
 - `command` (シェル コマンド ライン) を使用する場合は、シェル自体 (`sh`、`bash`、`cmd`、`powershell`、`pwsh`) が許可されている必要があります。シェルを許可するとシェル経由で任意のプログラムを起動できるため、実行プログラムを絞る場合はシェルを許可せず `argv` を使用させます。
-- `sudo_run` には `sudo` と `sh` の両方の許可が必要です。
+- `exec_sudo` には `sudo` と `sh` の両方の許可が必要です。
 - `--deny-command` はコマンド ライン (`argv` の場合は空白連結文字列) が正規表現に一致する呼び出しを拒否します (表記変更で回避可能なため、誤操作防止用です)。
 
 ### ネットワークの宛先 (--allow-host)
 
-`net_http` (リダイレクト先を含む)、`net_tcp`、`net_check` の接続先を検査します。
+`net_request_http` (リダイレクト先を含む)、`net_exchange`、`net_check` の接続先を検査します。
 
 | 書式 | 意味 |
 |---|---|
@@ -175,7 +175,7 @@ Table: --allow-host の書き方
 
 ### 環境変数 (--unset-env)
 
-`exec_run`、`job_start`、`sudo_run`、および管理ツールが起動する子プロセスから、指定した glob に一致する環境変数を除外します (例: `--unset-env 'AWS_*,*TOKEN*'`)。ツール引数の `env` で明示指定された変数はそのまま渡されます。
+`exec_run`、`job_start`、`exec_sudo`、および管理ツールが起動する子プロセスから、指定した glob に一致する環境変数を除外します (例: `--unset-env 'AWS_*,*TOKEN*'`)。ツール引数の `env` で明示指定された変数はそのまま渡されます。
 
 ### 伏せ字 (--redact、--redact-pattern)
 
@@ -192,7 +192,7 @@ Table: --allow-host の書き方
 Table: 伏せ字にする形
 
 `--redact-pattern` で追加の正規表現を指定できます (`--redact` 単独指定なしでも有効)。  
-伏せ字化されたファイル内容をそのまま `fs_write` で書き戻すと `[REDACTED]` がファイルに書き込まれるため、`help` の `policy` トピックでエージェントに注意喚起しています。
+伏せ字化されたファイル内容をそのまま `fs_write` で書き戻すと `[REDACTED]` がファイルに書き込まれるため、`help_get` の `policy` トピックでエージェントに注意喚起しています。
 
 ### 制限の限界
 
@@ -209,7 +209,7 @@ Table: 伏せ字にする形
 | プロトコル バージョン | `2024-11-05`、`2025-03-26`、`2025-06-18`、`2025-11-25`、`2026-07-28` (クライアント要求に応じて選択) |
 | サーバー名 | `host-shell` |
 | 機能 (capabilities) | `tools`、`resources`、`logging` |
-| 進捗通知 | リクエストに `progressToken` がある場合、`exec_run`・`sudo_run` は 1 秒間隔、`net_http` の `save_to` は受信に応じて `notifications/progress` を送信 |
+| 進捗通知 | リクエストに `progressToken` がある場合、`exec_run`・`exec_sudo` は 1 秒間隔、`net_request_http` の `save_to` は受信に応じて `notifications/progress` を送信 |
 | キャンセル処理 | `notifications/cancelled` 受信時に要求処理を中断し、実行中コマンドをプロセス ツリーごと強制終了 |
 | 利用者確認 | `--confirm` 対象ツールで elicitation を使用 ([利用者の確認](#利用者の確認---confirm)) |
 | 受信メッセージ上限 | 1 メッセージあたり 16 MiB |
@@ -226,18 +226,18 @@ Table: MCP サーバーの仕様
 | 初期化応答の `instructions` | 接続先ホスト名、OS・アーキテクチャー、作業ディレクトリ、既定シェル・文字コード、出力上限・タイムアウト、公開ツールの選択方法、各呼び出しが独立プロセスである旨、および適用中の制限 | 接続時 |
 | ツールの `title`・`description` | ツールの役割、使用場面、併用するツール | `tools/list` 取得時 |
 | 入出力スキーマの `description` | 各引数の意味、既定値、分割読み取りの継続方法 | `tools/list` 取得時 |
-| [`help`](#help) ツールとリソース | トピック別の手順、引数例、Windows の注意点、各種上限 | 必要に応じた呼び出し時 |
+| [`help_get`](#help_get) ツールとリソース | トピック別の手順、引数例、Windows の注意点、各種上限 | 必要に応じた呼び出し時 |
 
 Table: エージェントへの案内
 
-案内文とエラー メッセージはエージェント向けに英語で記述し、エラー発生時に次の対処を判断できる情報 (例: `fs_edit` で複数箇所に一致した際の行番号と `replace_all` の案内) を含めます。`help` の内容は MCP リソース (`host-shell://help/<topic>`、`text/markdown`) としても公開します。
+案内文とエラー メッセージはエージェント向けに英語で記述し、エラー発生時に次の対処を判断できる情報 (例: `fs_edit` で複数箇所に一致した際の行番号と `replace_all` の案内) を含めます。`help_get` の内容は MCP リソース (`host-shell://help/<topic>`、`text/markdown`) としても公開します。
 
 ## 全ツール共通の仕様
 
 ### 結果の形式
 
 ツール結果は `structuredContent` に JSON オブジェクトとして返し、同一 JSON の文字列を `content` のテキストにも格納します。各ツールの出力スキーマは `tools/list` の `outputSchema` で公開されます。  
-例外として、`help` は Markdown テキストのみを `content` に返し、`outputSchema` を持ちません。
+例外として、`help_get` は Markdown テキストのみを `content` に返し、`outputSchema` を持ちません。
 
 ### エラー
 
@@ -259,12 +259,12 @@ Table: エージェントへの案内
 
 | ツール | 上限の単位 | 上限超過時の動作 |
 |---|---|---|
-| `exec_run`、`sudo_run` | 標準出力・標準エラーの各ストリーム | 先頭と末尾を半分ずつ残して省略マーカーを挿入し、`stdout_truncated` 等を `true` にする |
+| `exec_run`、`exec_sudo` | 標準出力・標準エラーの各ストリーム | 先頭と末尾を半分ずつ残して省略マーカーを挿入し、`stdout_truncated` 等を `true` にする |
 | `job_read` | 1 回の読み取りバイト数 | `next_offset` から継続読み取り可能 |
 | `fs_read` | 1 回の読み取りバイト数・行数 | `truncated: true` と次回読み取り位置 (`next_offset` / `next_line`) を返す |
-| `sys_processes` | 出力全体 | 先頭と末尾を残して省略マーカーを挿入する |
-| `net_http` | レスポンス本文 | 先頭のみを返し `body_truncated: true` にする (`save_to` 使用時は上限なし) |
-| `net_tcp` | 受信データ | 上限到達時点で受信を打ち切り `truncated: true` にする |
+| `proc_list` | 出力全体 | 先頭と末尾を残して省略マーカーを挿入する |
+| `net_request_http` | レスポンス本文 | 先頭のみを返し `body_truncated: true` にする (`save_to` 使用時は上限なし) |
+| `net_exchange` | 受信データ | 上限到達時点で受信を打ち切り `truncated: true` にする |
 | `log_query` | 出力全体 | 古いログ項目から除外し `truncated: true` にする |
 | `fs_list`、`search_*`、`fs_manifest` | 引数で指定した最大件数 | `truncated: true` にする |
 
@@ -288,13 +288,13 @@ Table: 出力の上限
 
 | 注釈 | 対象ツール |
 |---|---|
-| `readOnlyHint: true` | `help`、`job_read`、`job_list`、`fs_list`、`fs_stat`、`fs_read`、`search_grep`、`search_files`、`fs_manifest`、`sys_info`、`sys_processes`、`net_check`、`net_listen`、`net_interfaces`、`svc_list`、`log_query`、`sys_disks`、`reg_read` |
+| `readOnlyHint: true` | `help_get`、`job_read`、`job_list`、`fs_list`、`fs_stat`、`fs_read`、`search_grep`、`search_find`、`fs_manifest`、`sys_get_info`、`proc_list`、`net_check`、`net_list_listeners`、`net_list_interfaces`、`svc_list`、`log_query`、`disk_list`、`reg_read` |
 | `destructiveHint: false`、`idempotentHint: true` | `fs_mkdir` |
-| `destructiveHint: true` | `exec_run`、`job_start`、`job_write`、`job_stop`、`fs_edit`、`fs_write`、`fs_move`、`fs_copy`、`fs_remove`、`sudo_run`、`net_http`、`net_tcp`、`proc_kill`、`svc_control`、`reg_write`、`reg_delete` |
+| `destructiveHint: true` | `exec_run`、`job_start`、`job_write`、`job_stop`、`fs_edit`、`fs_write`、`fs_move`、`fs_copy`、`fs_remove`、`exec_sudo`、`net_request_http`、`net_exchange`、`proc_kill`、`svc_control`、`reg_write`、`reg_delete` |
 
 Table: ツールの注釈
 
-外部ネットワークへ作用しうる `net_http`、`net_tcp`、`net_check` のみ `openWorldHint: true`、それ以外は `false` です。
+外部ネットワークへ作用しうる `net_request_http`、`net_exchange`、`net_check` のみ `openWorldHint: true`、それ以外は `false` です。
 
 ## 文字コードと改行
 
@@ -313,7 +313,7 @@ Table: 接続先の既定の文字コード
 
 日本語 Windows では両方とも Shift_JIS (CP932) です (Windows の「ワールド ワイド言語サポートで Unicode UTF-8 を使用」が有効な場合は UTF-8)。  
 Linux では環境変数 `LC_ALL`、`LC_CTYPE`、`LANG` の優先順で最初に設定されている値から `.` 以降の文字コード名を取得します (例: `ja_JP.eucJP` は EUC-JP。文字コード部がない `C`・`POSIX` や未設定時は UTF-8)。  
-実際の値は [`sys_info`](#sys_info) の `console_encoding` と `file_encoding` で確認できます。
+実際の値は [`sys_get_info`](#sys_get_info) の `console_encoding` と `file_encoding` で確認できます。
 
 ### 文字コードの指定
 
@@ -340,7 +340,7 @@ Table: 文字コードの指定
 3. 有効な UTF-8 バイト列であれば UTF-8 とします。
 4. いずれでもなければ接続先の既定文字コードとして変換します。
 
-コマンド出力 (`exec_run`、`job_start`、`sudo_run`)、`search_grep`、および `fs_read` の行範囲読み取りでは、手順 3・4 の判定を行単位で行うため、UTF-8 と Shift_JIS が混在する出力も正しく変換できます (`fs_read` のバイト範囲読み取りでは読み取り範囲全体で判定します)。
+コマンド出力 (`exec_run`、`job_start`、`exec_sudo`)、`search_grep`、および `fs_read` の行範囲読み取りでは、手順 3・4 の判定を行単位で行うため、UTF-8 と Shift_JIS が混在する出力も正しく変換できます (`fs_read` のバイト範囲読み取りでは読み取り範囲全体で判定します)。
 
 BOM なし UTF-16 の判定は、先頭最大 4096 バイト (コマンド出力では最初の 64 バイト到着時点または終了時点) を 2 バイト単位で検査し、次の全条件を満たす場合に UTF-16 とみなします。
 
@@ -366,10 +366,10 @@ ASCII 文字や改行を含む UTF-16 テキストはこの条件を満たし、
 
 | ツール | 引数 | 既定値 |
 |---|---|---|
-| `exec_run`、`job_start`、`sudo_run` | `output_encoding` (標準出力・標準エラー) | `auto` (コンソール) |
+| `exec_run`、`job_start`、`exec_sudo` | `output_encoding` (標準出力・標準エラー) | `auto` (コンソール) |
 | | `stdin_encoding` (標準入力) | `utf-8` (Windows の PowerShell は [シェル](#シェル) を参照) |
 | `job_write` | (`job_start` の `stdin_encoding` を継承) | `job_start` と同じ |
-| `sys_processes` | なし | `auto` (コンソール) |
+| `proc_list` | なし | `auto` (コンソール) |
 | `fs_read` (`text`) | `charset` | `auto` (ファイル) |
 | `fs_edit` | `charset` | `auto` (ファイル。読み取り時の文字コード・BOM・改行で書き戻す) |
 | `fs_write` (`text`) | `charset`、`newline`、`bom` | `utf-8`、`keep` (無変換)、`false` (BOM なし) |
@@ -383,7 +383,7 @@ Table: 文字コードの変換の対象
 
 | 分類 | ツール | 内容 |
 |---|---|---|
-| 使い方の案内 | [`help`](#help) | エージェント向けの使い方を返す |
+| 使い方の案内 | [`help_get`](#help_get) | エージェント向けの使い方を返す |
 | コマンド実行 | [`exec_run`](#exec_run) | コマンドを実行し、終了を待って結果を返す |
 | 長時間の実行 | [`job_start`](#job_start) | コマンドをバックグラウンド ジョブとして開始する |
 | | [`job_read`](#job_read) | ジョブの出力と状態を取得する |
@@ -400,21 +400,21 @@ Table: 文字コードの変換の対象
 | | [`fs_copy`](#fs_copy) | ファイルやディレクトリをコピーする |
 | | [`fs_remove`](#fs_remove) | ファイルやディレクトリを削除する |
 | 検索 | [`search_grep`](#search_grep) | ファイル内容を正規表現または文字列で検索する |
-| | [`search_files`](#search_files) | ファイル名・パスを glob で検索する |
+| | [`search_find`](#search_find) | ファイル名・パスを glob で検索する |
 | 差分の確認 | [`fs_manifest`](#fs_manifest) | ファイルの SHA-256 ハッシュ一覧を取得する |
-| 特権実行 | [`sudo_run`](#sudo_run) | `sudo` でコマンドを実行する (Linux のみ) |
-| 環境情報 | [`sys_info`](#sys_info) | 接続先の環境情報、公開ツール グループ、適用中の制限を取得する |
-| ネットワーク | [`net_http`](#net_http) | 接続先から HTTP / HTTPS リクエストを送信する |
-| | [`net_tcp`](#net_tcp) | 接続先から TCP / TLS / Unix ソケットで送受信する |
+| 特権実行 | [`exec_sudo`](#exec_sudo) | `sudo` でコマンドを実行する (Linux のみ) |
+| 環境情報 | [`sys_get_info`](#sys_get_info) | 接続先の環境情報、公開ツール グループ、適用中の制限を取得する |
+| ネットワーク | [`net_request_http`](#net_request_http) | 接続先から HTTP / HTTPS リクエストを送信する |
+| | [`net_exchange`](#net_exchange) | 接続先から TCP / TLS / Unix ソケットで送受信する |
 | | [`net_check`](#net_check) | 名前解決、TCP 接続、TLS 証明書を並行検査する |
-| | [`net_listen`](#net_listen) | 待ち受け中のポートと所有プロセスを一覧する |
-| | [`net_interfaces`](#net_interfaces) | ネットワーク インターフェイスを一覧する |
-| 管理 | [`sys_processes`](#sys_processes) | プロセス一覧を取得する |
+| | [`net_list_listeners`](#net_list_listeners) | 待ち受け中のポートと所有プロセスを一覧する |
+| | [`net_list_interfaces`](#net_list_interfaces) | ネットワーク インターフェイスを一覧する |
+| 管理 | [`proc_list`](#proc_list) | プロセス一覧を取得する |
 | | [`proc_kill`](#proc_kill) | プロセスへシグナルを送るか終了させる |
 | | [`svc_list`](#svc_list) | サービス一覧を取得する |
 | | [`svc_control`](#svc_control) | サービスの状態取得・起動・停止・再起動を行う |
 | | [`log_query`](#log_query) | システム ログ (journald / イベント ログ) を検索・取得する |
-| | [`sys_disks`](#sys_disks) | ディスク使用量を取得する |
+| | [`disk_list`](#disk_list) | ディスク使用量を取得する |
 | Windows のレジストリ | [`reg_read`](#reg_read) | レジストリ キー・値を読み取る (Windows のみ) |
 | | [`reg_write`](#reg_write) | レジストリ キー・値を書き込む (Windows のみ) |
 | | [`reg_delete`](#reg_delete) | レジストリ キー・値を削除する (Windows のみ) |
@@ -427,7 +427,7 @@ Table: ツール一覧
 
 ## 使い方の案内
 
-### help
+### help_get
 
 エージェント向けの使い方を Markdown テキストで返します。
 
@@ -442,8 +442,8 @@ Table: help の引数
 | `overview` | 仕組み、ツール早見表、推奨手順 (先頭に接続先サマリーを付与) |
 | `files` | `fs_read`、`fs_write`、ファイル操作ツール、`fs_manifest` |
 | `edit` | `fs_edit` の使い方と置換規則 |
-| `search` | glob 構文、`search_grep` の出力モード、`search_files` |
-| `commands` | `exec_run`、`sudo_run`、ツールの使い分け |
+| `search` | glob 構文、`search_grep` の出力モード、`search_find` |
+| `commands` | `exec_run`、`exec_sudo`、ツールの使い分け |
 | `jobs` | バックグラウンド ジョブ、待機条件 (`until`、`idle_ms`)、入力送信、疑似端末、シグナル |
 | `network` | `net_*` ツールの使い方と引数例 |
 | `admin` | プロセス、サービス、システム ログ、ディスク、レジストリ操作 |
@@ -790,7 +790,7 @@ Table: fs_read の出力
 ```
 
 ```json
-{"path": "C:/work/legacy.bat", "charset": "shift_jis", "line_start": 1}
+{"path": "C:/work/script.bat", "charset": "shift_jis", "line_start": 1}
 ```
 
 ```json
@@ -993,7 +993,7 @@ Table: fs_remove の出力
 
 ## 検索
 
-`search_grep`、`search_files`、`fs_manifest` は指定ディレクトリ配下を名前順で再帰走査します。
+`search_grep`、`search_find`、`fs_manifest` は指定ディレクトリ配下を名前順で再帰走査します。
 
 - シンボリック リンクはたどりません。
 - `exclude_dirs` に指定されたディレクトリ名 (省略時は `[".git", ".hg", ".svn"]`、空配列 `[]` 指定時は除外なし) には降りません。
@@ -1002,7 +1002,7 @@ Table: fs_remove の出力
 
 ### glob
 
-`search_grep`・`fs_manifest` の `include`、および `search_files` の `pattern` で使用する glob 構文は次のとおりです (Windows では大文字・小文字を区別せず、`\` も区切りとして扱います)。
+`search_grep`・`fs_manifest` の `include`、および `search_find` の `pattern` で使用する glob 構文は次のとおりです (Windows では大文字・小文字を区別せず、`\` も区切りとして扱います)。
 
 | 書式 | 意味 |
 |---|---|
@@ -1070,7 +1070,7 @@ Table: search_grep の出力
 
 ### .gitignore の扱い
 
-`search_grep` と `search_files` は既定 (`gitignore: true`) で次の規則ファイルを順に評価し、無視対象をスキップします (グローバルの `core.excludesFile` は読み取りません)。
+`search_grep` と `search_find` は既定 (`gitignore: true`) で次の規則ファイルを順に評価し、無視対象をスキップします (グローバルの `core.excludesFile` は読み取りません)。
 
 1. リポジトリの `.git/info/exclude` (検索起点がリポジトリ内の場合)
 2. リポジトリ ルート (`.git` があるディレクトリ) から検索起点までの各階層の `.gitignore`
@@ -1078,7 +1078,7 @@ Table: search_grep の出力
 
 深い階層の規則および同一ファイル内の後方の行が優先されます (`!pattern` による否定、`pattern/` によるディレクトリ限定、`**` に対応。無視されたディレクトリ自体には降りないため、その内部のファイルを `!` で復活させることはできません)。
 
-### search_files
+### search_find
 
 ファイル名または相対パスが [glob](#glob) に一致する項目を検索します。
 
@@ -1092,7 +1092,7 @@ Table: search_grep の出力
 | `sort` | string | | `path` (既定、走査順) または `mtime` (更新日時の新しい順、最大 10 万件まで収集してソート) |
 | `max_results` | integer | | 最大取得件数 (省略時は `1000`) |
 
-Table: search_files の引数
+Table: search_find の引数
 
 | 出力 | 型 | 内容 |
 |---|---|---|
@@ -1100,7 +1100,7 @@ Table: search_files の引数
 | `skipped` | integer | 読み取れなかった項目数 |
 | `truncated` | boolean | `max_results` (または `mtime` ソート時の 10 万件上限) で打ち切った場合に `true` |
 
-Table: search_files の出力
+Table: search_find の出力
 
 ## 差分の確認
 
@@ -1128,7 +1128,7 @@ Table: fs_manifest の出力
 
 ## 特権実行
 
-### sudo_run
+### exec_sudo
 
 Linux の接続先で `sudo` 経由のコマンドを実行します (Windows では公開されません)。出力スキーマは [`exec_run`](#exec_run) と同一です。
 
@@ -1142,9 +1142,9 @@ Linux の接続先で `sudo` 経由のコマンドを実行します (Windows �
 | `timeout_sec` | integer | | タイムアウト秒数 (省略時は `--timeout`、上限は `--max-timeout`) |
 | `output_encoding`、`stdin_encoding` | string | | 入出力の文字コード ([`exec_run`](#exec_run) と同じ) |
 
-Table: sudo_run の引数
+Table: exec_sudo の引数
 
-`password` 省略時は `sudo -n [-u <user>] -- sh -c '<command>'` を実行します。パスワードが必要な設定の場合はエラー終了し、`stderr` にメッセージが返ります。特定コマンドのみを `NOPASSWD` で許可している環境では、`sudo_run` ではなく `exec_run` の `argv` で `sudo -n` を直接呼び出してください ([運用ガイド](operations.md#sudo-の設定) を参照)。
+`password` 省略時は `sudo -n [-u <user>] -- sh -c '<command>'` を実行します。パスワードが必要な設定の場合はエラー終了し、`stderr` にメッセージが返ります。特定コマンドのみを `NOPASSWD` で許可している環境では、`exec_sudo` ではなく `exec_run` の `argv` で `sudo -n` を直接呼び出してください ([運用ガイド](operations.md#sudo-の設定) を参照)。
 
 ```json
 {"argv": ["sudo", "-n", "/usr/bin/systemctl", "restart", "nginx"]}
@@ -1162,7 +1162,7 @@ Table: sudo_run の引数
 
 ## 環境情報
 
-### sys_info
+### sys_get_info
 
 接続先の環境情報、公開ツール グループ、適用中のポリシー制限を返します (引数なし)。
 
@@ -1181,13 +1181,13 @@ Table: sudo_run の引数
 | `tool_groups` | string[] | 公開中のツール グループ一覧 |
 | `restrictions` | string[] | 適用中の制限一覧 (`項目: 値`、制限がない場合は省略) |
 
-Table: sys_info の出力
+Table: sys_get_info の出力
 
 ## ネットワーク
 
 ネットワーク ツールはすべて接続先マシンから通信を発信します (`localhost` は接続先自身を指します)。宛先は [`--allow-host`](#ネットワークの宛先---allow-host) で制限できます。
 
-### net_http
+### net_request_http
 
 HTTP / HTTPS リクエストを送信し、ステータス、ヘッダー、レスポンス本文を返します。
 
@@ -1210,7 +1210,7 @@ HTTP / HTTPS リクエストを送信し、ステータス、ヘッダー、レ�
 | `max_bytes` | integer | | レスポンス本文の最大取得バイト数 (省略時および上限は `--max-output`) |
 | `save_to` | string | | レスポンス本文を結果に含めず接続先ファイルへ直接保存する (サイズ上限なし) |
 
-Table: net_http の引数
+Table: net_request_http の引数
 
 | 出力 | 型 | 内容 |
 |---|---|---|
@@ -1223,7 +1223,7 @@ Table: net_http の引数
 | `tls` | object | TLS バージョンとサーバー証明書情報 (`subject`、`issuer`、`dns_names`、`not_before`、`not_after`、`days_left`、`verified`、`verify_error`) |
 | `duration_ms` | integer | 所要時間 (ミリ秒) |
 
-Table: net_http の出力
+Table: net_request_http の出力
 
 ```json
 {"url": "http://localhost:8080/health"}
@@ -1233,7 +1233,7 @@ Table: net_http の出力
 {"url": "http://localhost/v1.43/containers/json", "unix_socket": "/var/run/docker.sock"}
 ```
 
-### net_tcp
+### net_exchange
 
 TCP、TLS、または Unix ドメイン ソケットで接続してデータを送受信します。
 
@@ -1251,7 +1251,7 @@ TCP、TLS、または Unix ドメイン ソケットで接続してデータを�
 | `max_bytes` | integer | | 最大受信バイト数 |
 | `receive_encoding` | string | | `auto` (既定、有効な UTF-8 なら `text`、それ以外は `base64`)、`text`、`base64` |
 
-Table: net_tcp の引数 (※ `port` と `unix_socket` のいずれか一方が必須)
+Table: net_exchange の引数 (※ `port` と `unix_socket` のいずれか一方が必須)
 
 出力は `remote_addr`、`sent_bytes`、`received`、`receive_encoding`、`received_bytes`、`matched`、`closed_by_peer`、`truncated`、`tls`、`duration_ms` です。
 
@@ -1271,9 +1271,9 @@ Table: net_tcp の引数 (※ `port` と `unix_socket` のいずれか一方が�
 
 Table: net_check の引数
 
-出力の `results` 各要素には `target`、`host`、`port`、`addresses`、`dns_ms`、`connected`、`connect_ms`、`tls` ([`net_http`](#net_http) と同一形式)、`error` が含まれます。
+出力の `results` 各要素には `target`、`host`、`port`、`addresses`、`dns_ms`、`connected`、`connect_ms`、`tls` ([`net_request_http`](#net_request_http) と同一形式)、`error` が含まれます。
 
-### net_listen
+### net_list_listeners
 
 待ち受け中の TCP・UDP ソケットと所有プロセスを返します (Linux は `/proc/net/{tcp,tcp6,udp,udp6}` と `/proc/<pid>/fd`、Windows は `netstat -ano` と `tasklist` から取得)。
 
@@ -1283,11 +1283,11 @@ Table: net_check の引数
 | `protocol` | string | | `tcp` または `udp` |
 | `process` | string | | プロセス名にこの文字列を含むもののみ (大文字・小文字区別なし) |
 
-Table: net_listen の引数
+Table: net_list_listeners の引数
 
 出力の `listeners` 各要素は `protocol` (`tcp`、`tcp6`、`udp`、`udp6`)、`address`、`port`、`pid`、`process` です (Linux で非 root 実行時は他ユーザー所有プロセスの `pid` が空になり、`note` にその旨が入ります)。
 
-### net_interfaces
+### net_list_interfaces
 
 ネットワーク インターフェイス一覧 (`name`、`index`、`mtu`、`mac`、`flags`、`addresses` [CIDR 表記]) を返します (引数なし)。
 
@@ -1295,7 +1295,7 @@ Table: net_listen の引数
 
 プロセス、サービス、システム ログ、ディスクを OS 共通の形式で扱うツール群 (`admin` グループ) です。
 
-### sys_processes
+### proc_list
 
 プロセス一覧を返します (Linux は `/proc`、Windows は Win32 API、macOS は `ps` から取得)。
 
@@ -1305,7 +1305,7 @@ Table: net_listen の引数
 | `pid` | integer | | 指定 PID とその子孫プロセスのみを返す |
 | `max` | integer | | 最大取得件数 (省略時は `500`) |
 
-Table: sys_processes の引数
+Table: proc_list の引数
 
 | 項目 | 型 | 内容 | Linux | Windows |
 |---|---|---|---|---|
@@ -1317,7 +1317,7 @@ Table: sys_processes の引数
 | `start_time` | string | 開始時刻 (RFC 3339) | `/proc/<pid>/stat` | `GetProcessTimes` |
 | `memory_bytes` | integer | 物理メモリ使用量 (RSS / ワーキング セット) | `/proc/<pid>/statm` | `GetProcessMemoryInfo` |
 
-Table: sys_processes の項目
+Table: proc_list の項目
 
 出力は `processes` (PID 順)、`total` (絞り込み後の総数)、`truncated` です。権限不足等で取得できないフィールドは省略されます。
 
@@ -1399,7 +1399,7 @@ Table: log_query の引数
 
 出力の `entries` 各要素は `time` (RFC 3339)、`priority`、`source`、`pid`、`event_id` (Windows)、`message` です。出力サイズ上限を超える場合は古い項目から除外し `truncated: true` にします。
 
-### sys_disks
+### disk_list
 
 ファイル システム (Linux) またはドライブ (Windows) のディスク使用量を返します。
 
@@ -1407,7 +1407,7 @@ Table: log_query の引数
 |---|---|---|---|
 | `all` | boolean | | Linux で疑似ファイル システム (`proc`、`sysfs`、`cgroup` 等) も含める |
 
-Table: sys_disks の引数
+Table: disk_list の引数
 
 出力の `disks` 各要素は `mount`、`device` (Linux)、`type`、`total_bytes`、`used_bytes`、`free_bytes`、`used_percent`、`total`、`free` です。
 
@@ -1657,7 +1657,7 @@ Table: 操作ログの既定の基準パス
 
 ログは接続先のローカル日付ごとに `<基準名>-YYYY-MM-DD<拡張子>` (例: `audit-2026-10-31.log`) へ出力されます。
 
-- 当日分に加えて新しい順に 5 日分を保持し、それより古い `<基準名>-YYYY-MM-DD<拡張子>` ファイルを起動時および日付切り替え時に自動削除します (日次ローテーション導入前の日付なし `audit.log` は削除対象外です)。
+- 当日分に加えて新しい順に 5 日分を保持し、それより古い `<基準名>-YYYY-MM-DD<拡張子>` ファイルを起動時および日付切り替え時に自動削除します (日付なし `audit.log` は削除対象外です)。
 - ディレクトリは権限 `0700`、ログ ファイルは権限 `0600` で作成し、1 レコードごとにオープン・追記・クローズするため複数セッションで同時書き込みしても行が混在しません。
 - ログ ファイルを開けない場合、`host-shell` は起動に失敗します (記録不要な場合は `--no-log` を指定します)。
 
@@ -1681,13 +1681,13 @@ Table: 操作ログの記録
 
 | ツール | 引数 | 記録される値 |
 |---|---|---|
-| `exec_run`、`job_start`、`sudo_run` | `stdin` | `<N chars>` |
-| `sudo_run` | `password` | `<redacted>` |
+| `exec_run`、`job_start`、`exec_sudo` | `stdin` | `<N chars>` |
+| `exec_sudo` | `password` | `<redacted>` |
 | `job_write` | `input` | `<N chars>` |
 | `fs_edit` | `old_string`、`new_string` (`edits` 内も含む) | `<N chars>` |
 | `fs_write` | `content` | `<N chars, sha256 ...>` |
-| `net_http` | `body`、および `headers` の `Authorization`、`Proxy-Authorization`、`Cookie`、`X-Api-Key` | `<N chars>` |
-| `net_tcp` | `send` | `<N chars>` |
+| `net_request_http` | `body`、および `headers` の `Authorization`、`Proxy-Authorization`、`Cookie`、`X-Api-Key` | `<N chars>` |
+| `net_exchange` | `send` | `<N chars>` |
 
 Table: 操作ログで置き換える値
 
@@ -1698,6 +1698,6 @@ Table: 操作ログで置き換える値
 - 疑似端末は `job_start` の `pty: true` でのみ利用可能です (`exec_run` は非対話パイプ実行)。全画面プログラム (`vi`、`top` 等) の表示は `job_read` の `screen: true` で取得してください。
 - 文字コードの自動判定は BOM、UTF-16 のバイト分布、および UTF-8 妥当性のみを検査し、Shift_JIS と EUC-JP 等の非 UTF-8 文字コード同士は区別しません。接続先の既定文字コードと異なるファイルを扱う場合は `charset` を明示してください。
 - まれに非 UTF-8 の短いバイト列が UTF-8 として妥当なバイト並びになり文字化けする場合があります。その場合は `output_encoding` や `charset` を明示してください。
-- `net_listen`、`svc_list`、`svc_control`、`log_query`、`sys_disks` は Linux と Windows のみ対応です (Linux のサービス・ログ操作は systemd 環境を前提とします)。
+- `net_list_listeners`、`svc_list`、`svc_control`、`log_query`、`disk_list` は Linux と Windows のみ対応です (Linux のサービス・ログ操作は systemd 環境を前提とします)。
 - 起動オプションによる制限 (ポリシー) はツール引数の検査であり、OS の権限境界ではありません ([制限の限界](#制限の限界) を参照)。
 - 対応 OS は Go 1.26 の要件に基づき Windows 10 / Windows Server 2016 以降 (`pty` は Windows 10 1809 / Windows Server 2019 以降)、Linux カーネル 3.2 以降、macOS 12 以降 (`bridge` のみ) です。

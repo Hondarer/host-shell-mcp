@@ -427,8 +427,8 @@ func clipLine(line []byte) string {
 	return string(bytes.ToValidUTF8(line, []byte("�")))
 }
 
-// SearchFilesInput is the input of search_files.
-type SearchFilesInput struct {
+// SearchFindInput is the input of search_find.
+type SearchFindInput struct {
 	Pattern     string   `json:"pattern,omitempty" jsonschema:"glob: matches base name without '/' (*.log, *.{yml,yaml}) or relative path with '/' (**/test/*.py, src/*/main.go); default matches all"`
 	Path        string   `json:"path,omitempty" jsonschema:"root directory (default: current directory)"`
 	Type        string   `json:"type,omitempty" jsonschema:"file, dir or empty for both"`
@@ -438,8 +438,8 @@ type SearchFilesInput struct {
 	MaxResults  int      `json:"max_results,omitempty" jsonschema:"max paths to return (default 1000)"`
 }
 
-// SearchFilesOutput is the output of search_files.
-type SearchFilesOutput struct {
+// SearchFindOutput is the output of search_find.
+type SearchFindOutput struct {
 	Paths     []string `json:"paths"`
 	Skipped   int      `json:"skipped,omitempty" jsonschema:"unreadable entries skipped"`
 	Truncated bool     `json:"truncated,omitempty" jsonschema:"stopped at max_results"`
@@ -448,15 +448,15 @@ type SearchFilesOutput struct {
 // maxSortCandidates caps the candidates collected when sorting by modification time.
 const maxSortCandidates = 100000
 
-func (d *Deps) searchFiles(ctx context.Context, _ *mcp.CallToolRequest, in SearchFilesInput) (*mcp.CallToolResult, SearchFilesOutput, error) {
+func (d *Deps) searchFind(ctx context.Context, _ *mcp.CallToolRequest, in SearchFindInput) (*mcp.CallToolResult, SearchFindOutput, error) {
 	pattern, err := compileGlob(in.Pattern)
 	if err != nil {
-		return nil, SearchFilesOutput{}, fmt.Errorf("pattern: %w", err)
+		return nil, SearchFindOutput{}, fmt.Errorf("pattern: %w", err)
 	}
 	switch in.Type {
 	case "", "file", "dir":
 	default:
-		return nil, SearchFilesOutput{}, fmt.Errorf("unknown type %q (use file, dir or omit)", in.Type)
+		return nil, SearchFindOutput{}, fmt.Errorf("unknown type %q (use file, dir or omit)", in.Type)
 	}
 	byMtime := false
 	switch in.Sort {
@@ -464,7 +464,7 @@ func (d *Deps) searchFiles(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 	case "mtime":
 		byMtime = true
 	default:
-		return nil, SearchFilesOutput{}, fmt.Errorf("unknown sort %q (use path or mtime)", in.Sort)
+		return nil, SearchFindOutput{}, fmt.Errorf("unknown sort %q (use path or mtime)", in.Sort)
 	}
 	max := orDefaultInt(in.MaxResults, 1000)
 	root := orDefault(in.Path, ".")
@@ -474,7 +474,7 @@ func (d *Deps) searchFiles(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 		mtime time.Time
 	}
 	var all []found
-	out := SearchFilesOutput{Paths: []string{}}
+	out := SearchFindOutput{Paths: []string{}}
 	skipped, err := walkFiles(ctx, root, in.ExcludeDirs, in.Gitignore == nil || *in.Gitignore, func(path, rel string, de fs.DirEntry) error {
 		if path == root {
 			return nil
@@ -505,7 +505,7 @@ func (d *Deps) searchFiles(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 		return nil
 	})
 	if err != nil {
-		return nil, SearchFilesOutput{}, err
+		return nil, SearchFindOutput{}, err
 	}
 	if byMtime {
 		slices.SortStableFunc(all, func(a, b found) int { return b.mtime.Compare(a.mtime) })
@@ -523,7 +523,7 @@ func (d *Deps) searchFiles(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 // FsManifestInput is the input of fs_manifest.
 type FsManifestInput struct {
 	Path        string   `json:"path,omitempty" jsonschema:"root directory (default: current directory)"`
-	Include     string   `json:"include,omitempty" jsonschema:"file glob (same syntax as search_files pattern), e.g. *.c or src/**/*.h"`
+	Include     string   `json:"include,omitempty" jsonschema:"file glob (same syntax as search_find pattern), e.g. *.c or src/**/*.h"`
 	ExcludeDirs []string `json:"exclude_dirs,omitempty" jsonschema:"directory names to skip (default: .git, .hg, .svn; replaces default when set)"`
 	MaxFiles    int      `json:"max_files,omitempty" jsonschema:"max files to return (default 2000)"`
 }

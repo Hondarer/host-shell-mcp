@@ -33,7 +33,7 @@ func New(cfg config.Config, al *audit.Logger) (s *mcp.Server, close func(), err 
 		Policy:       pol,
 	}
 	impl := &mcp.Implementation{Name: "host-shell", Title: "host-shell", Version: version.Version}
-	// Dry-register on a temporary server first so d.Exposed is populated before building Instructions.
+	// Dry-register on a temporary server first so d.enabled is populated before building Instructions.
 	tools.Register(mcp.NewServer(impl, nil), d)
 	s = mcp.NewServer(impl, &mcp.ServerOptions{Instructions: tools.Instructions(d)})
 	tools.Register(s, d)

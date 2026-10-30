@@ -17,7 +17,7 @@ type sudoOut struct {
 	Stderr   string `json:"stderr"`
 }
 
-// TestSudoPasswordNotLeaked verifies that a password passed to sudo_run reaches neither the
+// TestSudoPasswordNotLeaked verifies that a password passed to exec_sudo reaches neither the
 // command's stdin nor the output when sudo does not prompt for one (e.g. NOPASSWD on CI).
 func TestSudoPasswordNotLeaked(t *testing.T) {
 	if exec.Command("sudo", "-n", "true").Run() != nil {
@@ -26,7 +26,7 @@ func TestSudoPasswordNotLeaked(t *testing.T) {
 	before, _ := filepath.Glob(filepath.Join(os.TempDir(), "host-shell-askpass-*"))
 	cs := connect(t)
 	const secret = "pw-not-for-the-command"
-	out := call[sudoOut](t, cs, "sudo_run", map[string]any{"command": "cat; echo " + secret, "stdin": "hello\n", "password": secret})
+	out := call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "cat; echo " + secret, "stdin": "hello\n", "password": secret})
 	if out.ExitCode != 0 || out.Stdout != "hello\n[REDACTED]\n" {
 		t.Fatalf("got %+v", out)
 	}
@@ -39,7 +39,7 @@ func TestSudoPasswordNotLeaked(t *testing.T) {
 	}
 }
 
-// TestSudoPassword tests password-authenticated sudo_run when HOST_SHELL_TEST_SUDO_PASSWORD is set.
+// TestSudoPassword tests password-authenticated exec_sudo when HOST_SHELL_TEST_SUDO_PASSWORD is set.
 func TestSudoPassword(t *testing.T) {
 	password := os.Getenv("HOST_SHELL_TEST_SUDO_PASSWORD")
 	if password == "" {
@@ -47,15 +47,15 @@ func TestSudoPassword(t *testing.T) {
 	}
 	cs := connect(t)
 	// Test failure cases before the valid password, as sudo caches successful authentication.
-	out := call[sudoOut](t, cs, "sudo_run", map[string]any{"command": "id -un"})
+	out := call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "id -un"})
 	if out.ExitCode == 0 || !strings.Contains(out.Stderr, "password") {
 		t.Errorf("without a password: %+v", out)
 	}
-	out = call[sudoOut](t, cs, "sudo_run", map[string]any{"command": "id -un", "password": "wrong-" + password})
+	out = call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "id -un", "password": "wrong-" + password})
 	if out.ExitCode == 0 {
 		t.Errorf("with a wrong password: %+v", out)
 	}
-	out = call[sudoOut](t, cs, "sudo_run", map[string]any{"command": "id -un", "password": password})
+	out = call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "id -un", "password": password})
 	if out.ExitCode != 0 || strings.TrimSpace(out.Stdout) != "root" || strings.Contains(out.Stderr, password) {
 		t.Errorf("with the password: %+v", out)
 	}

@@ -37,7 +37,7 @@ func main() {
 	log.SetPrefix("host-shell: ")
 	log.SetFlags(0)
 
-	// sudo_run re-invokes this binary as the sudo -A askpass helper.
+	// exec_sudo re-invokes this binary as the sudo -A askpass helper.
 	if ran, code := tools.Askpass(); ran {
 		os.Exit(code)
 	}
@@ -62,8 +62,8 @@ func main() {
 		maxTime  = flag.Duration("max-timeout", cfg.MaxTimeout, "maximum client-requested command timeout")
 		winShell = flag.String("windows-shell", cfg.WindowsShell, "default Windows shell: cmd, powershell, or pwsh")
 
-		toolSel  = flag.String("tools", "all", "tools to expose: comma-separated groups (files, search, exec, net, admin) or names, applied left to right; -name excludes (e.g. all,-admin,-sudo_run)")
-		readOnly = flag.Bool("read-only", false, "expose only non-modifying tools (limits net_http/net_tcp to read-only use)")
+		toolSel  = flag.String("tools", "all", "tools to expose: comma-separated groups (files, search, exec, net, admin) or names, applied left to right; -name excludes (e.g. all,-admin,-exec_sudo)")
+		readOnly = flag.Bool("read-only", false, "expose only non-modifying tools (limits net_request_http/net_exchange to read-only use)")
 		confirm  = flag.String("confirm", "", "tools requiring user confirmation (MCP elicitation) per call: groups, tool names, or destructive (e.g. destructive or exec,fs_remove)")
 		redact   = flag.Bool("redact", false, "replace secrets (private keys, tokens, passwords) in tool output with [REDACTED]")
 	)

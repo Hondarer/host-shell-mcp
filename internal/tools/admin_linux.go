@@ -363,7 +363,7 @@ func journalString(v any) string {
 	return ""
 }
 
-// ---- sys_disks ----
+// ---- disk_list ----
 
 // pseudoFS lists synthetic file systems excluded by default.
 var pseudoFS = map[string]bool{

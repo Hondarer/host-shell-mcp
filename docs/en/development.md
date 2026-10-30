@@ -45,18 +45,18 @@ internal/tools/        Tool implementations
   policy.go            Per-input path extraction (PathArgs), confirmation (multi round-trip), redaction
   progress.go          Progress notifications
   ansi.go              Terminal output cleanup (escape sequence stripping and CR handling)
-  help.go              help tool, help resources, and initialize instructions generation
+  help.go              help_get tool, help resources, and initialize instructions generation
   help/*.md            Help topic content (embedded in the binary)
   exec.go              exec_run, job_*
   files.go             fs_list, fs_stat, fs_read, fs_write
   edit.go              fs_edit
   fsops.go             fs_mkdir, fs_move, fs_copy, fs_remove
-  search.go            search_grep, search_files, fs_manifest
+  search.go            search_grep, search_find, fs_manifest
   glob.go              Glob matching (**, {a,b})
-  system.go            sudo_run, sys_info, sys_processes
-  net.go               net_http, net_tcp, net_check, net_listen, net_interfaces
-  listen_*.go          OS-specific net_listen implementations (/proc/net, netstat)
-  admin.go             Input/output types and shared logic for proc_kill, svc_*, log_query, sys_disks
+  system.go            exec_sudo, sys_get_info, proc_list
+  net.go               net_request_http, net_exchange, net_check, net_list_listeners, net_list_interfaces
+  listen_*.go          OS-specific net_list_listeners implementations (/proc/net, netstat)
+  admin.go             Input/output types and shared logic for proc_kill, svc_*, log_query, disk_list
   admin_*.go           OS-specific administration (systemd / journald, Service Control Manager / Event Log)
   registry*.go         reg_read, reg_write, reg_delete (Windows)
 internal/bridge/       host-shell bridge (local relay, transfer_push, transfer_pull)
@@ -87,7 +87,7 @@ Follow these rules when modifying the codebase.
 - **Enforce output size limits**: Cap tool output around `--max-output` using the `limit` package or entry count limits, and indicate truncation via fields such as `truncated`.
 - **Redact sensitive arguments in audit logs**: For arguments that must not be logged in full (such as written file content or standard input), implement `AuditArgs() any` (`audit.Redactor`) on the input type.
 - **Convert encodings inside tools**: Tool inputs and outputs are always UTF-8. Use the `textenc` package for target encoding conversion and `textenc.Parse` for encoding arguments, and avoid splitting multibyte characters across chunk boundaries.
-- **Keep MCP guidance self-contained**: Write tool descriptions, argument descriptions, `help` topics, and error messages concretely enough for agents to determine their next action without external docs.
+- **Keep MCP guidance self-contained**: Write tool descriptions, argument descriptions, `help_get` topics, and error messages concretely enough for agents to determine their next action without external docs.
 - **Isolate OS differences internally**: Place OS-specific logic behind `runtime.GOOS` checks or in `_unix.go` and `_windows.go` files.
 - **Unrestricted by default, restricted only when specified**: Apply only policies explicitly passed via startup flags. To prevent new tools from bypassing restrictions, implement `PathArgs` on input types taking paths, implement `CommandArgs` on input types spawning programs, and validate network destinations with `d.Policy.CheckHost`.
 - **Support cancellation of long-running operations**: The handler's `ctx` is cancelled when the client cancels a request; bind all child processes and network operations to `ctx`.

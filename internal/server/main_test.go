@@ -8,7 +8,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	// sudo_run starts the running executable (this test binary) as the askpass helper of sudo -A.
+	// exec_sudo starts the running executable (this test binary) as the askpass helper of sudo -A.
 	if ran, code := tools.Askpass(); ran {
 		os.Exit(code)
 	}

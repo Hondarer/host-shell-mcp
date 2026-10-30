@@ -28,20 +28,20 @@ import (
 
 func registerNet(s *mcp.Server, d *Deps) {
 	add(s, d, groupNet, &mcp.Tool{
-		Name:  "net_http",
+		Name:  "net_request_http",
 		Title: "HTTP request",
 		Description: "Send an HTTP(S) request from the remote host and return status, headers and body (for localhost services, internal APIs, health checks, or metrics without port forwarding). " +
 			"Supports any method, headers, body (text, base64 or body_file), unix_socket (e.g. Docker), save_to for large downloads, and TLS options (insecure, ca_cert, client_cert/client_key).",
 		Annotations: network(false),
-	}, d.netHTTP)
+	}, d.netRequestHTTP)
 	add(s, d, groupNet, &mcp.Tool{
-		Name:  "net_tcp",
+		Name:  "net_exchange",
 		Title: "TCP exchange",
 		Description: "Open a TCP (optionally TLS) or Unix socket connection from the remote host, send optional data, and read the response " +
 			"(for Redis, SMTP/FTP banners, memcached, or raw protocol checks). " +
 			"Stops reading on until (regex), idle_ms of silence, peer close, or max_bytes.",
 		Annotations: network(false),
-	}, d.netTCP)
+	}, d.netExchange)
 	add(s, d, groupNet, &mcp.Tool{
 		Name:  "net_check",
 		Title: "Check reachability",
@@ -50,23 +50,23 @@ func registerNet(s *mcp.Server, d *Deps) {
 		Annotations: network(true),
 	}, d.netCheck)
 	add(s, d, groupNet, &mcp.Tool{
-		Name:        "net_listen",
+		Name:        "net_list_listeners",
 		Title:       "Listening ports",
 		Description: "List listening TCP and UDP sockets on the remote host with owning pid and process name (other users' processes may require root). Filter by port, protocol or process.",
 		Annotations: readOnly(),
-	}, d.netListen)
+	}, d.netListListeners)
 	add(s, d, groupNet, &mcp.Tool{
-		Name:        "net_interfaces",
+		Name:        "net_list_interfaces",
 		Title:       "Network interfaces",
 		Description: "List network interfaces on the remote host with IP addresses, MAC address, MTU and flags.",
 		Annotations: readOnly(),
-	}, d.netInterfaces)
+	}, d.netListInterfaces)
 }
 
-// ---- net_http ----
+// ---- net_request_http ----
 
-// NetHTTPInput is the input of net_http.
-type NetHTTPInput struct {
+// NetRequestHTTPInput is the input of net_request_http.
+type NetRequestHTTPInput struct {
 	URL              string            `json:"url" jsonschema:"request URL, e.g. http://localhost:8080/health (host is ignored when unix_socket is set)"`
 	Method           string            `json:"method,omitempty" jsonschema:"HTTP method (default GET)"`
 	Headers          map[string]string `json:"headers,omitempty" jsonschema:"request headers, e.g. {\"Authorization\": \"Bearer ...\", \"Content-Type\": \"application/json\"}"`
@@ -87,7 +87,7 @@ type NetHTTPInput struct {
 }
 
 // AuditArgs redacts the body and sensitive headers for audit logging.
-func (in NetHTTPInput) AuditArgs() any {
+func (in NetRequestHTTPInput) AuditArgs() any {
 	in.Body = redactedLen(in.Body)
 	h := map[string]string{}
 	for k, v := range in.Headers {
@@ -102,7 +102,7 @@ func (in NetHTTPInput) AuditArgs() any {
 }
 
 // PathArgs passes the target files read and written to the policy check.
-func (in NetHTTPInput) PathArgs() (read, write []string) {
+func (in NetRequestHTTPInput) PathArgs() (read, write []string) {
 	for _, p := range []string{in.BodyFile, in.CACert, in.ClientCert, in.ClientKey} {
 		if p != "" {
 			read = append(read, p)
@@ -114,8 +114,8 @@ func (in NetHTTPInput) PathArgs() (read, write []string) {
 	return read, write
 }
 
-// NetHTTPOutput is the output of net_http.
-type NetHTTPOutput struct {
+// NetRequestHTTPOutput is the output of net_request_http.
+type NetRequestHTTPOutput struct {
 	Status        int               `json:"status"`
 	StatusText    string            `json:"status_text"`
 	Proto         string            `json:"proto"`
@@ -145,22 +145,22 @@ type TLSInfo struct {
 	VerifyError string   `json:"verify_error,omitempty"`
 }
 
-func (d *Deps) netHTTP(ctx context.Context, req *mcp.CallToolRequest, in NetHTTPInput) (*mcp.CallToolResult, NetHTTPOutput, error) {
+func (d *Deps) netRequestHTTP(ctx context.Context, req *mcp.CallToolRequest, in NetRequestHTTPInput) (*mcp.CallToolResult, NetRequestHTTPOutput, error) {
 	method := strings.ToUpper(orDefault(in.Method, http.MethodGet))
 	if d.Policy.ReadOnly && (!slices.Contains([]string{"GET", "HEAD", "OPTIONS"}, method) || in.SaveTo != "") {
-		return nil, NetHTTPOutput{}, errors.New("policy: read-only mode allows only GET, HEAD and OPTIONS without save_to")
+		return nil, NetRequestHTTPOutput{}, errors.New("policy: read-only mode allows only GET, HEAD and OPTIONS without save_to")
 	}
 	u, err := url.Parse(in.URL)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || (u.Host == "" && in.UnixSocket == "") {
-		return nil, NetHTTPOutput{}, fmt.Errorf("url must be an absolute http or https URL: %q", in.URL)
+		return nil, NetRequestHTTPOutput{}, fmt.Errorf("url must be an absolute http or https URL: %q", in.URL)
 	}
 	if err := d.checkURL(u, in.UnixSocket); err != nil {
-		return nil, NetHTTPOutput{}, err
+		return nil, NetRequestHTTPOutput{}, err
 	}
 
 	tlsConf, err := clientTLS(in.Insecure, in.CACert, in.ClientCert, in.ClientKey)
 	if err != nil {
-		return nil, NetHTTPOutput{}, err
+		return nil, NetRequestHTTPOutput{}, err
 	}
 	tr := &http.Transport{TLSClientConfig: tlsConf, Proxy: http.ProxyFromEnvironment, ForceAttemptHTTP2: true}
 	switch in.Proxy {
@@ -170,7 +170,7 @@ func (d *Deps) netHTTP(ctx context.Context, req *mcp.CallToolRequest, in NetHTTP
 	default:
 		pu, err := url.Parse(in.Proxy)
 		if err != nil {
-			return nil, NetHTTPOutput{}, fmt.Errorf("proxy: %w", err)
+			return nil, NetRequestHTTPOutput{}, fmt.Errorf("proxy: %w", err)
 		}
 		tr.Proxy = http.ProxyURL(pu)
 	}
@@ -183,7 +183,7 @@ func (d *Deps) netHTTP(ctx context.Context, req *mcp.CallToolRequest, in NetHTTP
 	}
 	defer tr.CloseIdleConnections()
 
-	var out NetHTTPOutput
+	var out NetRequestHTTPOutput
 	client := &http.Client{Transport: tr, CheckRedirect: func(r *http.Request, via []*http.Request) error {
 		if in.NoRedirects {
 			return http.ErrUseLastResponse
@@ -204,14 +204,14 @@ func (d *Deps) netHTTP(ctx context.Context, req *mcp.CallToolRequest, in NetHTTP
 
 	body, err := requestBody(in)
 	if err != nil {
-		return nil, NetHTTPOutput{}, err
+		return nil, NetRequestHTTPOutput{}, err
 	}
 	if c, ok := body.(io.Closer); ok {
 		defer c.Close()
 	}
 	hreq, err := http.NewRequestWithContext(ctx, method, u.String(), body)
 	if err != nil {
-		return nil, NetHTTPOutput{}, err
+		return nil, NetRequestHTTPOutput{}, err
 	}
 	for k, v := range in.Headers {
 		if strings.EqualFold(k, "Host") {
@@ -229,7 +229,7 @@ func (d *Deps) netHTTP(ctx context.Context, req *mcp.CallToolRequest, in NetHTTP
 	start := time.Now()
 	resp, err := client.Do(hreq)
 	if err != nil {
-		return nil, NetHTTPOutput{}, err
+		return nil, NetRequestHTTPOutput{}, err
 	}
 	defer resp.Body.Close()
 	out.Status, out.StatusText, out.Proto = resp.StatusCode, http.StatusText(resp.StatusCode), resp.Proto
@@ -252,7 +252,7 @@ func (d *Deps) netHTTP(ctx context.Context, req *mcp.CallToolRequest, in NetHTTP
 	}
 	out.DurationMs = time.Since(start).Milliseconds()
 	if err != nil {
-		return nil, NetHTTPOutput{}, err
+		return nil, NetRequestHTTPOutput{}, err
 	}
 	return nil, out, nil
 }
@@ -273,7 +273,7 @@ func (d *Deps) checkURL(u *url.URL, unixSocket string) error {
 	return d.Policy.CheckHost(u.Hostname(), n)
 }
 
-func requestBody(in NetHTTPInput) (io.Reader, error) {
+func requestBody(in NetRequestHTTPInput) (io.Reader, error) {
 	switch {
 	case in.BodyFile != "" && in.Body != "":
 		return nil, errors.New("body and body_file are mutually exclusive")
@@ -353,7 +353,7 @@ func tlsInfo(cs *tls.ConnectionState, host string, conf *tls.Config) *TLSInfo {
 	return info
 }
 
-func (d *Deps) readBody(resp *http.Response, in NetHTTPInput, out *NetHTTPOutput) error {
+func (d *Deps) readBody(resp *http.Response, in NetRequestHTTPInput, out *NetRequestHTTPOutput) error {
 	max := d.Cfg.MaxOutputBytes
 	enc := orDefault(in.ResponseEncoding, "auto")
 	if enc == "base64" || enc == "auto" {
@@ -419,7 +419,7 @@ func textual(mediaType string) bool {
 		"application/problem+json", "application/graphql"}, mediaType)
 }
 
-func (d *Deps) saveBody(resp *http.Response, path string, pr *progress, out *NetHTTPOutput) error {
+func (d *Deps) saveBody(resp *http.Response, path string, pr *progress, out *NetRequestHTTPOutput) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -453,10 +453,10 @@ func (d *Deps) saveBody(resp *http.Response, path string, pr *progress, out *Net
 	return nil
 }
 
-// ---- net_tcp ----
+// ---- net_exchange ----
 
-// NetTCPInput is the input of net_tcp.
-type NetTCPInput struct {
+// NetExchangeInput is the input of net_exchange.
+type NetExchangeInput struct {
 	Host            string `json:"host,omitempty" jsonschema:"host name or IP address (default localhost)"`
 	Port            int    `json:"port,omitempty" jsonschema:"TCP port (required unless unix_socket is set)"`
 	UnixSocket      string `json:"unix_socket,omitempty" jsonschema:"Unix domain socket path to connect to instead of host:port"`
@@ -473,13 +473,13 @@ type NetTCPInput struct {
 }
 
 // AuditArgs redacts Send for audit logging.
-func (in NetTCPInput) AuditArgs() any {
+func (in NetExchangeInput) AuditArgs() any {
 	in.Send = redactedLen(in.Send)
 	return in
 }
 
-// NetTCPOutput is the output of net_tcp.
-type NetTCPOutput struct {
+// NetExchangeOutput is the output of net_exchange.
+type NetExchangeOutput struct {
 	RemoteAddr      string   `json:"remote_addr"`
 	Sent            int      `json:"sent_bytes"`
 	Received        string   `json:"received"`
@@ -492,15 +492,15 @@ type NetTCPOutput struct {
 	DurationMs      int64    `json:"duration_ms"`
 }
 
-func (d *Deps) netTCP(ctx context.Context, _ *mcp.CallToolRequest, in NetTCPInput) (*mcp.CallToolResult, NetTCPOutput, error) {
+func (d *Deps) netExchange(ctx context.Context, _ *mcp.CallToolRequest, in NetExchangeInput) (*mcp.CallToolResult, NetExchangeOutput, error) {
 	if d.Policy.ReadOnly && in.Send != "" {
-		return nil, NetTCPOutput{}, errors.New("policy: read-only mode does not allow sending data (only reading what the server sends first)")
+		return nil, NetExchangeOutput{}, errors.New("policy: read-only mode does not allow sending data (only reading what the server sends first)")
 	}
 	var until *regexp.Regexp
 	if in.Until != "" {
 		var err error
 		if until, err = regexp.Compile(in.Until); err != nil {
-			return nil, NetTCPOutput{}, fmt.Errorf("until: %w", err)
+			return nil, NetExchangeOutput{}, fmt.Errorf("until: %w", err)
 		}
 	}
 	send := []byte(in.Send)
@@ -509,11 +509,11 @@ func (d *Deps) netTCP(ctx context.Context, _ *mcp.CallToolRequest, in NetTCPInpu
 	case "base64":
 		b, err := base64.StdEncoding.DecodeString(in.Send)
 		if err != nil {
-			return nil, NetTCPOutput{}, fmt.Errorf("send: %w", err)
+			return nil, NetExchangeOutput{}, fmt.Errorf("send: %w", err)
 		}
 		send = b
 	default:
-		return nil, NetTCPOutput{}, fmt.Errorf("unknown send_encoding %q", in.SendEncoding)
+		return nil, NetExchangeOutput{}, fmt.Errorf("unknown send_encoding %q", in.SendEncoding)
 	}
 
 	timeout := time.Duration(orDefaultInt(in.TimeoutSec, 10)) * time.Second
@@ -523,14 +523,14 @@ func (d *Deps) netTCP(ctx context.Context, _ *mcp.CallToolRequest, in NetTCPInpu
 	if in.UnixSocket != "" {
 		network, addr = "unix", in.UnixSocket
 		if err := d.Policy.CheckUnixSocket(addr); err != nil {
-			return nil, NetTCPOutput{}, err
+			return nil, NetExchangeOutput{}, err
 		}
 	} else {
 		if in.Port <= 0 || in.Port > 65535 {
-			return nil, NetTCPOutput{}, errors.New("port is required (1-65535) unless unix_socket")
+			return nil, NetExchangeOutput{}, errors.New("port is required (1-65535) unless unix_socket")
 		}
 		if err := d.Policy.CheckHost(host, in.Port); err != nil {
-			return nil, NetTCPOutput{}, err
+			return nil, NetExchangeOutput{}, err
 		}
 		addr = net.JoinHostPort(host, strconv.Itoa(in.Port))
 	}
@@ -539,19 +539,19 @@ func (d *Deps) netTCP(ctx context.Context, _ *mcp.CallToolRequest, in NetTCPInpu
 	var dl net.Dialer
 	conn, err := dl.DialContext(ctx, network, addr)
 	if err != nil {
-		return nil, NetTCPOutput{}, err
+		return nil, NetExchangeOutput{}, err
 	}
 	defer conn.Close()
 	go func() {
 		<-ctx.Done()
 		conn.SetDeadline(time.Now())
 	}()
-	out := NetTCPOutput{RemoteAddr: conn.RemoteAddr().String()}
+	out := NetExchangeOutput{RemoteAddr: conn.RemoteAddr().String()}
 	if in.TLS {
 		conf := &tls.Config{InsecureSkipVerify: in.Insecure, ServerName: host}
 		tc := tls.Client(conn, conf)
 		if err := tc.HandshakeContext(ctx); err != nil {
-			return nil, NetTCPOutput{}, fmt.Errorf("tls handshake: %w", err)
+			return nil, NetExchangeOutput{}, fmt.Errorf("tls handshake: %w", err)
 		}
 		st := tc.ConnectionState()
 		out.TLS = tlsInfo(&st, host, nil)
@@ -561,7 +561,7 @@ func (d *Deps) netTCP(ctx context.Context, _ *mcp.CallToolRequest, in NetTCPInpu
 		n, err := conn.Write(send)
 		out.Sent = n
 		if err != nil {
-			return nil, NetTCPOutput{}, fmt.Errorf("send: %w", err)
+			return nil, NetExchangeOutput{}, fmt.Errorf("send: %w", err)
 		}
 	}
 	if in.CloseWrite {
@@ -607,7 +607,7 @@ func (d *Deps) netTCP(ctx context.Context, _ *mcp.CallToolRequest, in NetTCPInpu
 	case "base64":
 		out.Received = base64.StdEncoding.EncodeToString(recv)
 	default:
-		return nil, NetTCPOutput{}, fmt.Errorf("unknown receive_encoding %q", in.ReceiveEncoding)
+		return nil, NetExchangeOutput{}, fmt.Errorf("unknown receive_encoding %q", in.ReceiveEncoding)
 	}
 	out.ReceiveEncoding = enc
 	out.DurationMs = time.Since(start).Milliseconds()
@@ -747,10 +747,10 @@ func parseTarget(t string) (host string, port int, isTLS bool, err error) {
 	return strings.Trim(t, "[]"), 0, false, nil
 }
 
-// ---- net_listen ----
+// ---- net_list_listeners ----
 
-// NetListenInput is the input of net_listen.
-type NetListenInput struct {
+// NetListListenersInput is the input of net_list_listeners.
+type NetListListenersInput struct {
 	Port     int    `json:"port,omitempty" jsonschema:"filter by port"`
 	Protocol string `json:"protocol,omitempty" jsonschema:"tcp or udp (default both)"`
 	Process  string `json:"process,omitempty" jsonschema:"case-insensitive process name substring"`
@@ -765,18 +765,18 @@ type Listener struct {
 	Process  string `json:"process,omitempty"`
 }
 
-// NetListenOutput is the output of net_listen.
-type NetListenOutput struct {
+// NetListListenersOutput is the output of net_list_listeners.
+type NetListListenersOutput struct {
 	Listeners []Listener `json:"listeners"`
 	Note      string     `json:"note,omitempty"`
 }
 
-func (d *Deps) netListen(ctx context.Context, _ *mcp.CallToolRequest, in NetListenInput) (*mcp.CallToolResult, NetListenOutput, error) {
+func (d *Deps) netListListeners(ctx context.Context, _ *mcp.CallToolRequest, in NetListListenersInput) (*mcp.CallToolResult, NetListListenersOutput, error) {
 	all, note, err := listeners(ctx)
 	if err != nil {
-		return nil, NetListenOutput{}, err
+		return nil, NetListListenersOutput{}, err
 	}
-	out := NetListenOutput{Listeners: []Listener{}, Note: note}
+	out := NetListListenersOutput{Listeners: []Listener{}, Note: note}
 	for _, l := range all {
 		switch {
 		case in.Port > 0 && l.Port != in.Port:
@@ -795,7 +795,7 @@ func (d *Deps) netListen(ctx context.Context, _ *mcp.CallToolRequest, in NetList
 	return nil, out, nil
 }
 
-// ---- net_interfaces ----
+// ---- net_list_interfaces ----
 
 // Interface is a network interface.
 type Interface struct {
@@ -807,17 +807,17 @@ type Interface struct {
 	Addresses []string `json:"addresses" jsonschema:"IP addresses with prefix length"`
 }
 
-// NetInterfacesOutput is the output of net_interfaces.
-type NetInterfacesOutput struct {
+// NetListInterfacesOutput is the output of net_list_interfaces.
+type NetListInterfacesOutput struct {
 	Interfaces []Interface `json:"interfaces"`
 }
 
-func (d *Deps) netInterfaces(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, NetInterfacesOutput, error) {
+func (d *Deps) netListInterfaces(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, NetListInterfacesOutput, error) {
 	ifs, err := net.Interfaces()
 	if err != nil {
-		return nil, NetInterfacesOutput{}, err
+		return nil, NetListInterfacesOutput{}, err
 	}
-	out := NetInterfacesOutput{Interfaces: []Interface{}}
+	out := NetListInterfacesOutput{Interfaces: []Interface{}}
 	for _, i := range ifs {
 		it := Interface{Name: i.Name, Index: i.Index, MTU: i.MTU, MAC: i.HardwareAddr.String(), Flags: i.Flags.String(), Addresses: []string{}}
 		if addrs, err := i.Addrs(); err == nil {

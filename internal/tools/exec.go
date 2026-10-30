@@ -20,7 +20,7 @@ import (
 type CommandSpec struct {
 	Command    string            `json:"command,omitempty" jsonschema:"shell command line (supports pipes, redirects, &&); set either command or argv"`
 	Argv       []string          `json:"argv,omitempty" jsonschema:"program and arguments run directly without a shell, e.g. [\"git\", \"log\", \"-n\", \"5\"]"`
-	Shell      string            `json:"shell,omitempty" jsonschema:"shell for command: sh, bash or pwsh on Linux; cmd, powershell or pwsh on Windows (default: default_shell in sys_info)"`
+	Shell      string            `json:"shell,omitempty" jsonschema:"shell for command: sh, bash or pwsh on Linux; cmd, powershell or pwsh on Windows (default: default_shell in sys_get_info)"`
 	Cwd        string            `json:"cwd,omitempty" jsonschema:"working directory (default: server startup directory; does not persist across calls)"`
 	Env        map[string]string `json:"env,omitempty" jsonschema:"environment variables to set or override"`
 	Stdin      string            `json:"stdin,omitempty" jsonschema:"text written to stdin before closing it (empty by default so prompts fail instead of hanging)"`

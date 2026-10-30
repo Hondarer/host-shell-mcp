@@ -401,7 +401,7 @@ func decodeToolOutput(s string) string {
 	return textenc.Console().Decode(b)
 }
 
-// ---- sys_disks ----
+// ---- disk_list ----
 
 func listDisks(bool) ([]Disk, error) {
 	n, err := windows.GetLogicalDriveStrings(0, nil)

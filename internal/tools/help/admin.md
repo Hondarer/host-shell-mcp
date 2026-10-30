@@ -2,7 +2,7 @@
 
 ## Processes
 
-- `sys_processes` returns process objects with `pid`, `ppid`, `name`, `command_line`, `user`, `state`, `start_time`, and `memory_bytes`. `filter` matches process name or command line; `pid` returns a single process and its descendants (linked via `ppid`); `max` (default 500) caps the result count.
+- `proc_list` returns process objects with `pid`, `ppid`, `name`, `command_line`, `user`, `state`, `start_time`, and `memory_bytes`. `filter` matches process name or command line; `pid` returns a single process and its descendants (linked via `ppid`); `max` (default 500) caps the result count.
 - `proc_kill` sends a signal to `pid`: `terminate` (default), `kill`, `interrupt`, `hangup`, etc. on Linux; `kill` on Windows. `tree: true` signals all descendants. On Linux, `sudo: true` signals via `sudo -n`. To stop a job started with `job_start`, use `job_stop` instead.
 
 ## Services
@@ -30,7 +30,7 @@
 
 ## Disks
 
-`sys_disks` lists mounted file systems (Linux) or drives (Windows) with total, used, and free bytes.
+`disk_list` lists mounted file systems (Linux) or drives (Windows) with total, used, and free bytes.
 
 ## Windows registry
 

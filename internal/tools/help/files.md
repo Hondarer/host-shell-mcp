@@ -31,7 +31,7 @@ Replaces exact text in an existing file. See topic `edit`.
 
 | Tool | Behavior |
 |---|---|
-| `fs_list` | Lists one directory (non-recursive). Use `search_files` for recursive listings |
+| `fs_list` | Lists one directory (non-recursive). Use `search_find` for recursive listings |
 | `fs_stat` | Returns type, size, mode, and modification time without following a final symlink |
 | `fs_mkdir` | Creates the directory and parents. Existing directories succeed with `created: false` |
 | `fs_move` | Renames or moves to the full path `destination`. `overwrite` replaces a file, never a directory. Copies then deletes across file systems |

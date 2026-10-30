@@ -197,7 +197,7 @@ func (in FsRemoveInput) PathArgs() (read, write []string) { return nil, []string
 func (in SearchGrepInput) PathArgs() (read, write []string) {
 	return []string{orDefault(in.Path, ".")}, nil
 }
-func (in SearchFilesInput) PathArgs() (read, write []string) {
+func (in SearchFindInput) PathArgs() (read, write []string) {
 	return []string{orDefault(in.Path, ".")}, nil
 }
 func (in FsManifestInput) PathArgs() (read, write []string) {

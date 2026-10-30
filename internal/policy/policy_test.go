@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-var known = map[string]string{"exec_run": "exec", "fs_read": "files", "fs_write": "files", "sudo_run": "exec", "net_http": "net"}
+var known = map[string]string{"exec_run": "exec", "fs_read": "files", "fs_write": "files", "exec_sudo": "exec", "net_request_http": "net"}
 
 func TestSelector(t *testing.T) {
 	p, err := New(Options{Tools: "all,-exec,+exec_run"}, known)
@@ -19,7 +19,7 @@ func TestSelector(t *testing.T) {
 		tool, group string
 		want        bool
 	}{
-		{"exec_run", "exec", true}, {"sudo_run", "exec", false}, {"fs_read", "files", true},
+		{"exec_run", "exec", true}, {"exec_sudo", "exec", false}, {"fs_read", "files", true},
 	} {
 		if got := p.Enabled(c.tool, c.group, false); got != c.want {
 			t.Errorf("Enabled(%s) = %v, want %v", c.tool, got, c.want)

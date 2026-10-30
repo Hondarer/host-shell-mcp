@@ -17,8 +17,8 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/version"
 )
 
-// SudoRunInput is the input of sudo_run.
-type SudoRunInput struct {
+// ExecSudoInput is the input of exec_sudo.
+type ExecSudoInput struct {
 	Command    string `json:"command" jsonschema:"shell command line run via sudo sh -c"`
 	User       string `json:"user,omitempty" jsonschema:"target user (default: root)"`
 	Cwd        string `json:"cwd,omitempty" jsonschema:"working directory"`
@@ -29,7 +29,7 @@ type SudoRunInput struct {
 }
 
 // AuditArgs redacts Stdin and Password for audit logging.
-func (in SudoRunInput) AuditArgs() any {
+func (in ExecSudoInput) AuditArgs() any {
 	in.Stdin = redactedLen(in.Stdin)
 	if in.Password != "" {
 		in.Password = "<redacted>"
@@ -37,9 +37,9 @@ func (in SudoRunInput) AuditArgs() any {
 	return in
 }
 
-// sudoRun runs a command via sudo: using sudo -n when Password is empty, or sudo -A with the
+// execSudo runs a command via sudo: using sudo -n when Password is empty, or sudo -A with the
 // built-in askpass helper (see Askpass) so the password is never exposed to the command's stdin.
-func (d *Deps) sudoRun(ctx context.Context, req *mcp.CallToolRequest, in SudoRunInput) (*mcp.CallToolResult, proc.Result, error) {
+func (d *Deps) execSudo(ctx context.Context, req *mcp.CallToolRequest, in ExecSudoInput) (*mcp.CallToolResult, proc.Result, error) {
 	if in.Command == "" {
 		return nil, proc.Result{}, errors.New("command is required")
 	}
@@ -80,17 +80,17 @@ func (d *Deps) sudoRun(ctx context.Context, req *mcp.CallToolRequest, in SudoRun
 }
 
 // PathArgs passes the working directory to the policy check as a read target.
-func (in SudoRunInput) PathArgs() (read, write []string) {
+func (in ExecSudoInput) PathArgs() (read, write []string) {
 	return CommandSpec{Cwd: in.Cwd}.PathArgs()
 }
 
 // CommandArgs passes sudo and the shell sudo starts to the policy check.
-func (in SudoRunInput) CommandArgs(string) (programs []string, text string) {
+func (in ExecSudoInput) CommandArgs(string) (programs []string, text string) {
 	return []string{"sudo", "sh"}, in.Command
 }
 
-// SysInfoOutput is the output of sys_info.
-type SysInfoOutput struct {
+// SysGetInfoOutput is the output of sys_get_info.
+type SysGetInfoOutput struct {
 	OS           string   `json:"os"`
 	Arch         string   `json:"arch"`
 	Hostname     string   `json:"hostname"`
@@ -111,8 +111,8 @@ type SysInfoOutput struct {
 	Restrictions []string `json:"restrictions,omitempty" jsonschema:"active policy restrictions configured on this server"`
 }
 
-func (d *Deps) sysInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, SysInfoOutput, error) {
-	out := SysInfoOutput{
+func (d *Deps) sysGetInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, SysGetInfoOutput, error) {
+	out := SysGetInfoOutput{
 		OS:           runtime.GOOS,
 		Arch:         runtime.GOARCH,
 		PathSep:      string(os.PathSeparator),
@@ -149,8 +149,8 @@ func (d *Deps) enabledGroups() []string {
 	return out
 }
 
-// SysProcessesInput is the input of sys_processes.
-type SysProcessesInput struct {
+// ProcListInput is the input of proc_list.
+type ProcListInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"case-insensitive name or command line substring"`
 	PID    int    `json:"pid,omitempty" jsonschema:"root pid (returns this process and its descendants)"`
 	Max    int    `json:"max,omitempty" jsonschema:"max processes to return (default 500)"`
@@ -168,18 +168,18 @@ type Process struct {
 	MemoryBytes uint64 `json:"memory_bytes,omitempty" jsonschema:"resident set size (working set on Windows)"`
 }
 
-// SysProcessesOutput is the output of sys_processes.
-type SysProcessesOutput struct {
+// ProcListOutput is the output of proc_list.
+type ProcListOutput struct {
 	Processes []Process `json:"processes"`
 	Total     int       `json:"total" jsonschema:"matching processes before max limit"`
 	Truncated bool      `json:"truncated,omitempty" jsonschema:"stopped at max"`
 }
 
-// sysProcesses lists processes from /proc on Linux and the Windows API on Windows, ordered by pid.
-func (d *Deps) sysProcesses(_ context.Context, _ *mcp.CallToolRequest, in SysProcessesInput) (*mcp.CallToolResult, SysProcessesOutput, error) {
+// procList lists processes from /proc on Linux and the Windows API on Windows, ordered by pid.
+func (d *Deps) procList(_ context.Context, _ *mcp.CallToolRequest, in ProcListInput) (*mcp.CallToolResult, ProcListOutput, error) {
 	all, err := listProcesses()
 	if err != nil {
-		return nil, SysProcessesOutput{}, err
+		return nil, ProcListOutput{}, err
 	}
 	slices.SortFunc(all, func(a, b Process) int { return a.PID - b.PID })
 	if in.PID > 0 {
@@ -200,7 +200,7 @@ func (d *Deps) sysProcesses(_ context.Context, _ *mcp.CallToolRequest, in SysPro
 			return !strings.Contains(strings.ToLower(p.Name), f) && !strings.Contains(strings.ToLower(p.CommandLine), f)
 		})
 	}
-	out := SysProcessesOutput{Total: len(all)}
+	out := ProcListOutput{Total: len(all)}
 	if max := orDefaultInt(in.Max, 500); len(all) > max {
 		all, out.Truncated = all[:max], true
 	}

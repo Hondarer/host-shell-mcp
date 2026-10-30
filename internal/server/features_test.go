@@ -39,7 +39,7 @@ func toolNames(t *testing.T, cs *mcp.ClientSession) map[string]bool {
 
 func TestToolSelection(t *testing.T) {
 	names := toolNames(t, connectWith(t, policy.Options{Tools: "files,-fs_remove"}, nil))
-	for name, want := range map[string]bool{"help": true, "sys_info": true, "fs_read": true, "fs_remove": false, "exec_run": false, "net_http": false} {
+	for name, want := range map[string]bool{"help_get": true, "sys_get_info": true, "fs_read": true, "fs_remove": false, "exec_run": false, "net_request_http": false} {
 		if names[name] != want {
 			t.Errorf("tool %s present = %v, want %v", name, names[name], want)
 		}
@@ -47,19 +47,19 @@ func TestToolSelection(t *testing.T) {
 
 	cs := connectWith(t, policy.Options{ReadOnly: true}, nil)
 	names = toolNames(t, cs)
-	for name, want := range map[string]bool{"fs_read": true, "fs_write": false, "exec_run": false, "job_read": true, "net_http": true, "net_check": true, "svc_control": false} {
+	for name, want := range map[string]bool{"fs_read": true, "fs_write": false, "exec_run": false, "job_read": true, "net_request_http": true, "net_check": true, "svc_control": false} {
 		if names[name] != want {
 			t.Errorf("read-only: tool %s present = %v, want %v", name, names[name], want)
 		}
 	}
-	if msg := callErr(t, cs, "net_http", map[string]any{"url": "http://localhost:1/", "method": "POST"}); !strings.Contains(msg, "read-only") {
+	if msg := callErr(t, cs, "net_request_http", map[string]any{"url": "http://localhost:1/", "method": "POST"}); !strings.Contains(msg, "read-only") {
 		t.Errorf("POST in read-only mode: %s", msg)
 	}
 
 	info := call[struct {
 		ToolGroups   []string `json:"tool_groups"`
 		Restrictions []string `json:"restrictions"`
-	}](t, cs, "sys_info", nil)
+	}](t, cs, "sys_get_info", nil)
 	if len(info.Restrictions) == 0 || !strings.Contains(strings.Join(info.Restrictions, " "), "Read-only") {
 		t.Errorf("restrictions = %v", info.Restrictions)
 	}
@@ -218,7 +218,7 @@ func processExists(pid int) bool {
 	return i < 0 || len(s) < i+3 || s[i+2] != 'Z'
 }
 
-func TestNetHTTP(t *testing.T) {
+func TestNetRequestHTTP(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/json":
@@ -247,35 +247,35 @@ func TestNetHTTP(t *testing.T) {
 		SavedTo      string            `json:"saved_to"`
 		FinalURL     string            `json:"final_url"`
 	}
-	out := call[httpOut](t, cs, "net_http", map[string]any{"url": srv.URL + "/json"})
+	out := call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/json"})
 	if out.Status != 200 || out.Body != `{"ok":true}` || out.BodyEncoding != "text" {
 		t.Errorf("json: %+v", out)
 	}
-	out = call[httpOut](t, cs, "net_http", map[string]any{"url": srv.URL + "/echo", "method": "PUT", "headers": map[string]string{"X-Test": "h"}, "body": "payload"})
+	out = call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/echo", "method": "PUT", "headers": map[string]string{"X-Test": "h"}, "body": "payload"})
 	if out.Body != "PUT h payload" {
 		t.Errorf("echo: %+v", out)
 	}
-	out = call[httpOut](t, cs, "net_http", map[string]any{"url": srv.URL + "/bin"})
+	out = call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/bin"})
 	if out.BodyEncoding != "base64" || out.Body != "AAEC/w==" {
 		t.Errorf("bin: %+v", out)
 	}
-	out = call[httpOut](t, cs, "net_http", map[string]any{"url": srv.URL + "/redirect"})
+	out = call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/redirect"})
 	if out.Status != 200 || !strings.HasSuffix(out.FinalURL, "/json") {
 		t.Errorf("redirect: %+v", out)
 	}
 	save := filepath.Join(t.TempDir(), "dl.bin")
-	out = call[httpOut](t, cs, "net_http", map[string]any{"url": srv.URL + "/bin", "save_to": save})
+	out = call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/bin", "save_to": save})
 	if b, _ := os.ReadFile(save); len(b) != 4 || out.Body != "" || out.BodyBytes != 4 {
 		t.Errorf("save_to: %+v %v", out, b)
 	}
 
 	cs = connectWith(t, policy.Options{AllowHosts: []string{"example.invalid"}}, nil)
-	if msg := callErr(t, cs, "net_http", map[string]any{"url": srv.URL + "/json"}); !strings.Contains(msg, "policy:") {
+	if msg := callErr(t, cs, "net_request_http", map[string]any{"url": srv.URL + "/json"}); !strings.Contains(msg, "policy:") {
 		t.Errorf("allow-host: %s", msg)
 	}
 }
 
-func TestNetTCPAndCheck(t *testing.T) {
+func TestNetExchangeAndCheck(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -301,9 +301,9 @@ func TestNetTCPAndCheck(t *testing.T) {
 	out := call[struct {
 		Received string `json:"received"`
 		Matched  bool   `json:"matched"`
-	}](t, cs, "net_tcp", map[string]any{"host": "127.0.0.1", "port": port, "send": "PING\r\n", "until": "ECHO PING\r\n"})
+	}](t, cs, "net_exchange", map[string]any{"host": "127.0.0.1", "port": port, "send": "PING\r\n", "until": "ECHO PING\r\n"})
 	if !out.Matched || !strings.Contains(out.Received, "+READY") {
-		t.Errorf("net_tcp: %+v", out)
+		t.Errorf("net_exchange: %+v", out)
 	}
 
 	closed, _ := net.Listen("tcp", "127.0.0.1:0")
@@ -327,16 +327,16 @@ func TestNetTCPAndCheck(t *testing.T) {
 				Port int `json:"port"`
 				PID  int `json:"pid"`
 			} `json:"listeners"`
-		}](t, cs, "net_listen", map[string]any{"port": port})
+		}](t, cs, "net_list_listeners", map[string]any{"port": port})
 		if len(ls.Listeners) == 0 || ls.Listeners[0].PID != os.Getpid() {
-			t.Errorf("net_listen: %+v (pid %d)", ls, os.Getpid())
+			t.Errorf("net_list_listeners: %+v (pid %d)", ls, os.Getpid())
 		}
 	}
 	ifs := call[struct {
 		Interfaces []struct {
 			Name string `json:"name"`
 		} `json:"interfaces"`
-	}](t, cs, "net_interfaces", nil)
+	}](t, cs, "net_list_interfaces", nil)
 	if len(ifs.Interfaces) == 0 {
 		t.Error("no interfaces")
 	}
@@ -425,9 +425,9 @@ func TestAdmin(t *testing.T) {
 			Mount      string `json:"mount"`
 			TotalBytes uint64 `json:"total_bytes"`
 		} `json:"disks"`
-	}](t, cs, "sys_disks", nil)
+	}](t, cs, "disk_list", nil)
 	if len(disks.Disks) == 0 || disks.Disks[0].TotalBytes == 0 {
-		t.Errorf("sys_disks: %+v", disks)
+		t.Errorf("disk_list: %+v", disks)
 	}
 
 	// proc_kill

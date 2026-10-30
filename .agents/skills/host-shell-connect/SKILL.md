@@ -136,7 +136,7 @@ To specify a path explicitly, pass it as the third argument.
 "$SKILL"/scripts/probe.sh hop1,target /tmp/host-shell-1000/host-shell
 ```
 
-`probe.sh` printing `OK:` with tool names such as `sys_info` confirms the server works.  
+`probe.sh` printing `OK:` with tool names such as `sys_get_info` confirms the server works.  
 If startup options will be used at registration, append the same options to `probe.sh` to verify them.  
 If `NG:` is printed, follow the error message. On high-latency routes, retry with `PROBE_WAIT=15`.  
 An `open audit log` error means the audit log path is not writable; specify a writable path with `--log-file` or disable logging with `--no-log`.
@@ -178,7 +178,7 @@ JSON-configured agents such as VS Code (`.vscode/mcp.json`):
 
 Append target restriction options after `--mcp`. To restrict local transfer paths, add `--allow-local-path DIR` after `bridge`.
 
-After registration, instruct the user to reload the MCP server in their agent (in Claude Code, run `/mcp` or restart) and verify that `sys_info` returns the target's host name and OS.
+After registration, instruct the user to reload the MCP server in their agent (in Claude Code, run `/mcp` or restart) and verify that `sys_get_info` returns the target's host name and OS.
 
 ## Uninstalling
 

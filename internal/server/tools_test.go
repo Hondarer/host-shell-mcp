@@ -184,9 +184,9 @@ func TestSearchModes(t *testing.T) {
 	os.Chtimes(filepath.Join(dir, "src", "a", "x.go"), old, old)
 	f := call[struct {
 		Paths []string `json:"paths"`
-	}](t, cs, "search_files", map[string]any{"pattern": "**/*.go", "path": dir, "sort": "mtime"})
+	}](t, cs, "search_find", map[string]any{"pattern": "**/*.go", "path": dir, "sort": "mtime"})
 	if len(f.Paths) != 2 || !strings.HasSuffix(f.Paths[1], "x.go") {
-		t.Fatalf("search_files got %+v", f)
+		t.Fatalf("search_find got %+v", f)
 	}
 }
 
@@ -228,21 +228,21 @@ func TestJobStdin(t *testing.T) {
 func TestHelp(t *testing.T) {
 	cs := connect(t)
 	ctx := context.Background()
-	if ins := cs.InitializeResult().Instructions; !strings.Contains(ins, "fs_edit") || !strings.Contains(ins, "help") {
+	if ins := cs.InitializeResult().Instructions; !strings.Contains(ins, "fs_edit") || !strings.Contains(ins, "help_get") {
 		t.Fatalf("instructions = %s", ins)
 	}
-	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "help", Arguments: map[string]any{"topic": "edit"}})
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "help_get", Arguments: map[string]any{"topic": "edit"}})
 	if err != nil || res.IsError {
 		t.Fatal(err, res)
 	}
 	if text := res.Content[0].(*mcp.TextContent).Text; !strings.Contains(text, "old_string") {
 		t.Fatalf("help text = %s", text)
 	}
-	res, _ = cs.CallTool(ctx, &mcp.CallToolParams{Name: "help", Arguments: map[string]any{}})
+	res, _ = cs.CallTool(ctx, &mcp.CallToolParams{Name: "help_get", Arguments: map[string]any{}})
 	if text := res.Content[0].(*mcp.TextContent).Text; !strings.Contains(text, "# This host") {
 		t.Fatalf("overview = %s", text)
 	}
-	callErr(t, cs, "help", map[string]any{"topic": "nope"})
+	callErr(t, cs, "help_get", map[string]any{"topic": "nope"})
 
 	rr, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: "host-shell://help/search"})
 	if err != nil || !strings.Contains(rr.Contents[0].Text, "output_mode") {

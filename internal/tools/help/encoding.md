@@ -8,7 +8,7 @@ All MCP requests and responses use UTF-8; host-shell converts encodings on the r
 |---|---|
 | `auto` | Default for reading. Uses a BOM when present, or UTF-16 detected from ASCII zero bytes; preserves valid UTF-8, and otherwise falls back to the host default. Evaluated per line for command output and search |
 | `utf-8` | No conversion |
-| `system` | Host default encoding: `console_encoding` for commands, `file_encoding` for files (see `sys_info`) |
+| `system` | Host default encoding: `console_encoding` for commands, `file_encoding` for files (see `sys_get_info`) |
 | Encoding name | `shift_jis` (`cp932`, `sjis`), `euc-jp`, `iso-2022-jp`, `gbk`, `gb18030`, `big5`, `euc-kr`, `windows-1252`, `iso-8859-1`, `utf-16le`, `utf-16be`, `cp437`, `65001`, etc. |
 
 ## Commands

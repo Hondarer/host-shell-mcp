@@ -21,7 +21,7 @@ import (
 
 // Options configures startup restrictions.
 type Options struct {
-	// Tools selects exposed tools (e.g., "all,-admin,-sudo_run"; empty means "all").
+	// Tools selects exposed tools (e.g., "all,-admin,-exec_sudo"; empty means "all").
 	Tools string
 	// ReadOnly hides tools that modify the host.
 	ReadOnly bool
@@ -202,7 +202,7 @@ func listOrNone(s []string) string {
 
 // ---- Tool selection ----
 
-// selector evaluates comma-separated tool/group expressions (e.g., "all,-admin,net,-sudo_run") left to right.
+// selector evaluates comma-separated tool/group expressions (e.g., "all,-admin,net,-exec_sudo") left to right.
 type selector struct {
 	spec  string
 	items []selItem

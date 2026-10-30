@@ -1,15 +1,15 @@
 # Searching
 
-## Glob syntax (search_files pattern, search_grep include, fs_manifest include)
+## Glob syntax (search_find pattern, search_grep include, fs_manifest include)
 
 - Patterns without `/` match the **base name**: `*.go`, `*.{yml,yaml}`, `Makefile`.
 - Patterns with `/` match the **path relative to `path`**: `src/**/*.ts`, `**/test/*.py`, `cmd/*/main.go`.
 - `*` and `?` match within a single path segment, `**` matches zero or more directories, `[abc]` matches a character class, and `{a,b}` matches alternatives.
 - On Windows, matching is case-insensitive and accepts `\` as a path separator.
 - `exclude_dirs` skips matching directory names anywhere in the tree (default: `[".git", ".hg", ".svn"]`). Passing `exclude_dirs` replaces the default list; include `.git` if it should remain excluded (e.g. `[".git", "node_modules", "dist"]`).
-- `search_files` and `search_grep` honor `.gitignore` files in the searched tree, parent repositories, and `.git/info/exclude`. Pass `gitignore: false` to include ignored files (build outputs, `node_modules`, logs).
+- `search_find` and `search_grep` honor `.gitignore` files in the searched tree, parent repositories, and `.git/info/exclude`. Pass `gitignore: false` to include ignored files (build outputs, `node_modules`, logs).
 
-## search_files
+## search_find
 
 Recursively finds files and directories matching a glob. `type` filters by `file` or `dir`. `sort: "mtime"` orders results newest first.
 

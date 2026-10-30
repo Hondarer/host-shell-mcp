@@ -88,7 +88,7 @@ func TestRelay(t *testing.T) {
 	for _, tool := range res.Tools {
 		names[tool.Name] = true
 	}
-	for _, n := range []string{"sys_info", "exec_run", "fs_read", "net_http", "transfer_push", "transfer_pull"} {
+	for _, n := range []string{"sys_get_info", "exec_run", "fs_read", "net_request_http", "transfer_push", "transfer_pull"} {
 		if !names[n] {
 			t.Errorf("tool %s missing", n)
 		}
@@ -98,9 +98,9 @@ func TestRelay(t *testing.T) {
 	}
 	info := call[struct {
 		OS string `json:"os"`
-	}](t, cs, "sys_info", nil)
+	}](t, cs, "sys_get_info", nil)
 	if info.OS != runtime.GOOS {
-		t.Errorf("sys_info = %+v", info)
+		t.Errorf("sys_get_info = %+v", info)
 	}
 	rr, err := cs.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: "host-shell://help/transfer"})
 	if err != nil || !strings.Contains(rr.Contents[0].Text, "transfer_pull") {

@@ -21,7 +21,7 @@ type procOut struct {
 	Truncated bool `json:"truncated"`
 }
 
-func TestSysProcesses(t *testing.T) {
+func TestProcList(t *testing.T) {
 	cs := connect(t)
 	child := exec.Command("sleep", "30")
 	if runtime.GOOS == "windows" {
@@ -32,7 +32,7 @@ func TestSysProcesses(t *testing.T) {
 	}
 	defer func() { child.Process.Kill(); child.Wait() }()
 
-	out := call[procOut](t, cs, "sys_processes", map[string]any{"pid": os.Getpid()})
+	out := call[procOut](t, cs, "proc_list", map[string]any{"pid": os.Getpid()})
 	if len(out.Processes) < 2 {
 		t.Fatalf("got %+v", out)
 	}
@@ -52,11 +52,11 @@ func TestSysProcesses(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		name = "ping"
 	}
-	out = call[procOut](t, cs, "sys_processes", map[string]any{"filter": name, "pid": os.Getpid()})
+	out = call[procOut](t, cs, "proc_list", map[string]any{"filter": name, "pid": os.Getpid()})
 	if len(out.Processes) != 1 || out.Processes[0].PID != child.Process.Pid {
 		t.Errorf("filter: %+v", out.Processes)
 	}
-	out = call[procOut](t, cs, "sys_processes", map[string]any{"max": 1})
+	out = call[procOut](t, cs, "proc_list", map[string]any{"max": 1})
 	if len(out.Processes) != 1 || !out.Truncated || out.Total < 2 {
 		t.Errorf("max: %+v", out)
 	}

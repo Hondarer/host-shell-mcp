@@ -2,7 +2,7 @@
 
 All network tools execute **on the remote host**: `localhost` refers to the remote host, and any destination reachable from the host is accessible without port forwarding.
 
-## net_http
+## net_request_http
 
 ```json
 {"url": "http://localhost:8080/health"}
@@ -19,7 +19,7 @@ All network tools execute **on the remote host**: `localhost` refers to the remo
 - `body_file` streams a remote file as the request body.
 - For HTTPS requests, `tls` reports the server certificate and verification status.
 
-## net_tcp
+## net_exchange
 
 Connects to a TCP (or TLS) endpoint, optionally sends data, and reads until `until` matches, `idle_ms` of silence elapses (default 1000), the peer closes the connection, or `max_bytes` is reached.
 
@@ -39,7 +39,7 @@ Probes multiple targets in parallel: `host:port` (DNS + TCP connect), `host` (DN
 
 Each entry returns `addresses`, `dns_ms`, `connected`, `connect_ms`, certificate details with `days_left` and `verified` (when `tls: true` or for `https://` URLs), and `error` (connection refused, timeout, unknown host, etc.).
 
-## net_listen, net_interfaces
+## net_list_listeners, net_list_interfaces
 
-`net_listen` lists listening TCP and UDP sockets with `pid` and process name (filtered by `port`, `protocol`, or `process`). On Linux, processes owned by other users appear only when host-shell runs as root.
-`net_interfaces` lists network interfaces with IP addresses, MAC address, MTU, and flags.
+`net_list_listeners` lists listening TCP and UDP sockets with `pid` and process name (filtered by `port`, `protocol`, or `process`). On Linux, processes owned by other users appear only when host-shell runs as root.
+`net_list_interfaces` lists network interfaces with IP addresses, MAC address, MTU, and flags.

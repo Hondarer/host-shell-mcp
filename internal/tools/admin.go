@@ -14,12 +14,12 @@ import (
 
 func registerAdmin(s *mcp.Server, d *Deps) {
 	add(s, d, groupAdmin, &mcp.Tool{
-		Name:  "sys_processes",
+		Name:  "proc_list",
 		Title: "List processes",
 		Description: "List running processes with pid, ppid, name, command line, user, state, start time and memory, ordered by pid. " +
 			"filter matches name or command line by substring; pid keeps one process and its descendants. Use proc_kill to end a process.",
 		Annotations: readOnly(),
-	}, d.sysProcesses)
+	}, d.procList)
 	add(s, d, groupAdmin, &mcp.Tool{
 		Name:  "proc_kill",
 		Title: "Signal or kill process",
@@ -51,11 +51,11 @@ func registerAdmin(s *mcp.Server, d *Deps) {
 		Annotations: readOnly(),
 	}, d.logQuery)
 	add(s, d, groupAdmin, &mcp.Tool{
-		Name:        "sys_disks",
+		Name:        "disk_list",
 		Title:       "Disk usage",
 		Description: "List mounted file systems (Linux) or drives (Windows) with type, total, used and free space. all includes pseudo file systems.",
 		Annotations: readOnly(),
-	}, d.sysDisks)
+	}, d.diskList)
 
 	if d.onOS("windows") {
 		add(s, d, groupAdmin, &mcp.Tool{
@@ -85,10 +85,10 @@ func registerAdmin(s *mcp.Server, d *Deps) {
 
 // ProcKillInput is the input of proc_kill.
 type ProcKillInput struct {
-	PID    int    `json:"pid" jsonschema:"process id (see sys_processes)"`
+	PID    int    `json:"pid" jsonschema:"process id (see proc_list)"`
 	Signal string `json:"signal,omitempty" jsonschema:"Linux: terminate (default), kill, interrupt, hangup, quit, stop, continue, usr1, usr2. Windows: kill (default)"`
 	Tree   bool   `json:"tree,omitempty" jsonschema:"also signal all descendant processes"`
-	Sudo   bool   `json:"sudo,omitempty" jsonschema:"Linux: send as root via sudo -n (for other users' processes; if sudo needs a password, use sudo_run)"`
+	Sudo   bool   `json:"sudo,omitempty" jsonschema:"Linux: send as root via sudo -n (for other users' processes; if sudo needs a password, use exec_sudo)"`
 }
 
 // ProcKillOutput is the output of proc_kill.
@@ -180,7 +180,7 @@ type SvcControlInput struct {
 	Name    string `json:"name" jsonschema:"service name: systemd unit (nginx or nginx.service) or Windows service name (not display name)"`
 	Action  string `json:"action,omitempty" jsonschema:"status (default), start, stop, restart, reload (Linux), enable, disable"`
 	User    bool   `json:"user,omitempty" jsonschema:"Linux: user unit (systemctl --user)"`
-	Sudo    bool   `json:"sudo,omitempty" jsonschema:"Linux: run systemctl via sudo -n (needed for system units when not root; if sudo needs a password, use sudo_run)"`
+	Sudo    bool   `json:"sudo,omitempty" jsonschema:"Linux: run systemctl via sudo -n (needed for system units when not root; if sudo needs a password, use exec_sudo)"`
 	WaitSec int    `json:"wait_sec,omitempty" jsonschema:"Windows: seconds to wait for start/stop (default 30)"`
 }
 
@@ -225,7 +225,7 @@ type LogQueryInput struct {
 	Grep     string `json:"grep,omitempty" jsonschema:"case-insensitive regex to match message"`
 	Lines    int    `json:"lines,omitempty" jsonschema:"max entries, newest kept (default 100, max 2000)"`
 	User     bool   `json:"user,omitempty" jsonschema:"Linux: user journal (journalctl --user)"`
-	Sudo     bool   `json:"sudo,omitempty" jsonschema:"Linux: run journalctl via sudo -n (to read system journal without journal group; if sudo needs a password, use sudo_run)"`
+	Sudo     bool   `json:"sudo,omitempty" jsonschema:"Linux: run journalctl via sudo -n (to read system journal without journal group; if sudo needs a password, use exec_sudo)"`
 }
 
 // LogEntry is one log entry.
@@ -286,10 +286,10 @@ func parseSince(s string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("cannot parse time %q (use 30m, 2h, 1d or 2026-10-30 09:00)", s)
 }
 
-// ---- sys_disks ----
+// ---- disk_list ----
 
-// SysDisksInput is the input of sys_disks.
-type SysDisksInput struct {
+// DiskListInput is the input of disk_list.
+type DiskListInput struct {
 	All bool `json:"all,omitempty" jsonschema:"Linux: include pseudo file systems (proc, sysfs, cgroup, ...)"`
 }
 
@@ -306,15 +306,15 @@ type Disk struct {
 	Free        string  `json:"free" jsonschema:"human-readable free space"`
 }
 
-// SysDisksOutput is the output of sys_disks.
-type SysDisksOutput struct {
+// DiskListOutput is the output of disk_list.
+type DiskListOutput struct {
 	Disks []Disk `json:"disks"`
 }
 
-func (d *Deps) sysDisks(_ context.Context, _ *mcp.CallToolRequest, in SysDisksInput) (*mcp.CallToolResult, SysDisksOutput, error) {
+func (d *Deps) diskList(_ context.Context, _ *mcp.CallToolRequest, in DiskListInput) (*mcp.CallToolResult, DiskListOutput, error) {
 	disks, err := listDisks(in.All)
 	if err != nil {
-		return nil, SysDisksOutput{}, err
+		return nil, DiskListOutput{}, err
 	}
 	for i := range disks {
 		dk := &disks[i]
@@ -326,7 +326,7 @@ func (d *Deps) sysDisks(_ context.Context, _ *mcp.CallToolRequest, in SysDisksIn
 	if disks == nil {
 		disks = []Disk{}
 	}
-	return nil, SysDisksOutput{Disks: disks}, nil
+	return nil, DiskListOutput{Disks: disks}, nil
 }
 
 func humanBytes(n uint64) string {

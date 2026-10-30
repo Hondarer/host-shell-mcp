@@ -118,7 +118,7 @@ Match User hsagent
 
 ## Configuring sudo
 
-`sudo_run` can run commands without a `NOPASSWD` rule when given the `password` argument. The password is supplied via askpass only when `sudo` prompts for it and is never written to the command's standard input or the audit log ([sudo_run in the Reference](reference.md#sudo_run)).  
+`exec_sudo` can run commands without a `NOPASSWD` rule when given the `password` argument. The password is supplied via askpass only when `sudo` prompts for it and is never written to the command's standard input or the audit log ([exec_sudo in the Reference](reference.md#exec_sudo)).  
 However, the password string passes through the agent and LLM service. To operate without passing passwords, configure `NOPASSWD` rules in `sudoers` for specific commands.  
 The `sudo` option on administration tools (`proc_kill`, `svc_control`, `log_query`) only supports passwordless `sudo -n`.
 
@@ -136,11 +136,11 @@ Have the agent invoke `sudo -n` via `argv` in `exec_run`.
 {"argv": ["sudo", "-n", "/usr/bin/systemctl", "restart", "nginx"]}
 ```
 
-Because `sudo_run` executes `sudo -n -- sh -c '<command>'` internally, it cannot be used with `sudoers` rules that permit only specific commands.
+Because `exec_sudo` executes `sudo -n -- sh -c '<command>'` internally, it cannot be used with `sudoers` rules that permit only specific commands.
 
 ### Allowing all commands
 
-Using `sudo_run` with `NOPASSWD` requires allowing `sh`, which grants full root access. Restrict this to test environments where full root access is acceptable.
+Using `exec_sudo` with `NOPASSWD` requires allowing `sh`, which grants full root access. Restrict this to test environments where full root access is acceptable.
 
 ```{.text caption="/etc/sudoers.d/hsagent"}
 hsagent ALL=(root) NOPASSWD: ALL
@@ -155,8 +155,8 @@ Configure the agent to require user approval before running at least the followi
 
 - `exec_run`, `job_start`, `job_write`, `job_stop`
 - `fs_edit`, `fs_write`, `fs_move`, `fs_copy`, `fs_remove`
-- `sudo_run`
-- `net_http`, `net_tcp` (can send outbound requests from the target)
+- `exec_sudo`
+- `net_request_http`, `net_exchange` (can send outbound requests from the target)
 - `proc_kill`, `svc_control`, `reg_write`, `reg_delete`
 - `transfer_push`, `transfer_pull` (when using `bridge`)
 
@@ -188,7 +188,7 @@ The audit log is written with the connecting user's permissions. To prevent tamp
 Each record opens, appends to, and closes the file, preventing interleaved lines across concurrent sessions.  
 For retention beyond 5 days, forward logs to an external log management system.
 
-Undated `audit.log` files created by versions prior to daily rotation are not deleted automatically; remove them manually if unneeded.
+Undated `audit.log` files are not deleted automatically; remove them manually if unneeded.
 
 ### Forwarding and monitoring
 
@@ -201,7 +201,7 @@ Example `jq` queries:
 jq -c 'select(.msg == "tool_call" and .is_error)' audit-*.log
 
 # Mutating tool calls
-jq -c 'select(.tool | IN("exec_run", "job_start", "job_write", "sudo_run", "fs_edit", "fs_write", "fs_move", "fs_copy", "fs_remove"))' audit-*.log
+jq -c 'select(.tool | IN("exec_run", "job_start", "job_write", "exec_sudo", "fs_edit", "fs_write", "fs_move", "fs_copy", "fs_remove"))' audit-*.log
 ```
 
 ### What is recorded

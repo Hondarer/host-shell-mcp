@@ -118,7 +118,7 @@ Match User hsagent
 
 ## sudo の設定
 
-`sudo_run` は、sudoers に `NOPASSWD` 設定がなくても `password` 引数でパスワードを渡せば実行できます。パスワードは `sudo` が要求したときのみ askpass 経由で渡され、実行コマンドの標準入力や操作ログには含まれません ([リファレンスの sudo_run](reference.md#sudo_run))。  
+`exec_sudo` は、sudoers に `NOPASSWD` 設定がなくても `password` 引数でパスワードを渡せば実行できます。パスワードは `sudo` が要求したときのみ askpass 経由で渡され、実行コマンドの標準入力や操作ログには含まれません ([リファレンスの exec_sudo](reference.md#exec_sudo))。  
 ただし、パスワード文字列はエージェントおよび LLM サービスを経由します。パスワードを入力せずに運用する場合は、sudoers に `NOPASSWD` 規則を設定して許可コマンドを限定します。  
 なお、管理ツール (`proc_kill`、`svc_control`、`log_query`) の `sudo` オプションはパスワード不要の `sudo -n` のみに対応します。
 
@@ -136,11 +136,11 @@ hsagent ALL=(root) NOPASSWD: /usr/bin/systemctl status *, /usr/bin/systemctl res
 {"argv": ["sudo", "-n", "/usr/bin/systemctl", "restart", "nginx"]}
 ```
 
-`sudo_run` ツールは内部で `sudo -n -- sh -c '<command>'` を実行するため、特定のコマンドのみを許可した sudoers 規則では使用できません。
+`exec_sudo` ツールは内部で `sudo -n -- sh -c '<command>'` を実行するため、特定のコマンドのみを許可した sudoers 規則では使用できません。
 
 ### すべてのコマンドを許可する
 
-`sudo_run` を `NOPASSWD` で使用するには `sh` の実行許可が必要となり、実質的に全 root 権限を付与することになります。検証環境など影響範囲を許容できる場合に限定してください。
+`exec_sudo` を `NOPASSWD` で使用するには `sh` の実行許可が必要となり、実質的に全 root 権限を付与することになります。検証環境など影響範囲を許容できる場合に限定してください。
 
 ```{.text caption="/etc/sudoers.d/hsagent"}
 hsagent ALL=(root) NOPASSWD: ALL
@@ -155,8 +155,8 @@ sudoers ファイルは必ず `visudo -f /etc/sudoers.d/hsagent` で編集し、
 
 - `exec_run`、`job_start`、`job_write`、`job_stop`
 - `fs_edit`、`fs_write`、`fs_move`、`fs_copy`、`fs_remove`
-- `sudo_run`
-- `net_http`、`net_tcp` (接続先から外部へリクエストを送信できるため)
+- `exec_sudo`
+- `net_request_http`、`net_exchange` (接続先から外部へリクエストを送信できるため)
 - `proc_kill`、`svc_control`、`reg_write`、`reg_delete`
 - `transfer_push`、`transfer_pull` (`bridge` 使用時)
 
@@ -188,7 +188,7 @@ Table: 操作ログの既定の基準パス
 1 レコードごとにファイルを開いて追記・クローズするため、複数セッションが同時に書き込んでも行が混在しません。  
 5 日を超えて保持する場合は、外部のログ収集基盤へ転送してください。
 
-日次ローテーション導入前のバージョンが生成した日付なしの `audit.log` は自動削除されないため、不要であれば手動で削除してください。
+日付なしの `audit.log` は自動削除されないため、不要であれば手動で削除してください。
 
 ### 転送と監視
 
@@ -201,7 +201,7 @@ Table: 操作ログの既定の基準パス
 jq -c 'select(.msg == "tool_call" and .is_error)' audit-*.log
 
 # 変更を伴うツールの呼び出し
-jq -c 'select(.tool | IN("exec_run", "job_start", "job_write", "sudo_run", "fs_edit", "fs_write", "fs_move", "fs_copy", "fs_remove"))' audit-*.log
+jq -c 'select(.tool | IN("exec_run", "job_start", "job_write", "exec_sudo", "fs_edit", "fs_write", "fs_move", "fs_copy", "fs_remove"))' audit-*.log
 ```
 
 ### 記録される内容

@@ -19,7 +19,7 @@ func TestDailyFilesAndPruning(t *testing.T) {
 	clock := func() time.Time { return day }
 	other := filepath.Join(dir, "audit-notes.log") // non-dated filename
 	os.WriteFile(other, []byte("keep"), 0o600)
-	os.WriteFile(filepath.Join(dir, "audit.log"), []byte("old"), 0o600) // undated legacy file
+	os.WriteFile(filepath.Join(dir, "audit.log"), []byte("old"), 0o600) // undated file
 
 	l, err := open(base, clock)
 	if err != nil {
