@@ -161,9 +161,10 @@ func Register(s *mcp.Server, d *Deps) {
 		add(s, d, groupExec, &mcp.Tool{
 			Name:  "sudo_run",
 			Title: "Run as root",
-			Description: "Run a shell command with sudo -n (never prompts) as root or user. Needs a NOPASSWD sudoers rule for sh; " +
-				"if only specific commands are allowed, use exec_run with argv [\"sudo\", \"-n\", ...] instead. " +
-				"If sudo needs a password, run sudo in a pty job (job_start pty) and type it with job_write.",
+			Description: "Run a shell command with sudo as root or user. Without password it uses sudo -n (never prompts) and needs a " +
+				"NOPASSWD sudoers rule for sh; if only specific commands are allowed, use exec_run with argv [\"sudo\", \"-n\", ...] instead. " +
+				"If sudo needs a password and the user gave it to you, pass it as password: sudo gets it only when it asks, the command " +
+				"never sees it, and it is not logged or shown in the result.",
 			Annotations: destructive(),
 		}, d.sudoRun)
 	}

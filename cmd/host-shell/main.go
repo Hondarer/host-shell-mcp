@@ -29,6 +29,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/proc"
 	"github.com/hondarer/host-shell-mcp/internal/server"
+	"github.com/hondarer/host-shell-mcp/internal/tools"
 	"github.com/hondarer/host-shell-mcp/internal/version"
 )
 
@@ -36,6 +37,11 @@ func main() {
 	log.SetOutput(os.Stderr)
 	log.SetPrefix("host-shell: ")
 	log.SetFlags(0)
+
+	// sudo_run starts host-shell itself as the askpass helper of sudo -A.
+	if ran, code := tools.Askpass(); ran {
+		os.Exit(code)
+	}
 
 	if len(os.Args) > 1 && os.Args[1] == "bridge" {
 		if err := bridge.Main(os.Args[2:]); err != nil {

@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/user"
 	"runtime"
@@ -22,24 +23,38 @@ type SudoRunInput struct {
 	User       string `json:"user,omitempty" jsonschema:"target user (default: root)"`
 	Cwd        string `json:"cwd,omitempty" jsonschema:"working directory"`
 	Stdin      string `json:"stdin,omitempty" jsonschema:"text passed to standard input of the command"`
+	Password   string `json:"password,omitempty" jsonschema:"the user's sudo password, only when the user gave it to you and sudo asks for one. It is handed to sudo only if sudo asks, never to the command, and is not logged"`
 	TimeoutSec int    `json:"timeout_sec,omitempty" jsonschema:"timeout in seconds"`
 	IOEncoding
 }
 
-// AuditArgs keeps the content of standard input out of the log.
+// AuditArgs keeps the content of standard input and the password out of the log.
 func (in SudoRunInput) AuditArgs() any {
 	in.Stdin = redactedLen(in.Stdin)
+	if in.Password != "" {
+		in.Password = "<redacted>"
+	}
 	return in
 }
 
-// sudoRun runs a command with sudo -n (non-interactive).
-// TODO(open question): whether to support sudo -S, which reads the password from standard input.
-// If so, design a way to pass the password that keeps it out of tool arguments and the audit log.
+// sudoRun runs a command with sudo. Without a password it uses sudo -n (non-interactive).
+// With one it uses sudo -A, with host-shell itself as the askpass helper (see Askpass), so the
+// password reaches sudo only when sudo asks for it and never the command's standard input.
 func (d *Deps) sudoRun(ctx context.Context, req *mcp.CallToolRequest, in SudoRunInput) (*mcp.CallToolResult, proc.Result, error) {
 	if in.Command == "" {
 		return nil, proc.Result{}, errors.New("command is required")
 	}
 	argv := []string{"sudo", "-n"}
+	var env map[string]string
+	if in.Password != "" {
+		var cleanup func()
+		var err error
+		if env, cleanup, err = withAskpass(in.Password); err != nil {
+			return nil, proc.Result{}, fmt.Errorf("prepare the password for sudo: %w", err)
+		}
+		defer cleanup()
+		argv = []string{"sudo", "-A"}
+	}
 	if in.User != "" {
 		argv = append(argv, "-u", in.User)
 	}
@@ -50,13 +65,18 @@ func (d *Deps) sudoRun(ctx context.Context, req *mcp.CallToolRequest, in SudoRun
 	}
 	tap, stop := watchOutput(newProgress(ctx, req))
 	defer stop()
-	res, err := proc.Run(ctx, d.procSpec(CommandSpec{Argv: argv, Cwd: in.Cwd}), proc.Options{
+	res, err := proc.Run(ctx, d.procSpec(CommandSpec{Argv: argv, Cwd: in.Cwd, Env: env}), proc.Options{
 		Stdin:     stdin,
 		Output:    output,
 		Timeout:   d.Cfg.ClampTimeout(in.TimeoutSec),
 		MaxOutput: d.Cfg.MaxOutputBytes,
 		OnOutput:  tap,
 	})
+	if in.Password != "" {
+		// Whatever --redact says, the password never appears in the result.
+		res.Stdout = strings.ReplaceAll(res.Stdout, in.Password, "[REDACTED]")
+		res.Stderr = strings.ReplaceAll(res.Stderr, in.Password, "[REDACTED]")
+	}
 	return nil, res, err
 }
 

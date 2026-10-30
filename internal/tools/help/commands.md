@@ -28,8 +28,13 @@ A non-zero exit code is a normal result, not a tool error.
 `sudo -n -- sh -c <command>`, optionally `-u user`. It never prompts: without a matching NOPASSWD
 sudoers rule it fails with "a password is required". Narrow rules are often written for specific
 commands; then run `exec_run` with `argv: ["sudo", "-n", "/usr/bin/systemctl", "restart", "app"]`.
-If the user gives you the password, run `sudo` in a pty job and type it with `job_write`
-(the password is not written to the audit log).
+
+If the user gives you their sudo password, pass it as `password`. host-shell then runs `sudo -A` with
+itself as the askpass helper: sudo gets the password only if it asks, the command never sees it on
+stdin, it is not written to the audit log, and any copy of it in the output is shown as `[REDACTED]`.
+The password still passes through you, so use it only when the user offered it. `proc_kill`,
+`svc_control` and `log_query` with `sudo: true` take no password; use `sudo_run` for those commands
+instead. A pty job (`job_start` with `pty`, then `job_write`) also works for programs that prompt.
 
 ## Choosing
 

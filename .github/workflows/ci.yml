@@ -34,6 +34,16 @@ jobs:
       - name: Test
         run: go test -count=1 -v ./... 2>&1 | grep -E '^(---|ok|FAIL|PASS|panic)|_test\.go'
         shell: bash
+      # sudo_run with a password needs a user whose sudo asks for one; the runner user's does not.
+      - name: Test sudo with a password
+        if: runner.os == 'Linux'
+        run: |
+          sudo useradd -m hstest
+          echo 'hstest:Hs-Test-Pass-1' | sudo chpasswd
+          echo 'hstest ALL=(ALL) ALL' | sudo tee /etc/sudoers.d/hstest > /dev/null
+          go test -c -o /tmp/server.test ./internal/server
+          chmod 755 /tmp/server.test
+          cd /tmp && sudo -u hstest env HOST_SHELL_TEST_SUDO_PASSWORD=Hs-Test-Pass-1 ./server.test -test.run 'TestSudoPassword$' -test.v
 
   build:
     needs: test

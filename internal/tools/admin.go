@@ -87,7 +87,7 @@ type ProcKillInput struct {
 	PID    int    `json:"pid" jsonschema:"process id (see sys_processes)"`
 	Signal string `json:"signal,omitempty" jsonschema:"Linux: terminate (default), kill, interrupt, hangup, quit, stop, continue, usr1, usr2. Windows: kill (default, the only one)"`
 	Tree   bool   `json:"tree,omitempty" jsonschema:"also signal all descendant processes"`
-	Sudo   bool   `json:"sudo,omitempty" jsonschema:"Linux: send the signal as root with sudo -n (for processes of other users)"`
+	Sudo   bool   `json:"sudo,omitempty" jsonschema:"Linux: send the signal as root with sudo -n (for processes of other users. If sudo needs a password, use sudo_run with password instead)"`
 }
 
 // ProcKillOutput is the output of proc_kill.
@@ -179,7 +179,7 @@ type SvcControlInput struct {
 	Name    string `json:"name" jsonschema:"service name: systemd unit (nginx or nginx.service) or Windows service name (not the display name)"`
 	Action  string `json:"action,omitempty" jsonschema:"status (default), start, stop, restart, reload (Linux), enable, disable"`
 	User    bool   `json:"user,omitempty" jsonschema:"Linux: a user unit (systemctl --user)"`
-	Sudo    bool   `json:"sudo,omitempty" jsonschema:"Linux: run systemctl with sudo -n (needed for system units when host-shell is not root)"`
+	Sudo    bool   `json:"sudo,omitempty" jsonschema:"Linux: run systemctl with sudo -n (needed for system units when host-shell is not root. If sudo needs a password, use sudo_run with password instead)"`
 	WaitSec int    `json:"wait_sec,omitempty" jsonschema:"Windows: seconds to wait for start/stop to complete (default 30)"`
 }
 
@@ -224,7 +224,7 @@ type LogQueryInput struct {
 	Grep     string `json:"grep,omitempty" jsonschema:"regular expression the message must match (case-insensitive)"`
 	Lines    int    `json:"lines,omitempty" jsonschema:"maximum entries, newest kept (default 100, max 2000)"`
 	User     bool   `json:"user,omitempty" jsonschema:"Linux: the user's journal (journalctl --user)"`
-	Sudo     bool   `json:"sudo,omitempty" jsonschema:"Linux: run journalctl with sudo -n (to read the system journal without journal group membership)"`
+	Sudo     bool   `json:"sudo,omitempty" jsonschema:"Linux: run journalctl with sudo -n (to read the system journal without journal group membership. If sudo needs a password, use sudo_run with password instead)"`
 }
 
 // LogEntry is one log entry.

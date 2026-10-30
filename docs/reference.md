@@ -1238,6 +1238,7 @@ Linux の接続先で、コマンドを sudo で実行します。Windows の接
 | `user` | string | | 実行するユーザー。省略時は root |
 | `cwd` | string | | 作業ディレクトリ |
 | `stdin` | string | | コマンドの標準入力に渡すテキスト |
+| `password` | string | | 利用者の sudo のパスワード。sudo が尋ねた場合だけ sudo に渡す |
 | `timeout_sec` | integer | | タイムアウト (秒)。省略時は `--timeout`、上限は `--max-timeout` |
 | `output_encoding` | string | | 出力の文字コード。[`exec_run`](#exec_run) と同じ |
 | `stdin_encoding` | string | | 標準入力の文字コード。[`exec_run`](#exec_run) と同じ |
@@ -1246,7 +1247,7 @@ Table: sudo_run の引数
 
 出力は [`exec_run`](#exec_run) と同じです。
 
-実際には次のコマンドを実行します。
+`password` を省略した場合は、次のコマンドを実行します。
 
 ```text
 sudo -n [-u <user>] -- sh -c '<command>'
@@ -1262,7 +1263,21 @@ sudo -n [-u <user>] -- sh -c '<command>'
 
 `env` は指定できません。sudo は既定で環境変数を初期化します。
 
-利用者からパスワードを教えられた場合は、`job_start` の `pty` で `sudo` を起動し、パスワードの問い合わせに `job_write` で答えられます。`job_write` の `input` は操作ログに記録しません。
+#### パスワードを渡す場合
+
+`password` を指定した場合は、`sudo -A [-u <user>] -- sh -c '<command>'` を実行し、`host-shell` 自身をパスワードの補助 (askpass) として使います。
+
+1. 呼び出しごとに、権限 `0700` の一時ディレクトリを作り、その中に権限 `0600` の名前付きパイプを作ります。パスワードを 3 回分 (sudo は誤りで最大 3 回尋ねます) 書き込みます。
+2. 環境変数 `SUDO_ASKPASS` に `host-shell` の実行ファイル、`HOST_SHELL_ASKPASS` に名前付きパイプのパスを設定して sudo を起動します。環境変数にパスワードは入れません。
+3. sudo がパスワードを尋ねるときだけ、`host-shell` が補助として起動され、名前付きパイプから 1 行を読んで sudo に返します。
+4. コマンドの終了後に、名前付きパイプとディレクトリを消します。
+
+このため、パスワードが不要な場合 (`NOPASSWD` の規則や、sudo が認証を覚えている場合) でも、パスワードがコマンドの標準入力に渡ることはありません。  
+操作ログには `password` の値の代わりに `<redacted>` を記録し、結果 (`stdout`、`stderr`) にパスワードが現れた場合は、`--redact` の指定によらず `[REDACTED]` に置き換えます。  
+パスワードは、エージェントと MCP の通信を通ります。利用者がパスワードを教えた場合にだけ使ってください。
+
+管理のツール (`proc_kill`、`svc_control`、`log_query`) の `sudo` は、`password` を受け取りません。パスワードが必要な場合は、`sudo_run` で同じコマンドを実行してください。  
+対話的にパスワードを尋ねるプログラムには、`job_start` の `pty` と `job_write` も使えます。`job_write` の `input` は操作ログに記録しません。
 
 ## 環境情報
 
@@ -1891,7 +1906,6 @@ Table: 操作ログで置き換える値
 - 疑似端末は `job_start` の `pty` だけで使えます。`exec_run` は端末なしで動きます。全画面のプログラム (`vi`、`top` など) は動きますが、`job_read` は画面の状態ではなく出力の流れを返すため、内容を読み取りにくい場合があります。
 - `search_grep` と `search_files` は `.gitignore` を解釈しません。`node_modules` などは `exclude_dirs` で除外してください。
 - `search_grep` は行ごとに照合します。複数の行にまたがる正規表現は一致しません。
-- `sudo_run` は `-n` (パスワードなし) だけに対応します。パスワードが必要な場合は、`pty` のジョブで `sudo` を起動して入力してください。
 - 文字コードの自動判定は、UTF-8 として正しいかどうかと BOM だけで行います。UTF-8 以外の文字コードどうし (Shift_JIS と EUC-JP など) は区別しません。接続先の既定と異なる文字コードのファイルは、`charset` で指定してください。
 - まれに、UTF-8 以外の短い文字列が、UTF-8 としても正しいバイト列になることがあります。その場合は UTF-8 とみなすため、文字化けします。`output_encoding` や `charset` を明示してください。
 - `net_listen`、`svc_list`、`svc_control`、`log_query`、`sys_disks` は、Linux と Windows だけに対応します。Linux のサービスとログは systemd を前提にします。
