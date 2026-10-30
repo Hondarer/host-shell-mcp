@@ -93,7 +93,7 @@ Table: Tools provided
 Pass `-T` to every SSH hop to disable pseudo-terminal allocation. See the [User Guide](docs/en/user-guide.md) for details.
 
 Steps 2 and 3 can also be automated with the `.agents/skills/host-shell-connect` skill, which verifies the route, detects the target OS and architecture, deploys the binary, checks startup, and outputs the registration command. `make dist` copies the binaries into the skill's `bin/` directory.  
-GitHub Releases include archives (`host-shell-mcp-<version>-bin.zip`, `.tar.gz`) containing the source tree along with prebuilt binaries in `dist/` and `.agents/skills/host-shell-connect/bin/`.
+GitHub Releases include archives named with the tag, including the leading `v` (`host-shell-mcp-<tag>-bin.zip` and `.tar.gz`, for example `host-shell-mcp-v20261031.1.0-bin.zip`). Each archive contains the source tree along with prebuilt binaries in `dist/` and `.agents/skills/host-shell-connect/bin/`.
 
 ### Documentation
 
@@ -205,7 +205,7 @@ Table: 提供するツール
 SSH の各段には `-T` を指定し、疑似端末を割り当てないでください。詳細な手順は [利用ガイド](docs/ja/user-guide.md) を参照してください。
 
 手順 2〜3 は `.agents/skills/host-shell-connect` スキルでエージェントに任せることもできます。このスキルは経路確認、接続先の OS・アーキテクチャー判定、バイナリ配置、起動確認を行い、登録コマンドを提示します。`make dist` を実行すると、スキルの `bin/` に実行ファイルが複製されます。  
-GitHub Release には、ソース ツリーに実行ファイル (`dist/` とスキルの `bin/`) を同梱したアーカイブ (`host-shell-mcp-<version>-bin.zip`、`.tar.gz`) を添付しています。
+GitHub Release には、タグ名の先頭の `v` を残したアーカイブ (`host-shell-mcp-<tag>-bin.zip`、`.tar.gz`。例: `host-shell-mcp-v20261031.1.0-bin.zip`) を添付しています。中身はソース ツリーに、実行ファイル (`dist/` とスキルの `bin/`) を同梱したものです。
 
 ### ドキュメント
 

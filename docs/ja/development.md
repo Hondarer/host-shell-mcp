@@ -150,7 +150,7 @@ GitHub で Release を公開すると、`.github/workflows/release.yml` が対�
 
 Table: Release に添付するファイル
 
-`<version>` はタグ名から先頭の `v` を除いた文字列です。  
+`<version>` はタグ名です。先頭の `v` も残します (タグ `v20261031.1.0` なら `host-shell-mcp-v20261031.1.0-bin.zip`)。  
 アーカイブは最上位の `host-shell-mcp-<version>/` 配下に `git archive` の内容と次のファイルを含みます。
 
 | パス | 内容 |

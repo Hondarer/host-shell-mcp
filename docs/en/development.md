@@ -150,7 +150,7 @@ Publishing a GitHub Release triggers `.github/workflows/release.yml`, which buil
 
 Table: Files attached to a Release
 
-`<version>` is the tag name without the leading `v`.  
+`<version>` is the tag name, including the leading `v` (tag `v20261031.1.0` produces `host-shell-mcp-v20261031.1.0-bin.zip`).  
 Under `host-shell-mcp-<version>/`, each archive contains the `git archive` tree plus:
 
 | Path | Contents |

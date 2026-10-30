@@ -34,8 +34,9 @@ $(TARGETS):
 		$(GOBUILD) -o dist/host-shell-$@$(if $(findstring windows,$@),.exe) ./cmd/host-shell
 
 # Package release archives (zip and tar.gz) matching GitHub source archive layout
-# (root directory host-shell-mcp-<version without leading v>) with prebuilt binaries in dist/ and $(SKILL_BIN)/.
-ARCHIVE := host-shell-mcp-$(patsubst v%,%,$(VERSION))
+# (root directory host-shell-mcp-<tag>, including a leading v) with prebuilt binaries in dist/ and $(SKILL_BIN)/.
+# Tag v20261031.1.0 produces host-shell-mcp-v20261031.1.0-bin.zip and .tar.gz.
+ARCHIVE := host-shell-mcp-$(VERSION)
 STAGE := $(RELEASE_DIR)/stage
 
 release: dist
