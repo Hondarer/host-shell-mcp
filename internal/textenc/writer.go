@@ -12,12 +12,16 @@ import (
 // maxPending is the most bytes held for detection while no newline arrives.
 const maxPending = 4096
 
+// detectPending is how much output is held at the start to detect UTF-16 (with or without a BOM).
+const detectPending = 64
+
 // Writer is an io.Writer that converts child process output to UTF-8 while writing it to w.
 //
 // With automatic detection, each line (up to \n or \r) is passed through when it is valid UTF-8,
 // and otherwise converted from the fallback encoding.
 // Output mixing UTF-8 and other encodings is converted correctly line by line.
-// When the output starts with a UTF-16 BOM, the whole output is converted as UTF-16.
+// When the output starts as UTF-16 (with a BOM, or detected by DetectUTF16), the whole output is
+// converted as UTF-16.
 type Writer struct {
 	mu       sync.Mutex
 	w        io.Writer
@@ -63,24 +67,32 @@ func (w *Writer) Write(p []byte) (int, error) {
 	}
 	w.pending = append(w.pending, p...)
 	if !w.started {
-		if len(w.pending) < 2 {
+		if len(w.pending) < detectPending {
 			return n, nil
 		}
-		w.started = true
-		if e, l, ok := DetectBOM(w.pending); ok && !e.ASCIICompatible() {
-			w.pending = w.pending[l:]
-			w.startConv(e)
-			_, err := w.conv.Write(w.pending)
-			w.pending = nil
-			return n, err
-		}
-		if !w.auto {
-			_, err := w.w.Write(w.pending)
-			w.pending = nil
+		if done, err := w.start(); done {
 			return n, err
 		}
 	}
 	return n, w.flushLines(false)
+}
+
+// start decides how to convert from the output held so far. done reports that the held output
+// has been written and nothing is left for line-by-line conversion.
+func (w *Writer) start() (done bool, err error) {
+	w.started = true
+	if e, l, ok := DetectUnicode(w.pending); ok && !e.ASCIICompatible() {
+		w.startConv(e)
+		_, err := w.conv.Write(w.pending[l:])
+		w.pending = nil
+		return true, err
+	}
+	if !w.auto {
+		_, err := w.w.Write(w.pending)
+		w.pending = nil
+		return true, err
+	}
+	return false, nil
 }
 
 // flushLines converts and writes the pending output line by line.
@@ -128,8 +140,13 @@ func (w *Writer) emit(b []byte, final bool) (int, error) {
 func (w *Writer) Flush() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.conv != nil || !w.started || len(w.pending) == 0 {
+	if w.conv != nil || len(w.pending) == 0 {
 		return nil
+	}
+	if !w.started {
+		if done, err := w.start(); done {
+			return err
+		}
 	}
 	if !w.auto {
 		_, err := w.w.Write(w.pending)
@@ -150,6 +167,14 @@ func (w *Writer) Close() error {
 	}
 	if len(w.pending) == 0 {
 		return nil
+	}
+	if !w.started {
+		if done, err := w.start(); done {
+			if w.conv != nil {
+				return w.conv.Close()
+			}
+			return err
+		}
 	}
 	if !w.auto {
 		_, err := w.w.Write(w.pending)

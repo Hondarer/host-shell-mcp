@@ -6,7 +6,7 @@ Everything you send and receive is UTF-8. host-shell converts on the host.
 
 | Value | Meaning |
 |---|---|
-| `auto` | Default for reading. Uses a BOM if present, keeps UTF-8 when the bytes are valid UTF-8, otherwise uses the host default. Decided per line for command output and search |
+| `auto` | Default for reading. Uses a BOM if present, or UTF-16 detected from the zero bytes of ASCII characters; keeps UTF-8 when the bytes are valid UTF-8, otherwise uses the host default. Decided per line for command output and search |
 | `utf-8` | No conversion |
 | `system` | The host default: `console_encoding` for commands, `file_encoding` for files (see `sys_info`) |
 | a name | `shift_jis` (`cp932`, `sjis`), `euc-jp`, `iso-2022-jp`, `gbk`, `gb18030`, `big5`, `euc-kr`, `windows-1252`, `iso-8859-1`, `utf-16le`, `utf-16be`, `cp437`, `65001` ... |
@@ -26,6 +26,7 @@ Everything you send and receive is UTF-8. host-shell converts on the host.
   the `charset`, `bom` and `newline` that `fs_read` reported. Characters the target encoding cannot
   represent (emoji in Shift_JIS ...) cause an error and nothing is written.
 - `newline: "crlf"` / `"lf"` converts the line endings of `content` before writing.
-- UTF-16 files without a BOM are treated as binary by `search_grep` unless you pass `charset`.
+- UTF-16 without a BOM is detected when it contains ASCII characters or line breaks; for short text made only of
+  CJK characters, pass `charset` (e.g. `utf-16le`).
 
 Base64 content is never converted.

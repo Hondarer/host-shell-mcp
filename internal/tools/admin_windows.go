@@ -390,16 +390,11 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error
 }
 
 // decodeToolOutput converts the output of standard Windows commands to UTF-8.
-// It tries UTF-16LE (with a BOM, or ASCII followed by NULs), UTF-8 and then the console code page.
+// It tries UTF-16 (with a BOM, or detected by textenc.DetectUnicode), UTF-8 and then the console code page.
 func decodeToolOutput(s string) string {
 	b := []byte(s)
-	if enc, n, ok := textenc.DetectBOM(b); ok {
+	if enc, n, ok := textenc.DetectUnicode(b); ok {
 		return enc.Decode(b[n:])
-	}
-	if len(b) >= 4 && b[1] == 0 && b[3] == 0 {
-		if enc, err := textenc.Lookup("utf-16le"); err == nil {
-			return enc.Decode(b)
-		}
 	}
 	if utf8.Valid(b) {
 		return s

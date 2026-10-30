@@ -2,6 +2,11 @@ package textenc
 
 import (
 	"bytes"
+	"compress/gzip"
+	"image"
+	pngenc "image/png"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -151,5 +156,99 @@ func TestWriterFlushPrompt(t *testing.T) {
 	w.Write([]byte("\n"))
 	if buf.String() != "Password: x日本\n" {
 		t.Errorf("result: %q", buf.String())
+	}
+}
+
+func TestDetectUTF16(t *testing.T) {
+	le, be := mustLookup(t, "utf-16le"), mustLookup(t, "utf-16be")
+	enc := func(e Encoding, s string) []byte {
+		b, err := e.Encode(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	for _, c := range []struct {
+		name string
+		data []byte
+		want string
+	}{
+		{"english le", enc(le, "package main\r\nfunc main() {}\r\n"), "utf-16le"},
+		{"english be", enc(be, "package main\nfunc main() {}\n"), "utf-16be"},
+		{"japanese le", enc(le, "日本語の文章です。\r\nEnglish words too.\r\n"), "utf-16le"},
+		{"kanji lines le", enc(le, strings.Repeat("日本語の文章だけで書かれた行です。改行もあります。\r\n", 20)), "utf-16le"},
+		{"short le", enc(le, "ok\r\n"), "utf-16le"},
+		{"surrogate pair le", enc(le, "emoji 😀 here\n"), "utf-16le"},
+		{"ascii", []byte("plain ASCII text\n"), ""},
+		{"utf-8 japanese", []byte("日本語の文章です。\n"), ""},
+		{"all zero", make([]byte, 64), ""},
+		{"lone low surrogate", []byte{'a', 0, 'b', 0, 0x00, 0xDC, 'c', 0}, ""},
+		{"one byte", []byte{'a'}, ""},
+	} {
+		e, ok := DetectUTF16(c.data)
+		if got := map[bool]string{true: e.Name}[ok]; got != c.want {
+			t.Errorf("%s: DetectUTF16 = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// TestDetectUTF16Binary checks that common binary formats are not taken for UTF-16.
+func TestDetectUTF16Binary(t *testing.T) {
+	exe, err := os.Executable() // the test binary itself
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(exe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	samples := map[string][]byte{"executable": b, "executable (middle)": b[len(b)/2:]}
+	var gz bytes.Buffer
+	zw := gzip.NewWriter(&gz)
+	zw.Write(bytes.Repeat([]byte("compressible text 0123456789\n"), 500))
+	zw.Close()
+	samples["gzip"] = gz.Bytes()
+	img := image.NewRGBA(image.Rect(0, 0, 64, 64))
+	for i := range img.Pix {
+		img.Pix[i] = byte(i * 7)
+	}
+	var png bytes.Buffer
+	if err := pngenc.Encode(&png, img); err != nil {
+		t.Fatal(err)
+	}
+	samples["png"] = png.Bytes()
+	rnd := make([]byte, 4096)
+	for i := range rnd {
+		rnd[i] = byte((i*7919 + i*i*31) >> 3)
+	}
+	samples["pseudo-random"] = rnd
+	for name, data := range samples {
+		if e, ok := DetectUTF16(data); ok {
+			t.Errorf("%s was detected as %s", name, e.Name)
+		}
+	}
+}
+
+func TestWriterUTF16NoBOM(t *testing.T) {
+	le := mustLookup(t, "utf-16le")
+	for _, s := range []string{"ok\r\n", strings.Repeat("日本語の出力です。line\r\n", 10)} {
+		b, _ := le.Encode(s)
+		var out bytes.Buffer
+		w := NewWriter(&out, Choice{Auto: true, Enc: UTF8})
+		for i := 0; i < len(b); i += 7 { // in small pieces
+			w.Write(b[i:min(i+7, len(b))])
+		}
+		w.Close()
+		if out.String() != s || w.Converted() != "utf-16le" {
+			t.Errorf("output = %q, converted = %q, want %q", out.String(), w.Converted(), s)
+		}
+	}
+	// A short ASCII prompt is still flushed as is.
+	var out bytes.Buffer
+	w := NewWriter(&out, Choice{Auto: true, Enc: UTF8})
+	w.Write([]byte("name? "))
+	w.Flush()
+	if out.String() != "name? " {
+		t.Errorf("prompt = %q", out.String())
 	}
 }

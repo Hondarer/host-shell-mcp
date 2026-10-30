@@ -164,6 +164,8 @@ func loadText(path, charset string) (textFile, error) {
 	body := raw
 	if bomEnc, n, ok := textenc.DetectBOM(raw); ok && (ch.Auto || ch.Enc.Name == bomEnc.Name) {
 		tf.enc, tf.bom, body = bomEnc, raw[:n], raw[n:]
+	} else if e, ok := textenc.DetectUTF16(raw); ok && ch.Auto {
+		tf.enc = e
 	} else if ch.Auto && utf8.Valid(raw) {
 		tf.enc = textenc.UTF8
 	} else {

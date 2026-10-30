@@ -14,6 +14,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/config"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
+	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
 // connect connects a server and a client over in-memory transports.
@@ -258,4 +259,48 @@ func TestEncodingConversion(t *testing.T) {
 type Match struct {
 	Line    int    `json:"line"`
 	Charset string `json:"charset"`
+}
+
+// TestUTF16WithoutBOM checks that UTF-16 without a BOM is detected by fs_read, fs_edit, search_grep and exec_run.
+func TestUTF16WithoutBOM(t *testing.T) {
+	cs := connect(t)
+	dir := t.TempDir()
+	le, _ := textenc.Lookup("utf-16le")
+	text := "一行目 first line\r\n日本語の二行目\r\n"
+	data, _ := le.Encode(text)
+	path := filepath.Join(dir, "u16.txt")
+	os.WriteFile(path, data, 0o644)
+
+	r := call[struct {
+		Content string `json:"content"`
+		Charset string `json:"charset"`
+		BOM     bool   `json:"bom"`
+	}](t, cs, "fs_read", map[string]any{"path": path})
+	if r.Content != text || r.Charset != "utf-16le" || r.BOM {
+		t.Fatalf("fs_read got %+v", r)
+	}
+	grep := call[struct {
+		Matches []Match `json:"matches"`
+	}](t, cs, "search_grep", map[string]any{"pattern": "二行目", "path": dir})
+	if len(grep.Matches) != 1 || grep.Matches[0].Line != 2 || grep.Matches[0].Charset != "utf-16le" {
+		t.Fatalf("search_grep got %+v", grep)
+	}
+	ed := call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "old_string": "二行目", "new_string": "2 行目"})
+	if ed.Charset != "utf-16le" {
+		t.Fatalf("fs_edit got %+v", ed)
+	}
+	want, _ := le.Encode("一行目 first line\r\n日本語の2 行目\r\n")
+	if b, _ := os.ReadFile(path); string(b) != string(want) {
+		t.Fatalf("file after fs_edit = %x", b)
+	}
+
+	if runtime.GOOS != "windows" {
+		run := call[struct {
+			Stdout         string `json:"stdout"`
+			StdoutEncoding string `json:"stdout_encoding"`
+		}](t, cs, "exec_run", map[string]any{"command": "cat " + path})
+		if run.Stdout != "一行目 first line\r\n日本語の2 行目\r\n" || run.StdoutEncoding != "utf-16le" {
+			t.Fatalf("exec_run got %+v", run)
+		}
+	}
 }

@@ -107,6 +107,92 @@ func DetectBOM(b []byte) (Encoding, int, bool) {
 	return Encoding{}, 0, false
 }
 
+// detectUTF16Bytes is how much of the start of the data DetectUTF16 examines.
+const detectUTF16Bytes = 4096
+
+// DetectUTF16 reports whether b, which has no BOM, looks like UTF-16 text, and returns its byte order.
+//
+// UTF-16 text has a zero byte in every ASCII character (including line breaks) on one side of the
+// code unit, and almost never contains U+0000. Binary data instead has many all-zero units, or few
+// zero bytes on either side. Measured on samples (2026-10): UTF-16 English source has zero bytes in
+// 100% of the units, Japanese prose in 64%, lines made only of kanji in 7% (the line breaks);
+// executables and databases have 30-87% all-zero units; zip, gzip, PNG, JPEG and PDF have at most
+// 2% zero bytes on each side. The thresholds below sit between these: at most 1% U+0000, at least
+// 5% zero bytes on one side and at most 2% (plus one unit, for short text) on the other, and no
+// broken surrogate pairs.
+func DetectUTF16(b []byte) (Encoding, bool) {
+	if len(b) > detectUTF16Bytes {
+		b = b[:detectUTF16Bytes]
+	}
+	n := len(b) / 2
+	if n < 2 {
+		return Encoding{}, false
+	}
+	var first, second, both int // units whose first byte only, second byte only, or both bytes are zero
+	for i := 0; i < n; i++ {
+		switch x, y := b[2*i], b[2*i+1]; {
+		case x == 0 && y == 0:
+			both++
+		case x == 0:
+			first++
+		case y == 0:
+			second++
+		}
+	}
+	if both*100 > n {
+		return Encoding{}, false
+	}
+	e, zero, other := utf16le, second, first
+	if first > second {
+		e, zero, other = utf16be, first, second
+	}
+	if zero*20 < n || other > n/50+1 || !validUTF16(b[:2*n], e.Name == utf16le.Name) {
+		return Encoding{}, false
+	}
+	return e, true
+}
+
+// validUTF16 reports whether the code units in b pair their surrogates correctly.
+// A high surrogate in the last unit is allowed, since b may end in the middle of a pair.
+func validUTF16(b []byte, little bool) bool {
+	n := len(b) / 2
+	for i := 0; i < n; i++ {
+		u := uint16(b[2*i])<<8 | uint16(b[2*i+1])
+		if little {
+			u = uint16(b[2*i+1])<<8 | uint16(b[2*i])
+		}
+		switch {
+		case u >= 0xD800 && u < 0xDC00:
+			if i == n-1 {
+				return true
+			}
+			next := uint16(b[2*i+2])<<8 | uint16(b[2*i+3])
+			if little {
+				next = uint16(b[2*i+3])<<8 | uint16(b[2*i+2])
+			}
+			if next < 0xDC00 || next >= 0xE000 {
+				return false
+			}
+			i++
+		case u >= 0xDC00 && u < 0xE000:
+			return false
+		}
+	}
+	return true
+}
+
+// DetectUnicode detects a byte order mark, or else UTF-16 without one (DetectUTF16), at the start of b.
+// It returns the encoding and the length of the BOM (0 when there is none).
+func DetectUnicode(b []byte) (Encoding, int, bool) {
+	if e, n, ok := DetectBOM(b); ok {
+		return e, n, true
+	}
+	if e, ok := DetectUTF16(b); ok {
+		return e, 0, true
+	}
+	return Encoding{}, 0, false
+}
+
 // special lists names handled differently from the htmlindex default.
 var special = map[string]Encoding{
 	"utf-16":   utf16le,

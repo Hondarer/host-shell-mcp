@@ -186,14 +186,16 @@ func (d *Deps) readText(f *os.File, in FsReadInput, out *FsReadOutput) error {
 	if err != nil {
 		return fmt.Errorf("charset: %w", err)
 	}
-	// Check the BOM at the start of the file regardless of the range read.
-	head := make([]byte, 4)
+	// Check the start of the file for a BOM, or for UTF-16 without one, regardless of the range read.
+	head := make([]byte, 4096)
 	k, _ := f.ReadAt(head, 0)
 	skip := 0
 	if bomEnc, n, ok := textenc.DetectBOM(head[:k]); ok && (ch.Auto || ch.Enc.Name == bomEnc.Name) {
 		ch = textenc.Choice{Enc: bomEnc}
 		skip = n
 		out.BOM = true
+	} else if e, ok := textenc.DetectUTF16(head[:k]); ok && ch.Auto {
+		ch = textenc.Choice{Enc: e}
 	}
 	if in.LineNumbers && in.LineStart <= 0 {
 		return errors.New("line_numbers requires line_start (use line_start: 1 to read from the beginning)")

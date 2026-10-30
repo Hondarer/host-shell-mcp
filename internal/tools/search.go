@@ -212,7 +212,7 @@ type grepOptions struct {
 }
 
 // grepFile searches one file line by line, converting it to UTF-8.
-// UTF-16 files without a BOM are treated as binary and skipped unless an encoding is given.
+// Files with NUL bytes are treated as binary and skipped, unless they look like UTF-16 (DetectUTF16).
 func grepFile(path string, opt grepOptions, emit func(Match) grepAction) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -226,6 +226,8 @@ func grepFile(path string, opt grepOptions, emit func(Match) grepAction) error {
 	if bomEnc, n, ok := textenc.DetectBOM(head); ok && (ch.Auto || ch.Enc.Name == bomEnc.Name) {
 		br.Discard(n)
 		ch = textenc.Choice{Enc: bomEnc}
+	} else if e, ok := textenc.DetectUTF16(head); ok && ch.Auto {
+		ch = textenc.Choice{Enc: e}
 	} else if ch.Enc.ASCIICompatible() && bytes.IndexByte(head, 0) >= 0 {
 		return nil // treat as binary
 	}
