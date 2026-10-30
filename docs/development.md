@@ -167,6 +167,7 @@ Table: アーカイブに加えるもの
 | `golang.org/x/text` | 文字コードの変換。Go だけで書かれており、静的リンクの方針を崩さない |
 | `golang.org/x/sys` | Windows の API (ConPTY、サービス コントロール マネージャー、レジストリ、ディスク) |
 | `github.com/creack/pty` | Linux と macOS の疑似端末 |
+| `github.com/charmbracelet/x/vt` | 仮想端末。PTY のジョブの画面の状態 (`job_read` の `screen`)。Go だけで書かれ、依存も含めて MIT と BSD のライセンス |
 
 Table: 直接の依存
 

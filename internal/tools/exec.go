@@ -224,6 +224,7 @@ type JobReadInput struct {
 	Until    string `json:"until,omitempty" jsonschema:"with wait_sec: keep waiting until the output after offset matches this regular expression (e.g. a prompt like \\$ $ or >>> $, or a line like Listening on). matched tells whether it did"`
 	IdleMs   int    `json:"idle_ms,omitempty" jsonschema:"with wait_sec: return once new output has arrived and then nothing more came for this many milliseconds (the program is waiting or done printing). Good after sending a command to a REPL or shell"`
 	Raw      bool   `json:"raw,omitempty" jsonschema:"pty jobs: return terminal escape sequences and carriage returns as they are. By default they are removed so the output reads as plain text"`
+	Screen   bool   `json:"screen,omitempty" jsonschema:"pty jobs: return what the terminal shows now (one line per row, cols x rows) instead of the output stream, with the cursor position. Use it for full-screen programs such as top, vi or less. offset and max_bytes are ignored; wait_sec, until and idle_ms still wait on the stream first"`
 }
 
 // JobReadOutput is the output of job_read.
@@ -234,6 +235,8 @@ type JobReadOutput struct {
 	NextOffset int64       `json:"next_offset" jsonschema:"pass as offset to read only new output next time"`
 	More       bool        `json:"more,omitempty" jsonschema:"more output is already available beyond next_offset"`
 	Dropped    int64       `json:"dropped,omitempty" jsonschema:"bytes discarded from the buffer before they were read (the job produced output faster than it was read)"`
+	CursorRow  *int        `json:"cursor_row,omitempty" jsonschema:"screen: row of the cursor, from 0"`
+	CursorCol  *int        `json:"cursor_col,omitempty" jsonschema:"screen: column of the cursor, from 0"`
 }
 
 func (d *Deps) jobRead(ctx context.Context, _ *mcp.CallToolRequest, in JobReadInput) (*mcp.CallToolResult, JobReadOutput, error) {
@@ -255,10 +258,22 @@ func (d *Deps) jobRead(ctx context.Context, _ *mcp.CallToolRequest, in JobReadIn
 			return nil, JobReadOutput{}, fmt.Errorf("until: %w", err)
 		}
 	}
+	if in.Screen && !j.PTY() {
+		return nil, JobReadOutput{}, errors.New("screen needs a pty job (job_start with pty)")
+	}
 	strip := j.PTY() && !in.Raw
 	out := JobReadOutput{}
 	if in.WaitSec > 0 {
 		out.Matched = waitForOutput(ctx, j, offset, time.Duration(min(in.WaitSec, 300))*time.Second, until, in.IdleMs, strip)
+	}
+	if in.Screen {
+		text, row, col, err := j.Screen()
+		if err != nil {
+			return nil, JobReadOutput{}, err
+		}
+		st := j.Status()
+		out.Status, out.Output, out.NextOffset, out.CursorRow, out.CursorCol = st, text, st.Output, &row, &col
+		return nil, out, nil
 	}
 	data, next, dropped := j.Read(offset, max)
 	if strip {

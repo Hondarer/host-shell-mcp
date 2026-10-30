@@ -52,6 +52,7 @@ type Job struct {
 	conv    *textenc.Writer
 	done    chan struct{}
 	term    *pty.Terminal // PTY jobs only
+	screen  *screen       // PTY jobs only
 
 	// stdin is where input is written. stdinMu serializes writes.
 	stdinMu  sync.Mutex
@@ -200,9 +201,10 @@ func (j *Job) startPTY(ctx context.Context, cmd *exec.Cmd, opt StartOptions) (fu
 	j.term = t
 	j.pid = t.Pid()
 	j.stdin = ptyInput{t}
+	j.screen = newScreen(opt.Cols, opt.Rows, t)
 	copied := make(chan struct{})
 	go func() {
-		io.Copy(j.conv, t)
+		io.Copy(io.MultiWriter(j.conv, j.screen), t)
 		close(copied)
 	}()
 	return func() (int, error) {
@@ -216,6 +218,7 @@ func (j *Job) startPTY(ctx context.Context, cmd *exec.Cmd, opt StartOptions) (fu
 		t.Close()
 		<-copied
 		j.conv.Close()
+		j.screen.close()
 		return code, err
 	}, nil
 }
@@ -395,7 +398,21 @@ func (j *Job) Resize(cols, rows int) error {
 	if j.term == nil {
 		return errors.New("the job does not run in a pseudo terminal (start it with pty)")
 	}
-	return j.term.Resize(cols, rows)
+	if err := j.term.Resize(cols, rows); err != nil {
+		return err
+	}
+	j.screen.resize(cols, rows)
+	return nil
+}
+
+// Screen returns the characters now shown on the terminal of a PTY job, one line per row without
+// trailing spaces, and the cursor position (0-based).
+func (j *Job) Screen() (text string, row, col int, err error) {
+	if j.screen == nil {
+		return "", 0, 0, errors.New("the job does not run in a pseudo terminal (start it with pty)")
+	}
+	text, row, col = j.screen.text()
+	return text, row, col, nil
 }
 
 // Signal sends a signal to the job. For a PTY job, interrupt sends Ctrl-C to the terminal.

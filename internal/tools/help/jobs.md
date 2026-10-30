@@ -50,6 +50,9 @@ REPLs with prompts, `top`, installers, and tools that buffer or hide output when
 - stdout and stderr are one stream. Input is always open.
 - `job_read` removes colours, cursor movement and other escape sequences, and keeps only the final
   text of lines redrawn with carriage returns. Set `raw: true` to get the bytes as the terminal got them.
+- For full-screen programs (`top`, `vi`, `less`, installers with menus) use `job_read` with
+  `screen: true`: it returns what the terminal shows now, one line per row, plus `cursor_row` and
+  `cursor_col`. Combine it with `wait_sec` and `idle_ms` so the program has finished drawing.
 - In `job_write`, control keys are characters: `\u0003` Ctrl-C, `\u0004` Ctrl-D, `\u001b` Esc,
   `\u001b[A` up arrow, `\t` tab. Some programs expect `\r` for Enter. `cols` and `rows` resize the terminal
   (default 120x40).
