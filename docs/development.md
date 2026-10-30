@@ -20,10 +20,11 @@ Table: 開発環境
 |---|---|
 | `make` | `vet`、`test`、`build` を順に実行する |
 | `make build` | 開発機の OS とアーキテクチャ向けに `dist/host-shell` を作る |
-| `make dist` | 配布用の 4 ファイル (`dist/host-shell-{linux,windows}-{amd64,arm64}[.exe]`) を作る |
+| `make dist` | 配布用の 4 ファイル (`dist/host-shell-{linux,windows}-{amd64,arm64}[.exe]`) を作り、`host-shell-connect` skill の `bin/` にも複製する |
+| `make release` | Release に添付するファイルを `dist/release/` に作る ([リリース](#リリース)) |
 | `make test` | テストを実行する |
 | `make vet` | Linux と Windows の両方を対象に `go vet` を実行する |
-| `make clean` | `dist/` を削除する |
+| `make clean` | `dist/` と skill の `bin/` を削除する |
 
 Table: make のターゲット
 
@@ -57,6 +58,8 @@ internal/textenc/      文字コードの変換 (名前の解決、自動判定�
 internal/audit/        操作ログ (JSON Lines)
 internal/config/       設定と既定値
 internal/version/      バージョン情報
+.agents/skills/host-shell-connect/
+                       接続先への配置と起動の確認を行う skill。bin/ は make dist で作る (Git では管理しない)
 ```
 
 ## 設計上の約束
@@ -101,6 +104,34 @@ Windows の実装は、Linux の開発機では `make vet` (`GOOS=windows go vet
 `proc_windows.go` などを変更した場合は、Windows の実機で `go test ./...` を実行してください。
 
 標準入出力を通した確認は、実行ファイルに JSON-RPC を流し込んで行えます ([利用ガイドの動作の確認](user-guide.md#動作の確認))。
+
+## CI
+
+GitHub Actions で、`main` への push とプル リクエストごとに次を実行します (`.github/workflows/ci.yml`)。
+
+| ジョブ | 内容 |
+|---|---|
+| `test (ubuntu-latest)` | `go vet` (Linux と Windows 向け)、`go test` |
+| `test (windows-latest)` | `go vet`、`go test`。Windows の実機での唯一の自動テスト |
+| `build` | `make release` を実行し、`dist/release/` を成果物 (14 日間保持) として残す |
+
+Table: CI のジョブ
+
+## リリース
+
+GitHub で Release を公開すると、そのタグでビルドし、次のファイルを Release に添付します (`.github/workflows/release.yml`)。  
+タグの名前 (例: `v1.0.0`) が、そのままバージョンになります。
+
+| ファイル | 内容 |
+|---|---|
+| `host-shell-connect-<tag>.tar.gz`、`host-shell-connect-<tag>.zip` | `host-shell-connect` skill のフォルダ。`bin/` に 4 種類の実行ファイルと `VERSION` を含む |
+| `host-shell-linux-amd64` など 4 ファイル | 実行ファイル |
+| `SHA256SUMS` | 上のファイルの SHA-256 |
+
+Table: Release に添付するファイル
+
+アーカイブは `host-shell-connect/` を最上位に持つため、`.agents/skills/` の下に展開すれば、リポジトリを clone せずに skill を使えます。  
+手元で同じものを作るには `make release VERSION=v1.0.0` を実行します。
 
 ## 依存
 
