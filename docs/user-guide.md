@@ -516,7 +516,7 @@ bridge を挟んでいない場合も、MCP のツールでファイルをやり
 | 接続が止まったまま応答しない | 途中の段でパスワードやホスト鍵の確認を待っている。手元で一度 `ssh hop1 ssh target` を実行してホスト鍵を登録し、`BatchMode=yes` を指定する |
 | 疑似端末に関する警告が出る、改行が崩れる | 各段に `-T` を指定する。`RequestTTY` の設定を確認する |
 | 起動直後に `open audit log` のエラーで終了する | 操作ログの保存先に書き込めない。`--log-file` で書き込める場所を指定する。記録が不要なら `--no-log` |
-| `sudo: a password is required` | sudoers に `NOPASSWD` の規則がない。[運用ガイド](operations.md#sudo-の設定) を参照。パスワードを入力するなら `pty` のジョブで `sudo` を起動する |
+| `sudo: a password is required` | sudoers に `NOPASSWD` の規則がない。[運用ガイド](operations.md#sudo-の設定) を参照。利用者がパスワードを教える場合は、`sudo_run` の `password` に渡す |
 | ツールが `policy:` で始まるエラーを返す | 接続先の制限のオプションで拒まれた。`sys_info` の `restrictions` で内容を確かめ、必要なら接続先の管理者に制限の変更を頼む |
 | `--confirm` の対象のツールが「cannot ask the user」で失敗する | エージェントが MCP の elicitation に対応していない。`--confirm` を外し、エージェント側の承認を使う |
 | `transfer_push`、`transfer_pull` が一覧にない | bridge を挟まずに登録している。または接続先で `files` の組を公開していない (bridge の起動時にエラーになる) |
