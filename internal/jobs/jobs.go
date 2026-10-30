@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os/exec"
 	"sort"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/hondarer/host-shell-mcp/internal/limit"
 	"github.com/hondarer/host-shell-mcp/internal/proc"
+	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
 // Manager はジョブの一覧を保持します。
@@ -40,7 +42,13 @@ type Job struct {
 	cmd     *exec.Cmd
 	cancel  context.CancelFunc
 	out     *limit.Ring
+	conv    *textenc.Writer
 	done    chan struct{}
+
+	// stdin は標準入力を開いたままにしたジョブの書き込み口です。stdinMu で書き込みを直列にします。
+	stdinMu  sync.Mutex
+	stdin    io.WriteCloser
+	stdinEnc textenc.Encoding
 
 	mu       sync.Mutex
 	ended    time.Time
@@ -54,15 +62,32 @@ type Status struct {
 	Command   string `json:"command"`
 	PID       int    `json:"pid"`
 	Running   bool   `json:"running"`
+	StdinOpen bool   `json:"stdin_open,omitempty" jsonschema:"standard input is open; send input with job_write"`
 	ExitCode  *int   `json:"exit_code,omitempty" jsonschema:"exit code, present after the job ended"`
+	Encoding  string `json:"output_encoding,omitempty" jsonschema:"set when the output was converted to UTF-8 from this encoding"`
 	Error     string `json:"error,omitempty"`
 	StartedAt string `json:"started_at"`
 	EndedAt   string `json:"ended_at,omitempty"`
 	Output    int64  `json:"output_bytes" jsonschema:"total bytes of output produced so far"`
 }
 
-// Start はジョブを開始します。timeout が 0 の場合は時間制限なしで実行します。
-func (m *Manager) Start(spec proc.Spec, stdin string, timeout time.Duration) (*Job, error) {
+// StartOptions はジョブの起動の指定です。
+type StartOptions struct {
+	// Stdin は最初に標準入力に渡すバイト列です (変換済み)。
+	Stdin string
+	// KeepStdin は、標準入力を開いたままにし、Write で後から送れるようにします。
+	KeepStdin bool
+	// StdinEncoding は Write で送る文字列の変換先です。
+	StdinEncoding textenc.Encoding
+	// Output は出力の文字コードです。出力は UTF-8 に変換してから保持します。
+	Output textenc.Choice
+	// Timeout は時間制限です。0 の場合は時間制限なしで実行します。
+	Timeout time.Duration
+}
+
+// Start はジョブを開始します。
+func (m *Manager) Start(spec proc.Spec, opt StartOptions) (*Job, error) {
+	timeout := opt.Timeout
 	// ジョブはツール呼び出しより長く生きるため、呼び出しの ctx ではなく独自の ctx を使う。
 	var (
 		ctx    context.Context
@@ -79,9 +104,16 @@ func (m *Manager) Start(spec proc.Spec, stdin string, timeout time.Duration) (*J
 		return nil, err
 	}
 	out := limit.NewRing(m.bufferBytes)
-	cmd.Stdout, cmd.Stderr = out, out
-	if stdin != "" {
-		cmd.Stdin = strings.NewReader(stdin)
+	conv := textenc.NewWriter(out, opt.Output)
+	cmd.Stdout, cmd.Stderr = conv, conv
+	var stdin io.WriteCloser
+	if opt.KeepStdin {
+		if stdin, err = cmd.StdinPipe(); err != nil {
+			cancel()
+			return nil, err
+		}
+	} else if opt.Stdin != "" {
+		cmd.Stdin = strings.NewReader(opt.Stdin)
 	}
 	if err := cmd.Start(); err != nil {
 		cancel()
@@ -97,13 +129,22 @@ func (m *Manager) Start(spec proc.Spec, stdin string, timeout time.Duration) (*J
 		cmd:     cmd,
 		cancel:  cancel,
 		out:     out,
+		conv:    conv,
 		done:    make(chan struct{}),
+		stdin:   stdin,
+
+		stdinEnc: opt.StdinEncoding,
 	}
 	m.jobs[j.id] = j
 	m.mu.Unlock()
 
+	if stdin != nil && opt.Stdin != "" {
+		go j.write(opt.Stdin)
+	}
+
 	go func() {
 		err := cmd.Wait()
+		conv.Close()
 		j.mu.Lock()
 		j.ended = time.Now()
 		j.exitCode = cmd.ProcessState.ExitCode()
@@ -114,6 +155,7 @@ func (m *Manager) Start(spec proc.Spec, stdin string, timeout time.Duration) (*J
 		j.mu.Unlock()
 		cancel()
 		close(j.done)
+		j.CloseStdin()
 	}()
 	return j, nil
 }
@@ -174,8 +216,10 @@ func (j *Job) Status() Status {
 		Command:   j.label,
 		PID:       j.cmd.Process.Pid,
 		Running:   j.ended.IsZero(),
+		StdinOpen: j.stdinOpen(),
 		StartedAt: j.started.Format(time.RFC3339),
 		Output:    j.out.Total(),
+		Encoding:  j.conv.Converted(),
 	}
 	if !s.Running {
 		code := j.exitCode
@@ -191,6 +235,58 @@ func (j *Job) Status() Status {
 // Read は絶対位置 offset から最大 n バイトの出力を返します。
 func (j *Job) Read(offset int64, n int) (data string, next, dropped int64) {
 	return j.out.Read(offset, n)
+}
+
+// StdinEncoding は Write で送る文字列の変換先を返します。
+func (j *Job) StdinEncoding() textenc.Encoding { return j.stdinEnc }
+
+// ErrStdinClosed は標準入力が開いていないジョブに書き込んだことを示します。
+var ErrStdinClosed = errors.New("stdin is not open (start the job with stdin_open, and do not close it before writing)")
+
+// Write は標準入力にバイト列 (変換済み) を書き込みます。
+// 子プロセスが読み取らずに wait を過ぎた場合はエラーを返し、書き込みは裏で続けます。
+func (j *Job) Write(data string, wait time.Duration) error {
+	if !j.stdinOpen() {
+		return ErrStdinClosed
+	}
+	done := make(chan error, 1)
+	go func() { done <- j.write(data) }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(wait):
+		return fmt.Errorf("the process did not read its input within %s; the rest is written in the background", wait)
+	}
+}
+
+func (j *Job) write(data string) error {
+	j.stdinMu.Lock()
+	defer j.stdinMu.Unlock()
+	if j.stdin == nil {
+		return ErrStdinClosed
+	}
+	_, err := io.WriteString(j.stdin, data)
+	return err
+}
+
+// CloseStdin は標準入力を閉じ、子プロセスに入力の終わり (EOF) を伝えます。
+func (j *Job) CloseStdin() error {
+	j.stdinMu.Lock()
+	defer j.stdinMu.Unlock()
+	if j.stdin == nil {
+		return nil
+	}
+	err := j.stdin.Close()
+	j.stdin = nil
+	return err
+}
+
+func (j *Job) stdinOpen() bool {
+	if !j.stdinMu.TryLock() {
+		return true // 書き込み中
+	}
+	defer j.stdinMu.Unlock()
+	return j.stdin != nil
 }
 
 // Stop はジョブを停止し、終了を最大 wait だけ待ちます。

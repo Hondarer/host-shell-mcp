@@ -17,6 +17,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/hondarer/host-shell-mcp/internal/limit"
+	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
 // Spec は起動するコマンドの指定です。Command と Argv はどちらか一方だけを指定します。
@@ -72,6 +73,8 @@ type Result struct {
 	Stderr          string `json:"stderr"`
 	StdoutTruncated bool   `json:"stdout_truncated,omitempty"`
 	StderrTruncated bool   `json:"stderr_truncated,omitempty"`
+	StdoutEncoding  string `json:"stdout_encoding,omitempty" jsonschema:"set when stdout was converted to UTF-8 from this encoding"`
+	StderrEncoding  string `json:"stderr_encoding,omitempty" jsonschema:"set when stderr was converted to UTF-8 from this encoding"`
 	TimedOut        bool   `json:"timed_out,omitempty"`
 	DurationMs      int64  `json:"duration_ms"`
 }
@@ -79,9 +82,12 @@ type Result struct {
 // Options は Run の動作を指定します。
 type Options struct {
 	DefaultShell string
-	Stdin        string
-	Timeout      time.Duration
-	MaxOutput    int
+	// Stdin は標準入力に渡すバイト列です。文字コードの変換は呼び出し側で済ませます。
+	Stdin string
+	// Output は標準出力と標準エラーの文字コードです。ゼロ値は UTF-8 (変換なし) です。
+	Output    textenc.Choice
+	Timeout   time.Duration
+	MaxOutput int
 }
 
 // Run はコマンドを実行し、終了を待って結果を返します。
@@ -94,7 +100,8 @@ func Run(ctx context.Context, spec Spec, opt Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	stdout, stderr := limit.NewBuffer(opt.MaxOutput), limit.NewBuffer(opt.MaxOutput)
+	stdoutBuf, stderrBuf := limit.NewBuffer(opt.MaxOutput), limit.NewBuffer(opt.MaxOutput)
+	stdout, stderr := textenc.NewWriter(stdoutBuf, opt.Output), textenc.NewWriter(stderrBuf, opt.Output)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	if opt.Stdin != "" {
 		cmd.Stdin = strings.NewReader(opt.Stdin)
@@ -102,11 +109,15 @@ func Run(ctx context.Context, spec Spec, opt Options) (Result, error) {
 
 	start := time.Now()
 	runErr := cmd.Run()
+	stdout.Close()
+	stderr.Close()
 	res := Result{
-		Stdout:          stdout.String(),
-		Stderr:          stderr.String(),
-		StdoutTruncated: stdout.Truncated(),
-		StderrTruncated: stderr.Truncated(),
+		Stdout:          stdoutBuf.String(),
+		Stderr:          stderrBuf.String(),
+		StdoutTruncated: stdoutBuf.Truncated(),
+		StderrTruncated: stderrBuf.Truncated(),
+		StdoutEncoding:  stdout.Converted(),
+		StderrEncoding:  stderr.Converted(),
 		TimedOut:        errors.Is(ctx.Err(), context.DeadlineExceeded),
 		DurationMs:      time.Since(start).Milliseconds(),
 	}

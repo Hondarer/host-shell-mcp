@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"unicode/utf8"
+
+	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
 // Buffer は先頭と末尾だけを保持する io.Writer です。
@@ -71,12 +74,17 @@ func (b *Buffer) String() string {
 	defer b.mu.Unlock()
 	omitted := b.omitted()
 	if omitted <= 0 {
-		return strings.ToValidUTF8(string(b.head)+string(b.tail), "�")
+		return strings.ToValidUTF8(string(b.head)+string(b.tail), "\uFFFD")
 	}
+	// 切り詰めた境界で分断された文字は、置換文字にせずに取り除く。
+	head := b.head[:len(b.head)-textenc.IncompleteTail(b.head)]
 	tail := b.tail[len(b.tail)-b.tailMax:]
-	return strings.ToValidUTF8(string(b.head), "�") +
+	for i := 0; i < utf8.UTFMax-1 && len(tail) > 0 && !utf8.RuneStart(tail[0]); i++ {
+		tail = tail[1:]
+	}
+	return strings.ToValidUTF8(string(head), "\uFFFD") +
 		Marker(omitted) +
-		strings.ToValidUTF8(string(tail), "�")
+		strings.ToValidUTF8(string(tail), "\uFFFD")
 }
 
 // Marker は切り詰めた箇所に挿入する文字列です。
@@ -139,5 +147,9 @@ func (r *Ring) Read(off int64, n int) (data string, next int64, dropped int64) {
 	}
 	start := min(int(off-r.base), len(r.buf))
 	end := min(start+n, len(r.buf))
-	return strings.ToValidUTF8(string(r.buf[start:end]), "�"), r.base + int64(end), dropped
+	// 読み取りの境界で文字を分断しないよう、末尾の不完全な文字は次の読み取りに回す。
+	if t := textenc.IncompleteTail(r.buf[start:end]); end-t > start {
+		end -= t
+	}
+	return strings.ToValidUTF8(string(r.buf[start:end]), "\uFFFD"), r.base + int64(end), dropped
 }

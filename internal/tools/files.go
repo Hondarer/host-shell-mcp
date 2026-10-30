@@ -16,9 +16,13 @@ import (
 	"strings"
 	"time"
 
+	"unicode/utf8"
+
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"golang.org/x/text/transform"
 
 	"github.com/hondarer/host-shell-mcp/internal/limit"
+	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
 // Entry はディレクトリの 1 項目です。
@@ -114,12 +118,14 @@ func (d *Deps) fsStat(_ context.Context, _ *mcp.CallToolRequest, in FsStatInput)
 
 // FsReadInput は fs_read の入力です。
 type FsReadInput struct {
-	Path      string `json:"path"`
-	Encoding  string `json:"encoding,omitempty" jsonschema:"text (default) or base64"`
-	LineStart int    `json:"line_start,omitempty" jsonschema:"text mode: first line to read (1-based). When set, offset/length are ignored"`
-	LineCount int    `json:"line_count,omitempty" jsonschema:"text mode: number of lines to read (default 2000)"`
-	Offset    int64  `json:"offset,omitempty" jsonschema:"byte offset to start reading"`
-	Length    int    `json:"length,omitempty" jsonschema:"maximum bytes to read (capped by the server output limit)"`
+	Path        string `json:"path"`
+	Encoding    string `json:"encoding,omitempty" jsonschema:"text (default) or base64"`
+	Charset     string `json:"charset,omitempty" jsonschema:"text mode: encoding of the file: auto (default: BOM, then UTF-8 if valid, otherwise the host file code page), utf-8, system, or a charset name such as shift_jis, euc-jp, utf-16le"`
+	LineStart   int    `json:"line_start,omitempty" jsonschema:"text mode: first line to read (1-based). When set, offset/length are ignored"`
+	LineCount   int    `json:"line_count,omitempty" jsonschema:"text mode: number of lines to read (default 2000)"`
+	LineNumbers bool   `json:"line_numbers,omitempty" jsonschema:"line mode: prefix each line with its number and a tab, like cat -n. Useful before fs_edit; do not copy the prefixes into old_string"`
+	Offset      int64  `json:"offset,omitempty" jsonschema:"byte offset to start reading"`
+	Length      int    `json:"length,omitempty" jsonschema:"maximum bytes to read (capped by the server output limit)"`
 }
 
 // FsReadOutput は fs_read の出力です。
@@ -127,6 +133,9 @@ type FsReadOutput struct {
 	Path       string `json:"path"`
 	Size       int64  `json:"size"`
 	Encoding   string `json:"encoding"`
+	Charset    string `json:"charset,omitempty" jsonschema:"text mode: encoding used to decode the content. Pass it to fs_write to keep the file encoding"`
+	BOM        bool   `json:"bom,omitempty" jsonschema:"text mode: the file starts with a byte order mark (not included in content)"`
+	Newline    string `json:"newline,omitempty" jsonschema:"text mode: line endings found in content: lf, crlf, cr or mixed"`
 	Content    string `json:"content"`
 	EOF        bool   `json:"eof"`
 	NextOffset int64  `json:"next_offset,omitempty" jsonschema:"byte mode: offset to continue reading"`
@@ -149,11 +158,14 @@ func (d *Deps) fsRead(_ context.Context, _ *mcp.CallToolRequest, in FsReadInput)
 	}
 	out := FsReadOutput{Path: absPath(in.Path), Size: info.Size(), Encoding: orDefault(in.Encoding, "text")}
 
-	switch {
-	case out.Encoding == "text" && in.LineStart > 0:
-		err = d.readLines(f, in, &out)
-	case out.Encoding == "text" || out.Encoding == "base64":
-		err = d.readBytes(f, in, &out)
+	switch out.Encoding {
+	case "text":
+		err = d.readText(f, in, &out)
+	case "base64":
+		if in.Charset != "" {
+			return nil, FsReadOutput{}, errors.New("charset applies to encoding text only")
+		}
+		err = d.readBase64(f, in, &out)
 	default:
 		err = fmt.Errorf("unknown encoding %q", in.Encoding)
 	}
@@ -163,14 +175,68 @@ func (d *Deps) fsRead(_ context.Context, _ *mcp.CallToolRequest, in FsReadInput)
 	return nil, out, nil
 }
 
-func (d *Deps) readLines(f *os.File, in FsReadInput, out *FsReadOutput) error {
+// readText はファイルを UTF-8 に変換しながら読みます。
+func (d *Deps) readText(f *os.File, in FsReadInput, out *FsReadOutput) error {
+	ch, err := textenc.Parse(in.Charset, textenc.File, true, textenc.UTF8)
+	if err != nil {
+		return fmt.Errorf("charset: %w", err)
+	}
+	// BOM は読む範囲によらず、ファイルの先頭で調べる。
+	head := make([]byte, 4)
+	k, _ := f.ReadAt(head, 0)
+	skip := 0
+	if bomEnc, n, ok := textenc.DetectBOM(head[:k]); ok && (ch.Auto || ch.Enc.Name == bomEnc.Name) {
+		ch = textenc.Choice{Enc: bomEnc}
+		skip = n
+		out.BOM = true
+	}
+	if in.LineNumbers && in.LineStart <= 0 {
+		return errors.New("line_numbers requires line_start (use line_start: 1 to read from the beginning)")
+	}
+	if in.LineStart > 0 {
+		err = d.readLines(f, int64(skip), ch, in, out)
+	} else {
+		err = d.readTextBytes(f, int64(skip), ch, in, out)
+	}
+	if err == nil {
+		out.Newline = textenc.Newline(out.Content)
+	}
+	return err
+}
+
+func (d *Deps) readLines(f *os.File, skip int64, ch textenc.Choice, in FsReadInput, out *FsReadOutput) error {
+	src := io.NewSectionReader(f, skip, out.Size-skip)
+	var r *bufio.Reader
+	converted := false
+	decode := func(b []byte) string { return string(b) }
+	if ch.Auto {
+		// 行ごとに、UTF-8 として正しければそのまま、正しくなければ接続先の既定の文字コードとみなす。
+		r = bufio.NewReader(src)
+		decode = func(b []byte) string {
+			if utf8.Valid(b) {
+				return string(b)
+			}
+			converted = true
+			return ch.Enc.Decode(b)
+		}
+	} else {
+		r = bufio.NewReader(transform.NewReader(src, ch.Enc.NewDecoder()))
+	}
+
 	count := orDefaultInt(in.LineCount, 2000)
-	r := bufio.NewReader(f)
 	var sb strings.Builder
 	line := 1
 	for ; line < in.LineStart+count; line++ {
-		s, err := r.ReadString('\n')
+		b, err := r.ReadBytes('\n')
+		if len(b) == 0 && errors.Is(err, io.EOF) {
+			out.EOF = true // 最後の改行の後ろは行として数えない。
+			break
+		}
 		if line >= in.LineStart {
+			s := decode(b)
+			if in.LineNumbers {
+				s = fmt.Sprintf("%6d\t%s", line, s)
+			}
 			if sb.Len()+len(s) > d.Cfg.MaxOutputBytes {
 				out.Truncated = true
 				if sb.Len() == 0 {
@@ -195,14 +261,51 @@ func (d *Deps) readLines(f *os.File, in FsReadInput, out *FsReadOutput) error {
 	if !out.EOF {
 		out.NextLine = line
 	}
+	out.Charset = ch.Enc.Name
+	if ch.Auto && !converted {
+		out.Charset = textenc.UTF8.Name
+	}
 	return nil
 }
 
-func (d *Deps) readBytes(f *os.File, in FsReadInput, out *FsReadOutput) error {
-	n := d.Cfg.MaxOutputBytes
-	if out.Encoding == "base64" {
-		n = n / 4 * 3 // base64 で膨らんだ後に上限に収める。
+func (d *Deps) readTextBytes(f *os.File, skip int64, ch textenc.Choice, in FsReadInput, out *FsReadOutput) error {
+	start := in.Offset
+	if start == 0 {
+		start = skip
 	}
+	n := d.Cfg.MaxOutputBytes
+	if in.Length > 0 && in.Length < n {
+		n = in.Length
+	} else if in.Length > n {
+		out.Truncated = true
+	}
+	buf := make([]byte, n)
+	k, err := f.ReadAt(buf, start)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+	buf = buf[:k]
+	atEOF := start+int64(k) >= out.Size
+
+	enc := ch.Enc
+	if ch.Auto && textenc.LooksUTF8(buf) {
+		enc = textenc.UTF8
+	}
+	// 変換後の大きさを上限に収め、範囲の末尾で分断された文字は次の読み取りに回す。
+	s, consumed, full := enc.DecodePrefix(buf, d.Cfg.MaxOutputBytes, atEOF)
+	if consumed == 0 && k > 0 {
+		s, consumed, full = enc.DecodePrefix(buf, d.Cfg.MaxOutputBytes, true)
+	}
+	out.Truncated = out.Truncated || full
+	out.Content = s
+	out.Charset = enc.Name
+	out.NextOffset = start + int64(consumed)
+	out.EOF = out.NextOffset >= out.Size
+	return nil
+}
+
+func (d *Deps) readBase64(f *os.File, in FsReadInput, out *FsReadOutput) error {
+	n := d.Cfg.MaxOutputBytes / 4 * 3 // base64 で膨らんだ後に上限に収める。
 	if in.Length > 0 && in.Length < n {
 		n = in.Length
 	} else if in.Length > n {
@@ -213,14 +316,9 @@ func (d *Deps) readBytes(f *os.File, in FsReadInput, out *FsReadOutput) error {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return err
 	}
-	buf = buf[:k]
+	out.Content = base64.StdEncoding.EncodeToString(buf[:k])
 	out.NextOffset = in.Offset + int64(k)
 	out.EOF = out.NextOffset >= out.Size
-	if out.Encoding == "base64" {
-		out.Content = base64.StdEncoding.EncodeToString(buf)
-	} else {
-		out.Content = strings.ToValidUTF8(string(buf), "�")
-	}
 	return nil
 }
 
@@ -230,8 +328,12 @@ type FsWriteInput struct {
 	Content  string `json:"content"`
 	Encoding string `json:"encoding,omitempty" jsonschema:"text (default) or base64"`
 	Mode     string `json:"mode,omitempty" jsonschema:"overwrite (default), append or create (fail if the file exists)"`
+	Offset   *int64 `json:"offset,omitempty" jsonschema:"write at this byte offset without truncating the file (the file is created if missing). Not allowed with mode append"`
 	MakeDirs bool   `json:"make_dirs,omitempty" jsonschema:"create parent directories if missing"`
 	Perm     string `json:"perm,omitempty" jsonschema:"octal permission for a new file, e.g. 0644 (ignored on Windows)"`
+	Charset  string `json:"charset,omitempty" jsonschema:"text: encoding to write: utf-8 (default), system (host file code page), or a charset name such as shift_jis, euc-jp, utf-16le. Characters that cannot be represented cause an error"`
+	Newline  string `json:"newline,omitempty" jsonschema:"text: convert line endings before writing: keep (default), lf or crlf"`
+	BOM      bool   `json:"bom,omitempty" jsonschema:"text: prepend a byte order mark (utf-8, utf-16le, utf-16be only). Only when writing at the start of the file"`
 }
 
 // AuditArgs は書き込み内容の代わりに長さとハッシュをログに残します。
@@ -241,25 +343,56 @@ func (in FsWriteInput) AuditArgs() any {
 	return in
 }
 
+// data は書き込むバイト列を作ります。テキストは改行と文字コードを変換し、指定があれば BOM を付けます。
+func (in FsWriteInput) data() ([]byte, error) {
+	switch orDefault(in.Encoding, "text") {
+	case "text":
+	case "base64":
+		if in.Charset != "" || in.Newline != "" || in.BOM {
+			return nil, errors.New("charset, newline and bom apply to encoding text only")
+		}
+		b, err := base64.StdEncoding.DecodeString(in.Content)
+		if err != nil {
+			return nil, fmt.Errorf("decode base64: %w", err)
+		}
+		return b, nil
+	default:
+		return nil, fmt.Errorf("unknown encoding %q", in.Encoding)
+	}
+
+	s, err := textenc.ConvertNewline(in.Content, in.Newline)
+	if err != nil {
+		return nil, err
+	}
+	ch, err := textenc.Parse(in.Charset, textenc.File, false, textenc.UTF8)
+	if err != nil {
+		return nil, fmt.Errorf("charset: %w", err)
+	}
+	b, err := ch.Enc.Encode(s)
+	if err != nil {
+		return nil, err
+	}
+	if in.BOM {
+		bom := ch.Enc.BOM()
+		switch {
+		case bom == nil:
+			return nil, fmt.Errorf("bom is not supported for charset %s", ch.Enc.Name)
+		case in.Mode == "append" || (in.Offset != nil && *in.Offset > 0):
+			return nil, errors.New("bom can be written only at the start of the file")
+		}
+		b = append(bom, b...)
+	}
+	return b, nil
+}
+
 // FsWriteOutput は fs_write の出力です。
 type FsWriteOutput struct {
 	Path         string `json:"path"`
 	BytesWritten int    `json:"bytes_written"`
+	Size         int64  `json:"size" jsonschema:"file size after the write"`
 }
 
 func (d *Deps) fsWrite(_ context.Context, _ *mcp.CallToolRequest, in FsWriteInput) (*mcp.CallToolResult, FsWriteOutput, error) {
-	data := []byte(in.Content)
-	switch orDefault(in.Encoding, "text") {
-	case "text":
-	case "base64":
-		var err error
-		if data, err = base64.StdEncoding.DecodeString(in.Content); err != nil {
-			return nil, FsWriteOutput{}, fmt.Errorf("decode base64: %w", err)
-		}
-	default:
-		return nil, FsWriteOutput{}, fmt.Errorf("unknown encoding %q", in.Encoding)
-	}
-
 	flag := os.O_WRONLY | os.O_CREATE
 	switch orDefault(in.Mode, "overwrite") {
 	case "overwrite":
@@ -270,6 +403,20 @@ func (d *Deps) fsWrite(_ context.Context, _ *mcp.CallToolRequest, in FsWriteInpu
 		flag |= os.O_EXCL
 	default:
 		return nil, FsWriteOutput{}, fmt.Errorf("unknown mode %q", in.Mode)
+	}
+	if in.Offset != nil {
+		// 位置を指定した書き込みは、既存の内容を切り詰めずに指定した範囲だけを置き換える。
+		switch {
+		case *in.Offset < 0:
+			return nil, FsWriteOutput{}, fmt.Errorf("offset must not be negative: %d", *in.Offset)
+		case flag&os.O_APPEND != 0:
+			return nil, FsWriteOutput{}, fmt.Errorf("offset cannot be combined with mode append")
+		}
+		flag &^= os.O_TRUNC
+	}
+	data, err := in.data()
+	if err != nil {
+		return nil, FsWriteOutput{}, err
 	}
 
 	perm := fs.FileMode(0o644)
@@ -291,14 +438,26 @@ func (d *Deps) fsWrite(_ context.Context, _ *mcp.CallToolRequest, in FsWriteInpu
 	if err != nil {
 		return nil, FsWriteOutput{}, err
 	}
-	n, err := f.Write(data)
+	var n int
+	if in.Offset != nil {
+		n, err = f.WriteAt(data, *in.Offset)
+	} else {
+		n, err = f.Write(data)
+	}
+	var size int64
+	if err == nil {
+		var info fs.FileInfo
+		if info, err = f.Stat(); err == nil {
+			size = info.Size()
+		}
+	}
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
 	if err != nil {
 		return nil, FsWriteOutput{}, err
 	}
-	return nil, FsWriteOutput{Path: absPath(in.Path), BytesWritten: n}, nil
+	return nil, FsWriteOutput{Path: absPath(in.Path), BytesWritten: n, Size: size}, nil
 }
 
 func absPath(p string) string {

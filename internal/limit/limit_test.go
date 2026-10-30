@@ -46,3 +46,16 @@ func TestRingRead(t *testing.T) {
 		t.Fatalf("Read(10) = %q, %d, %d", data, next, dropped)
 	}
 }
+
+func TestRingReadKeepsCharacters(t *testing.T) {
+	r := NewRing(100)
+	r.Write([]byte("あい")) // 6 バイト
+	data, next, _ := r.Read(0, 4)
+	if data != "あ" || next != 3 {
+		t.Fatalf("Read(0, 4) = %q, %d", data, next)
+	}
+	data, next, _ = r.Read(next, 4)
+	if data != "い" || next != 6 {
+		t.Fatalf("Read(3, 4) = %q, %d", data, next)
+	}
+}

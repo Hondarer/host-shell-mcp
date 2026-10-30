@@ -84,6 +84,9 @@ func run(cfg config.Config) error {
 	al.Event("server_start", "version", version.Version, "pid", os.Getpid())
 	// 標準入力が閉じられる (SSH が切断される) と Run は戻る。
 	err = s.Run(ctx, &mcp.StdioTransport{})
+	if ctx.Err() != nil {
+		err = nil // シグナルによる停止は正常な終了として扱う。
+	}
 	al.Event("server_stop", "error", fmt.Sprint(err))
 	return err
 }

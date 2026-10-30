@@ -2,9 +2,6 @@
 package server
 
 import (
-	"fmt"
-	"os"
-	"runtime"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -23,27 +20,19 @@ func New(cfg config.Config, al *audit.Logger) (s *mcp.Server, close func()) {
 	shell := proc.DefaultShell(cfg.WindowsShell)
 	jm := jobs.NewManager(shell, cfg.MaxOutputBytes*4)
 
+	d := &tools.Deps{
+		Cfg:          cfg,
+		Audit:        al,
+		Jobs:         jm,
+		DefaultShell: shell,
+	}
 	s = mcp.NewServer(&mcp.Implementation{
 		Name:    "host-shell",
 		Title:   "host-shell",
 		Version: version.Version,
 	}, &mcp.ServerOptions{
-		Instructions: instructions(shell),
+		Instructions: tools.Instructions(d),
 	})
-	tools.Register(s, &tools.Deps{
-		Cfg:          cfg,
-		Audit:        al,
-		Jobs:         jm,
-		DefaultShell: shell,
-	})
+	tools.Register(s, d)
 	return s, func() { jm.StopAll(5 * time.Second) }
-}
-
-func instructions(shell string) string {
-	host, _ := os.Hostname()
-	return fmt.Sprintf(
-		"host-shell runs on the remote host %q (%s/%s) and executes operations there. "+
-			"Paths are interpreted on that host. The default shell for exec_run is %q. "+
-			"Outputs larger than the server limit are truncated, keeping the head and tail.",
-		host, runtime.GOOS, runtime.GOARCH, shell)
 }

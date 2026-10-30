@@ -12,6 +12,7 @@ import (
 
 	"github.com/hondarer/host-shell-mcp/internal/limit"
 	"github.com/hondarer/host-shell-mcp/internal/proc"
+	"github.com/hondarer/host-shell-mcp/internal/textenc"
 	"github.com/hondarer/host-shell-mcp/internal/version"
 )
 
@@ -22,6 +23,7 @@ type SudoRunInput struct {
 	Cwd        string `json:"cwd,omitempty" jsonschema:"working directory"`
 	Stdin      string `json:"stdin,omitempty" jsonschema:"text passed to standard input of the command"`
 	TimeoutSec int    `json:"timeout_sec,omitempty" jsonschema:"timeout in seconds"`
+	IOEncoding
 }
 
 // AuditArgs は標準入力の内容をログに残さないようにします。
@@ -42,8 +44,13 @@ func (d *Deps) sudoRun(ctx context.Context, _ *mcp.CallToolRequest, in SudoRunIn
 		argv = append(argv, "-u", in.User)
 	}
 	argv = append(argv, "--", "sh", "-c", in.Command)
+	output, stdin, err := in.resolve(in.Stdin)
+	if err != nil {
+		return nil, proc.Result{}, err
+	}
 	res, err := proc.Run(ctx, proc.Spec{Argv: argv, Dir: in.Cwd}, proc.Options{
-		Stdin:     in.Stdin,
+		Stdin:     stdin,
+		Output:    output,
 		Timeout:   d.Cfg.ClampTimeout(in.TimeoutSec),
 		MaxOutput: d.Cfg.MaxOutputBytes,
 	})
@@ -61,6 +68,8 @@ type SysInfoOutput struct {
 	Cwd          string `json:"cwd"`
 	PathSep      string `json:"path_separator"`
 	DefaultShell string `json:"default_shell"`
+	ConsoleEnc   string `json:"console_encoding" jsonschema:"encoding used for command input/output by default (system for output_encoding/stdin_encoding)"`
+	FileEnc      string `json:"file_encoding" jsonschema:"encoding used for text files by default (system for charset)"`
 	NumCPU       int    `json:"num_cpu"`
 	PID          int    `json:"pid"`
 	Executable   string `json:"executable"`
@@ -74,6 +83,8 @@ func (d *Deps) sysInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.Ca
 		Arch:         runtime.GOARCH,
 		PathSep:      string(os.PathSeparator),
 		DefaultShell: d.DefaultShell,
+		ConsoleEnc:   textenc.Console().Name,
+		FileEnc:      textenc.File().Name,
 		NumCPU:       runtime.NumCPU(),
 		PID:          os.Getpid(),
 		Version:      version.Version,
@@ -109,6 +120,7 @@ func (d *Deps) sysProcesses(ctx context.Context, _ *mcp.CallToolRequest, in SysP
 	}
 	// フィルターの前に切り詰めないよう、ここでは大きめの上限で取得する。
 	res, err := proc.Run(ctx, proc.Spec{Argv: argv}, proc.Options{
+		Output:    textenc.Choice{Auto: true, Enc: textenc.Console()},
 		Timeout:   d.Cfg.DefaultTimeout,
 		MaxOutput: 16 << 20,
 	})
