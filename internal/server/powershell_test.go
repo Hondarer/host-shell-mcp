@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
 // powershells returns the PowerShell shells available on this host.
@@ -50,8 +52,12 @@ func TestPowerShellExitCode(t *testing.T) {
 
 // TestPowerShellStdin checks that Japanese text passed as stdin reaches PowerShell intact.
 func TestPowerShellStdin(t *testing.T) {
+	shells := powershells(t)
+	if _, err := textenc.Console().Encode("日本語"); err != nil {
+		t.Skipf("the console code page %s cannot represent Japanese", textenc.Console().Name)
+	}
 	cs := connect(t)
-	for _, sh := range powershells(t) {
+	for _, sh := range shells {
 		out := call[struct {
 			Stdout string `json:"stdout"`
 		}](t, cs, "exec_run", map[string]any{"command": `$input | ForEach-Object { $_ }`, "shell": sh, "stdin": "日本語\n"})

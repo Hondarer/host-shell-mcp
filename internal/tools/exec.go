@@ -47,7 +47,7 @@ func (e IOEncoding) resolve(stdin string, def textenc.Encoding) (textenc.Choice,
 	}
 	b, err := in.Enc.Encode(stdin)
 	if err != nil {
-		return textenc.Choice{}, "", fmt.Errorf("stdin: %w", err)
+		return textenc.Choice{}, "", fmt.Errorf("stdin: %w (set stdin_encoding to an encoding the command reads, e.g. utf-8)", err)
 	}
 	return out, string(b), nil
 }
