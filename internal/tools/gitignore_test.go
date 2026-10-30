@@ -38,6 +38,8 @@ func ignoreTree(t *testing.T) string {
 		"node_modules",
 		"deep/*/mid.txt",
 		"CRLF.txt\r",
+		"out/**",
+		"outdir/**",
 	}, "\n")+"\n")
 	write("src/.gitignore", "!*.log\nsecret.txt\n")
 	for _, f := range []string{
@@ -46,7 +48,7 @@ func ignoreTree(t *testing.T) string {
 		"docs/c.txt", "#hash.txt", "dir-only", "sub/dir-only/f.txt", "a/z.txt", "a/b/c/z.txt", "b/z.txt",
 		"ax.dat", "dx.dat", "ey.dat", "dy.dat", "src/secret.txt", "secret.txt", "excluded-by-info.txt",
 		"node_modules/pkg/index.js", "src/node_modules", "deep/x/mid.txt", "deep/x/y/mid.txt", "CRLF.txt",
-		"plain.txt",
+		"plain.txt", "out", "outdir/a.txt",
 	} {
 		write(f, "x")
 	}
@@ -102,7 +104,7 @@ func TestGitignoreRules(t *testing.T) {
 	// The same result as git (TestGitignoreLikeGit), for hosts without git.
 	want := []string{
 		".gitignore", "b/z.txt", "deep/x/y/mid.txt", "dir-only", "docs/c.txt", "dx.dat", "dy.dat",
-		"keep.log", "plain.txt", "secret.txt", "src/.gitignore", "src/app.log", "src/root-only.txt",
+		"keep.log", "out", "plain.txt", "secret.txt", "src/.gitignore", "src/app.log", "src/root-only.txt",
 		"src/sub/app.log",
 	}
 	slices.Sort(want)

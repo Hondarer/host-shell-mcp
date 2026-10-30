@@ -99,7 +99,12 @@ func (r ignoreRule) matches(p string, isDir bool) bool {
 		rel = strings.ToLower(rel) // git on Windows ignores case (core.ignorecase)
 	}
 	if r.anchored {
-		return matchSegments(r.segs, strings.Split(rel, "/"))
+		segs := strings.Split(rel, "/")
+		// A trailing "/**" matches everything inside, but not the entry itself (git: "abc/**").
+		if r.segs[len(r.segs)-1] == "**" && len(segs) < len(r.segs) {
+			return false
+		}
+		return matchSegments(r.segs, segs)
 	}
 	ok, _ := path.Match(r.segs[0], path.Base(rel))
 	return ok
