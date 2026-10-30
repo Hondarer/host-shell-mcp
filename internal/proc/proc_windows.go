@@ -25,7 +25,7 @@ func shellCommand(ctx context.Context, sh, line string, interactive bool) (*exec
 		}
 		cmd := exec.CommandContext(ctx, comspec)
 		// cmd has its own quoting rules, so pass the command line as is instead of using Go's argument escaping.
-		// TODO: output of cmd's internal commands is in the OEM code page (CP932 on Japanese systems); consider converting it to UTF-8.
+		// Internal commands of cmd write in the OEM code page; the tools convert that to UTF-8 (textenc, output_encoding auto).
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			CmdLine: fmt.Sprintf(`"%s" /d /s /c "%s"`, comspec, line),
 		}
