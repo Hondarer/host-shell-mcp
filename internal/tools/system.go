@@ -7,11 +7,11 @@ import (
 	"os"
 	"os/user"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
-	"github.com/hondarer/host-shell-mcp/internal/limit"
 	"github.com/hondarer/host-shell-mcp/internal/proc"
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 	"github.com/hondarer/host-shell-mcp/internal/version"
@@ -152,51 +152,60 @@ func (d *Deps) enabledGroups() []string {
 
 // SysProcessesInput is the input of sys_processes.
 type SysProcessesInput struct {
-	Filter string `json:"filter,omitempty" jsonschema:"case-insensitive substring; only matching lines (plus the header) are returned"`
+	Filter string `json:"filter,omitempty" jsonschema:"case-insensitive substring of the name or command line"`
+	PID    int    `json:"pid,omitempty" jsonschema:"only this process and its descendants"`
+	Max    int    `json:"max,omitempty" jsonschema:"maximum processes to return (default 500)"`
+}
+
+// Process is one running process. Fields the OS does not provide, or that need rights host-shell
+// lacks (processes of other users on Windows), are empty.
+type Process struct {
+	PID         int    `json:"pid"`
+	PPID        int    `json:"ppid"`
+	Name        string `json:"name"`
+	CommandLine string `json:"command_line,omitempty"`
+	User        string `json:"user,omitempty"`
+	State       string `json:"state,omitempty" jsonschema:"Linux: R running, S sleeping, D waiting for I/O, Z zombie, T stopped, ..."`
+	StartTime   string `json:"start_time,omitempty" jsonschema:"RFC 3339"`
+	MemoryBytes uint64 `json:"memory_bytes,omitempty" jsonschema:"resident memory (working set on Windows)"`
 }
 
 // SysProcessesOutput is the output of sys_processes.
 type SysProcessesOutput struct {
-	Text      string `json:"text"`
-	Truncated bool   `json:"truncated,omitempty"`
+	Processes []Process `json:"processes"`
+	Total     int       `json:"total" jsonschema:"number of processes that matched before max was applied"`
+	Truncated bool      `json:"truncated,omitempty" jsonschema:"max was reached"`
 }
 
-// sysProcesses lists processes with the OS's standard commands.
-// TODO: read them directly from /proc or the Windows API and return a structured list.
-func (d *Deps) sysProcesses(ctx context.Context, _ *mcp.CallToolRequest, in SysProcessesInput) (*mcp.CallToolResult, SysProcessesOutput, error) {
-	argv := []string{"ps", "-eo", "pid,ppid,user,stat,etime,args"}
-	if runtime.GOOS == "windows" {
-		argv = []string{"tasklist", "/fo", "csv"}
-	}
-	// Fetch with a generous limit here so that nothing is truncated before filtering.
-	res, err := proc.Run(ctx, proc.Spec{Argv: argv}, proc.Options{
-		Output:    textenc.Choice{Auto: true, Enc: textenc.Console()},
-		Timeout:   d.Cfg.DefaultTimeout,
-		MaxOutput: 16 << 20,
-	})
+// sysProcesses lists processes from /proc on Linux and the Windows API on Windows, ordered by pid.
+func (d *Deps) sysProcesses(_ context.Context, _ *mcp.CallToolRequest, in SysProcessesInput) (*mcp.CallToolResult, SysProcessesOutput, error) {
+	all, err := listProcesses()
 	if err != nil {
 		return nil, SysProcessesOutput{}, err
 	}
-	if res.ExitCode != 0 {
-		return nil, SysProcessesOutput{}, errors.New(strings.TrimSpace(res.Stderr))
-	}
-	text := res.Stdout
-	if in.Filter != "" {
-		text = filterLines(text, in.Filter)
-	}
-	var out SysProcessesOutput
-	out.Text, out.Truncated = limit.Text(text, d.Cfg.MaxOutputBytes)
-	return nil, out, nil
-}
-
-func filterLines(text, sub string) string {
-	lines := strings.SplitAfter(text, "\n")
-	sub = strings.ToLower(sub)
-	var sb strings.Builder
-	for i, l := range lines {
-		if i == 0 || strings.Contains(strings.ToLower(l), sub) {
-			sb.WriteString(l)
+	slices.SortFunc(all, func(a, b Process) int { return a.PID - b.PID })
+	if in.PID > 0 {
+		keep := map[int]bool{in.PID: true}
+		for changed := true; changed; { // parents come before children only by chance, so repeat
+			changed = false
+			for _, p := range all {
+				if !keep[p.PID] && keep[p.PPID] && p.PID != p.PPID {
+					keep[p.PID], changed = true, true
+				}
+			}
 		}
+		all = slices.DeleteFunc(all, func(p Process) bool { return !keep[p.PID] })
 	}
-	return sb.String()
+	if in.Filter != "" {
+		f := strings.ToLower(in.Filter)
+		all = slices.DeleteFunc(all, func(p Process) bool {
+			return !strings.Contains(strings.ToLower(p.Name), f) && !strings.Contains(strings.ToLower(p.CommandLine), f)
+		})
+	}
+	out := SysProcessesOutput{Total: len(all)}
+	if max := orDefaultInt(in.Max, 500); len(all) > max {
+		all, out.Truncated = all[:max], true
+	}
+	out.Processes = all
+	return nil, out, nil
 }

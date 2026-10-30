@@ -1508,29 +1508,38 @@ Linux と Windows の違いは、ツールの中で吸収し、同じ形の結�
 
 ### sys_processes
 
-プロセスの一覧を、OS の標準のコマンドで取得して返します。
+プロセスの一覧を返します。OS の標準のコマンドは使わず、Linux では `/proc`、Windows では Windows の API から読みます (macOS では `ps`)。
 
 | 引数 | 型 | 必須 | 内容 |
 |---|---|---|---|
-| `filter` | string | | この文字列を含む行 (大文字と小文字を区別しない) と、見出しの行だけを返す |
+| `filter` | string | | 名前またはコマンド行にこの文字列を含むプロセスだけを返す (大文字と小文字を区別しない) |
+| `pid` | integer | | このプロセスと、その子孫だけを返す |
+| `max` | integer | | 返す最大数。省略時は 500 |
 
 Table: sys_processes の引数
 
 | 出力 | 型 | 内容 |
 |---|---|---|
-| `text` | string | コマンドの出力 |
-| `truncated` | boolean | 上限で切り詰めた場合に `true` |
+| `processes` | object[] | プロセスの配列 (下記)。`pid` の順 |
+| `total` | integer | 条件に合ったプロセスの数 (`max` で切る前) |
+| `truncated` | boolean | `max` で打ち切った場合に `true` |
 
 Table: sys_processes の出力
 
-| OS | 実行するコマンド | 形式 |
-|---|---|---|
-| Linux | `ps -eo pid,ppid,user,stat,etime,args` | 空白区切りの表 |
-| Windows | `tasklist /fo csv` | CSV |
+| 項目 | 型 | 内容 | Linux | Windows |
+|---|---|---|---|---|
+| `pid` | integer | プロセスの ID | `/proc/<pid>` | Toolhelp |
+| `ppid` | integer | 親のプロセスの ID | `/proc/<pid>/stat` | Toolhelp |
+| `name` | string | プロセスの名前 | `/proc/<pid>/stat` の comm | 実行ファイルの名前 |
+| `command_line` | string | コマンド行 | `/proc/<pid>/cmdline` | NtQueryInformationProcess |
+| `user` | string | 実行している利用者 | `/proc/<pid>/status` の Uid の名前 | プロセスのトークン (`DOMAIN\user`) |
+| `state` | string | 状態 (`R`、`S`、`D`、`Z`、`T` など) | `/proc/<pid>/stat` | なし |
+| `start_time` | string | 開始時刻 (RFC 3339) | `/proc/<pid>/stat` と起動時刻 | GetProcessTimes |
+| `memory_bytes` | integer | 使用中の物理メモリ | `/proc/<pid>/statm` の RSS | ワーキング セット |
 
-Table: sys_processes のコマンド
+Table: sys_processes の項目
 
-出力は、コマンドの出力と同じく自動判定で UTF-8 に変換します。
+取れない項目は省きます。Windows では、ほかの利用者のプロセスなど、開く権限のないプロセスの `command_line`、`user`、`start_time`、`memory_bytes` は空になります。
 
 ### proc_kill
 

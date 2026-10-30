@@ -2,7 +2,9 @@
 
 ## Processes
 
-- `sys_processes` lists processes (`filter` by substring).
+- `sys_processes` lists processes as objects: `pid`, `ppid`, `name`, `command_line`, `user`, `state`,
+  `start_time`, `memory_bytes`. `filter` matches the name or command line; `pid` returns one process
+  with its descendants (follow `ppid` for the tree); `max` (default 500) caps the list.
 - `proc_kill` sends a signal to a pid: Linux `terminate` (default), `kill`, `interrupt`, `hangup`, ...;
   Windows `kill`. `tree` includes descendants. On Linux `sudo: true` sends it as root.
   For jobs started with `job_start`, use `job_stop`.

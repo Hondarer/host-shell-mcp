@@ -16,7 +16,8 @@ func registerAdmin(s *mcp.Server, d *Deps) {
 	add(s, d, groupAdmin, &mcp.Tool{
 		Name:        "sys_processes",
 		Title:       "List processes",
-		Description: "List running processes (ps on Linux, tasklist on Windows) as text, optionally filtered by a case-insensitive substring. The header line is always kept. Use proc_kill to end one.",
+		Description: "List running processes with pid, ppid, name, command line, user, state, start time and memory, ordered by pid. " +
+			"filter keeps those whose name or command line contains a substring; pid keeps one process and its descendants. Use proc_kill to end one.",
 		Annotations: readOnly(),
 	}, d.sysProcesses)
 	add(s, d, groupAdmin, &mcp.Tool{
