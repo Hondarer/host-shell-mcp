@@ -175,48 +175,40 @@ Claude Code の設定の例は [利用ガイド](user-guide.md#claude-code) に�
 
 ### 保存先
 
-既定の保存先は次のとおりです。運用に合わせて `--log-file` で変更してください。
+既定の保存先は次のとおりです。運用に合わせて `--log-file` で変更してください。  
+実際のファイルは、日付ごとに、元の名前の拡張子の前に日付を入れたものになります (例: `audit-2026-10-31.log`)。
 
-| OS | 既定の保存先 |
+| OS | 既定の元の名前 |
 |---|---|
 | Linux | `~/.local/state/host-shell/audit.log` |
 | Windows | `%LOCALAPPDATA%\host-shell\audit.log` |
 
-Table: 操作ログの既定の保存先
+Table: 操作ログの既定の元の名前
 
 操作ログは、接続したユーザーの権限で書き込みます。  
 エージェントがログを書き換えられないようにするには、ログを別の場所に転送してください (下記)。
 
-### ローテーション
+### 日ごとの切り替えと保持
 
-`host-shell` 自身はローテーションを行いません。OS の仕組みを使ってください。
+`host-shell` は、接続先のローカル時刻の日付ごとにファイルを分け、当日のほかに 5 日分を残して、それより古いファイルを消します。logrotate などの設定は要りません。  
+1 件ごとにファイルを開いて閉じるため、複数のセッションが同時に書いても行は混ざりません。  
+5 日より長く残す必要がある場合は、下記の転送で、ログを別の場所に集めてください。
 
-```{.text caption="/etc/logrotate.d/host-shell (Linux の接続先)"}
-/home/hsagent/.local/state/host-shell/audit.log {
-    weekly
-    rotate 12
-    compress
-    missingok
-    notifempty
-    copytruncate
-}
-```
-
-`host-shell` はファイルを追記で開いたままにするため、`copytruncate` を指定します。
+日付ごとに分ける前の版を使っていた場合は、日付のない `audit.log` が残ります。不要であれば消してください。
 
 ### 転送と監視
 
 操作ログは 1 行 1 件の JSON (JSON Lines) なので、ログの収集基盤にそのまま取り込めます。  
-Linux では、rsyslog の imfile や Fluent Bit などで、ファイルを読んで転送できます。
+Linux では、rsyslog の imfile や Fluent Bit などで、ファイル (`audit-*.log`) を読んで転送できます。
 
 `jq` で次のように絞り込めます。
 
 ```bash
 # エラーになった呼び出し
-jq -c 'select(.msg == "tool_call" and .is_error)' audit.log
+jq -c 'select(.msg == "tool_call" and .is_error)' audit-*.log
 
 # 変更を伴うツールの呼び出し
-jq -c 'select(.tool | IN("exec_run", "job_start", "job_write", "sudo_run", "fs_edit", "fs_write", "fs_move", "fs_copy", "fs_remove"))' audit.log
+jq -c 'select(.tool | IN("exec_run", "job_start", "job_write", "sudo_run", "fs_edit", "fs_write", "fs_move", "fs_copy", "fs_remove"))' audit-*.log
 ```
 
 ### 記録される内容
@@ -242,4 +234,4 @@ jq -c 'select(.tool | IN("exec_run", "job_start", "job_write", "sudo_run", "fs_e
 - [ ] `authorized_keys` の `command=` または `ForceCommand` で、起動を `host-shell` (と制限のオプション) に固定した
 - [ ] 各段で `-T` を指定し、接続先のシェルが余計な出力をしないことを確認した
 - [ ] エージェント側で、変更を伴うツールに承認を必須にした
-- [ ] 操作ログの保存先、ローテーション、転送を決めた
+- [ ] 操作ログの保存先と、5 日より長く残す場合の転送を決めた
