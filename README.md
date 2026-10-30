@@ -13,6 +13,17 @@ agent --stdio(MCP)--> ssh -T hop1 ssh -T target host-shell --mcp
 
 Unlike typical SSH MCP servers that invoke `ssh` per operation on the client side, `host-shell` runs directly on the target machine.
 
+| | Client-side SSH MCP | host-shell |
+|---|---|---|
+| Where it runs | On the machine that runs the agent | On the target machine |
+| SFTP | Usually used for file transfer | Not used |
+| Port forwarding | Often required for tunnels and some transfers | Not required |
+| `AllowTcpForwarding no` | Routes that depend on forwarding stop there | Nested `ssh -T` still reaches the target |
+| Windows and encodings | Quoting and encodings stay with the caller | Normalized on the target (PowerShell quoting, Shift_JIS, EUC-JP) |
+| Session | Often opens a new SSH connection per call | Keeps one SSH connection for the whole MCP session |
+
+Table: Comparison with client-side SSH MCP servers
+
 ### Features
 
 - **No port forwarding or SFTP required**: Operates solely over the standard input and output of an SSH session. Multi-hop routes work via nested `ssh` even when jump hosts set `AllowTcpForwarding no`.
@@ -113,6 +124,17 @@ See the [Operations Guide](docs/en/operations.md) for details.
 ```
 
 クライアント側で `ssh` を起動する一般的な SSH 系 MCP サーバーとは異なり、`host-shell` 自体は接続先マシン上で動作します。
+
+| | クライアント側の SSH 系 MCP | host-shell |
+|---|---|---|
+| 実行場所 | エージェントと同じマシン | 接続先マシン |
+| SFTP | ファイル転送に使うことが多い | 使わない |
+| ポート転送 | トンネルや一部の転送に必要になることが多い | 不要 |
+| `AllowTcpForwarding no` | 転送に依存する経路はそこで止まる | `ssh -T` の入れ子で接続先まで届く |
+| Windows と文字コード | 引用符と文字コードの差は呼び側に残る | 接続先で吸収する (PowerShell の引用符、Shift_JIS、EUC-JP) |
+| セッション | 呼び出しのたびに SSH 接続を開くことが多い | MCP セッションの間、SSH は 1 本のまま |
+
+Table: クライアント側の SSH 系 MCP との違い
 
 ### 特長
 
