@@ -15,7 +15,8 @@ Everything you send and receive is UTF-8. host-shell converts on the host.
 
 - `output_encoding` (default `auto`) decodes stdout and stderr. When conversion happened,
   `stdout_encoding` / `stderr_encoding` (jobs: `status.output_encoding`) name the source encoding.
-- `stdin_encoding` (default `utf-8`) converts `stdin` and `job_write` input.
+- `stdin_encoding` (default `utf-8`; for PowerShell on Windows `system`, because PowerShell reads stdin in the
+  console code page) converts `stdin` and `job_write` input.
 
 ## Files
 

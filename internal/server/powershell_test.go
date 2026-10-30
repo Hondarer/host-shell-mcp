@@ -3,6 +3,7 @@ package server
 import (
 	"os/exec"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -43,6 +44,19 @@ func TestPowerShellExitCode(t *testing.T) {
 			if out.ExitCode != c.want {
 				t.Errorf("%s: %q: exit code %d, want %d (stderr %q)", sh, c.script, out.ExitCode, c.want, out.Stderr)
 			}
+		}
+	}
+}
+
+// TestPowerShellStdin checks that Japanese text passed as stdin reaches PowerShell intact.
+func TestPowerShellStdin(t *testing.T) {
+	cs := connect(t)
+	for _, sh := range powershells(t) {
+		out := call[struct {
+			Stdout string `json:"stdout"`
+		}](t, cs, "exec_run", map[string]any{"command": `$input | ForEach-Object { $_ }`, "shell": sh, "stdin": "日本語\n"})
+		if strings.TrimSpace(out.Stdout) != "日本語" {
+			t.Errorf("%s: stdout = %q", sh, out.Stdout)
 		}
 	}
 }

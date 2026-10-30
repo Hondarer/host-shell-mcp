@@ -397,8 +397,8 @@ UTF-8 として正しくないバイト列のうち、どの文字コードと�
 | ツール | 引数 | 既定 |
 |---|---|---|
 | `exec_run`、`job_start`、`sudo_run` | `output_encoding` (標準出力と標準エラー) | `auto` (コンソール) |
-| | `stdin_encoding` (標準入力) | `utf-8` |
-| `job_write` | `job_start` の `stdin_encoding` | `utf-8` |
+| | `stdin_encoding` (標準入力) | `utf-8` (Windows の PowerShell は `system`。下記) |
+| `job_write` | `job_start` の `stdin_encoding` | `job_start` と同じ |
 | `sys_processes` | なし | `auto` (コンソール) |
 | `fs_read` (`text`) | `charset` | `auto` (ファイル) |
 | `fs_edit` | `charset` | `auto` (ファイル)。読んだときの文字コード、BOM、改行で書き戻す |
@@ -509,7 +509,7 @@ Table: help の topic
 | `stdin` | string | | 標準入力に渡すテキスト。渡したあとに閉じる。省略時は空の入力 |
 | `timeout_sec` | integer | | タイムアウト (秒)。省略時は `--timeout`、上限は `--max-timeout` |
 | `output_encoding` | string | | 標準出力と標準エラーの文字コード。省略時は `auto` ([文字コードの指定](#文字コードの指定)) |
-| `stdin_encoding` | string | | `stdin` を変換する文字コード。省略時は `utf-8`。`auto` は指定できない |
+| `stdin_encoding` | string | | `stdin` を変換する文字コード。省略時は `utf-8`。ただし Windows で PowerShell (`powershell`、`pwsh`) が実行する場合は、コンソールのコード ページ (`system`)。`auto` は指定できない |
 
 Table: exec_run の引数 (※ command と argv のどちらか一方が必須)
 
@@ -1774,6 +1774,8 @@ PowerShell には、コマンド行を UTF-16LE の base64 にして `-EncodedCo
 
 Table: PowerShell の終了コード
 
+PowerShell は標準入力 (`$input`) をコンソールのコード ページで読み、スクリプトの中で設定を変えても効きません。このため、Windows で PowerShell が実行する場合は、`stdin` の既定の文字コードをコンソールのコード ページ (`system`) にします。コンソールのコード ページで表せない文字 (日本語の環境での絵文字など) は、`stdin` で渡せません。`pty` のジョブは、端末が UTF-8 で受け取るため対象外です。
+
 途中の文が失敗しても、最後の文が成功すれば終了コードは 0 です。途中で止めたい場合は、スクリプトの先頭で `$ErrorActionPreference = 'Stop'` を設定してください。  
 PowerShell の出力は UTF-8 になるため、`output_encoding` の自動判定では変換しません。  
 PowerShell から呼んだネイティブ コマンドの出力は、PowerShell が受け取って出力し直す場合があります。Shift_JIS を出力するコマンドが文字化けする場合は、`"shell": "cmd"` で実行してください。
@@ -1869,7 +1871,6 @@ Table: 操作ログで置き換える値
 - `sudo_run` は `-n` (パスワードなし) だけに対応します。パスワードが必要な場合は、`pty` のジョブで `sudo` を起動して入力してください。
 - 文字コードの自動判定は、UTF-8 として正しいかどうかと BOM だけで行います。UTF-8 以外の文字コードどうし (Shift_JIS と EUC-JP など) は区別しません。接続先の既定と異なる文字コードのファイルは、`charset` で指定してください。
 - まれに、UTF-8 以外の短い文字列が、UTF-8 としても正しいバイト列になることがあります。その場合は UTF-8 とみなすため、文字化けします。`output_encoding` や `charset` を明示してください。
-- `host-shell` は PowerShell の標準入力の文字コードを設定しません。日本語を `stdin` で PowerShell に渡して文字化けする場合は、`stdin_encoding` に `system` を指定してください。
 - `net_listen`、`svc_list`、`svc_control`、`log_query`、`sys_disks` は、Linux と Windows だけに対応します。Linux のサービスとログは systemd を前提にします。
 - 制限 (方針) は、ツールの引数に対する検査です。OS の権限の境界ではありません。[制限の限界](#制限の限界) を参照してください。
 - bridge の転送は、ファイルを 1 つずつ順に送ります。小さいファイルがとても多い場合は、接続先で `tar` などにまとめてから送るほうが速くなります。
