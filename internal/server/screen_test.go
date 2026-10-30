@@ -29,7 +29,7 @@ func TestPTYScreen(t *testing.T) {
 		defer stop(st.ID)
 		lines := screen(st.ID, "after")
 		if s := strings.Join(lines, "\n"); strings.Contains(s, "before") || !strings.Contains(s, "after") {
-			t.Errorf("screen after Clear-Host:\n%s", s)
+			t.Errorf("screen after Clear-Host: %q", s)
 		}
 		return
 	}
@@ -38,8 +38,10 @@ func TestPTYScreen(t *testing.T) {
 		st := call[jobStatus](t, cs, "job_start", map[string]any{"pty": true, "cols": 80, "rows": 12, "argv": []string{"top"}})
 		lines := screen(st.ID, "PID")
 		stop(st.ID)
-		if len(lines) != 12 || !strings.HasPrefix(lines[0], "top") {
-			t.Errorf("top screen (%d rows):\n%s", len(lines), strings.Join(lines, "\n"))
+		// The header row differs between systems (Linux "top - ...", macOS "Processes: ..."); the
+		// process table header is common. %q keeps the screen on one line in the CI log.
+		if s := strings.Join(lines, "\n"); len(lines) != 12 || !strings.Contains(s, "PID") || strings.Contains(s, "\x1b") {
+			t.Errorf("top screen (%d rows): %q", len(lines), s)
 		}
 	}
 	if _, err := exec.LookPath("vi"); err == nil {
@@ -54,7 +56,7 @@ func TestPTYScreen(t *testing.T) {
 		call[map[string]any](t, cs, "job_write", map[string]any{"id": st.ID, "input": "\x1b:q!\r"})
 		stop(st.ID)
 		if len(lines) != 12 || lines[0] != "line 1" || lines[10] != "line 11" || strings.Contains(strings.Join(lines, "\n"), "line 12\n") {
-			t.Errorf("vi screen (%d rows):\n%s", len(lines), strings.Join(lines, "\n"))
+			t.Errorf("vi screen (%d rows): %q", len(lines), strings.Join(lines, "\n"))
 		}
 	}
 
