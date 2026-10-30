@@ -142,7 +142,7 @@ Table: CI のジョブ
 
 ## リリース
 
-GitHub で Release を公開すると、`.github/workflows/release.yml` が対象タグ (例: `v1.0.0`) をバージョンとしてビルドし、次のアーカイブを Release に添付します。
+GitHub で Release を公開または編集したとき、および既存のタグを別のコミットへ移したとき、`.github/workflows/release.yml` が対象タグ (例: `v1.0.0`) をバージョンとしてビルドし、次のアーカイブを Release に添付します。同名のファイルは上書きし、以前の名前のアーカイブは削除します。
 
 | ファイル | 内容 |
 |---|---|

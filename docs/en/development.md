@@ -142,7 +142,7 @@ Test output filters `go test -v` to show only result lines, skip lines, and test
 
 ## Releases
 
-Publishing a GitHub Release triggers `.github/workflows/release.yml`, which builds binaries stamped with the release tag (for example `v1.0.0`) and attaches the following archives to the Release.
+Publishing or editing a GitHub Release, or moving an existing tag onto another commit, triggers `.github/workflows/release.yml`. The workflow builds binaries stamped with the release tag (for example `v1.0.0`) and attaches the following archives to the Release. Files with the same name are replaced, and archives left under an older name are removed.
 
 | File | Contents |
 |---|---|
