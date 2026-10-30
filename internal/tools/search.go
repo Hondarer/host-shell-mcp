@@ -30,10 +30,15 @@ var defaultExcludeDirs = []string{".git", ".hg", ".svn"}
 var errStop = errors.New("stop walking")
 
 // walkFiles walks everything under root. Unreadable entries are counted and skipped.
+// With useGitignore, entries git ignores are skipped too (see gitignore).
 // fn receives the path and the path relative to root ("/" separated).
-func walkFiles(ctx context.Context, root string, excludeDirs []string, fn func(path, rel string, d fs.DirEntry) error) (skipped int, err error) {
+func walkFiles(ctx context.Context, root string, excludeDirs []string, useGitignore bool, fn func(path, rel string, d fs.DirEntry) error) (skipped int, err error) {
 	if excludeDirs == nil {
 		excludeDirs = defaultExcludeDirs
+	}
+	var ign *gitignore
+	if fi, err := os.Stat(root); useGitignore && err == nil && fi.IsDir() {
+		ign = newGitignore(root)
 	}
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
@@ -48,6 +53,15 @@ func walkFiles(ctx context.Context, root string, excludeDirs []string, fn func(p
 		}
 		if d.IsDir() && path != root && slices.Contains(excludeDirs, d.Name()) {
 			return fs.SkipDir
+		}
+		if ign != nil && path != root {
+			abs, _ := filepath.Abs(path)
+			if ign.ignored(abs, d.IsDir()) {
+				if d.IsDir() {
+					return fs.SkipDir
+				}
+				return nil
+			}
 		}
 		rel := d.Name()
 		if r, err := filepath.Rel(root, path); err == nil && r != "." {
@@ -76,6 +90,7 @@ type SearchGrepInput struct {
 	MaxMatches   int      `json:"max_matches,omitempty" jsonschema:"maximum matching lines (content mode) or files (files and count modes) to return (default 200)"`
 	MaxFileBytes int64    `json:"max_file_bytes,omitempty" jsonschema:"skip files larger than this (default 10 MiB)"`
 	Charset      string   `json:"charset,omitempty" jsonschema:"encoding of the files: auto (default: BOM, then UTF-8 if valid, otherwise the host file code page, decided per line), utf-8, system, or a charset name such as shift_jis, euc-jp, utf-16le"`
+	Gitignore    *bool    `json:"gitignore,omitempty" jsonschema:"skip files and directories git ignores (.gitignore of the searched directories and, inside a repository, of its parents, and .git/info/exclude). Default true; false searches them too"`
 	Multiline    bool     `json:"multiline,omitempty" jsonschema:"match the pattern against the whole file instead of each line: . also matches a newline, ^ and $ match at line starts and ends. A match reports its first line (line), last line (end_line) and the matched text. Files over 32 MiB are skipped"`
 }
 
@@ -170,7 +185,7 @@ func (d *Deps) searchGrep(ctx context.Context, _ *mcp.CallToolRequest, in Search
 	}
 
 	out := SearchGrepOutput{}
-	skipped, err := walkFiles(ctx, orDefault(in.Path, "."), in.ExcludeDirs, func(path, rel string, de fs.DirEntry) error {
+	skipped, err := walkFiles(ctx, orDefault(in.Path, "."), in.ExcludeDirs, in.Gitignore == nil || *in.Gitignore, func(path, rel string, de fs.DirEntry) error {
 		if !de.Type().IsRegular() || !include.match(rel, de.Name()) {
 			return nil
 		}
@@ -418,6 +433,7 @@ type SearchFilesInput struct {
 	Path        string   `json:"path,omitempty" jsonschema:"root directory (default: current directory)"`
 	Type        string   `json:"type,omitempty" jsonschema:"file, dir or empty for both"`
 	ExcludeDirs []string `json:"exclude_dirs,omitempty" jsonschema:"directory names to skip (default: .git .hg .svn). Passing a list replaces the default"`
+	Gitignore   *bool    `json:"gitignore,omitempty" jsonschema:"skip files and directories git ignores, as in search_grep. Default true"`
 	Sort        string   `json:"sort,omitempty" jsonschema:"path (default: walk order) or mtime (most recently modified first)"`
 	MaxResults  int      `json:"max_results,omitempty" jsonschema:"maximum paths to return (default 1000)"`
 }
@@ -459,7 +475,7 @@ func (d *Deps) searchFiles(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 	}
 	var all []found
 	out := SearchFilesOutput{Paths: []string{}}
-	skipped, err := walkFiles(ctx, root, in.ExcludeDirs, func(path, rel string, de fs.DirEntry) error {
+	skipped, err := walkFiles(ctx, root, in.ExcludeDirs, in.Gitignore == nil || *in.Gitignore, func(path, rel string, de fs.DirEntry) error {
 		if path == root {
 			return nil
 		}
@@ -536,7 +552,7 @@ func (d *Deps) fsManifest(ctx context.Context, _ *mcp.CallToolRequest, in FsMani
 	root := orDefault(in.Path, ".")
 	max := orDefaultInt(in.MaxFiles, 2000)
 	out := FsManifestOutput{Root: absPath(root), Files: []ManifestEntry{}}
-	skipped, err := walkFiles(ctx, root, in.ExcludeDirs, func(path, rel string, de fs.DirEntry) error {
+	skipped, err := walkFiles(ctx, root, in.ExcludeDirs, false, func(path, rel string, de fs.DirEntry) error {
 		if !de.Type().IsRegular() || !include.match(rel, de.Name()) {
 			return nil
 		}

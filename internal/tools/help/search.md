@@ -9,6 +9,9 @@
 - On Windows, matching is case-insensitive and `\` is accepted as a separator.
 - `exclude_dirs` names directories to skip anywhere in the tree. The default is `.git`, `.hg`, `.svn`.
   A list you pass replaces the default, so include those too, e.g. `[".git", "node_modules", "dist"]`.
+- `search_files` and `search_grep` skip what git ignores (`.gitignore` files of the searched tree and,
+  inside a repository, of its parents, plus `.git/info/exclude`). Pass `gitignore: false` to search
+  ignored files too (build output, `node_modules`, logs).
 
 ## search_files
 

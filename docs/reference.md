@@ -1135,6 +1135,7 @@ Windows の接続先では、大文字と小文字を区別せずに照合し、
 | `path` | string | | 検索するディレクトリまたはファイル。省略時は作業ディレクトリ |
 | `include` | string | | 対象のファイルの [glob](#glob) (例: `*.go`、`src/**/*.ts`) |
 | `exclude_dirs` | string[] | | 降りないディレクトリの名前 |
+| `gitignore` | boolean | | git が無視するファイルとディレクトリを飛ばす。省略時は `true` ([.gitignore の扱い](#gitignore-の扱い)) |
 | `ignore_case` | boolean | | 大文字と小文字を区別しない |
 | `literal` | boolean | | `pattern` を正規表現ではなく、そのままの文字列として検索する |
 | `output_mode` | string | | `content` (既定、一致した行)、`files` (一致したファイルのパスだけ)、`count` (ファイルごとの一致した行の数) |
@@ -1180,6 +1181,7 @@ Table: search_grep の一致
 - 通常のファイル以外 (シンボリック リンク、デバイスなど)
 - 先頭 8000 バイトに NUL を含むファイル (バイナリとみなす)。ただし、UTF-16 の BOM があるファイルと、`charset` に UTF-16 を指定した場合は検索する
 - `max_file_bytes` より大きいファイル
+- git が無視するファイル (`gitignore` が `true` の場合)
 
 1 MiB を超える行があるファイルは、その行の手前までを検索します。  
 正規表現は、UTF-8 に変換した後の行に対して照合します。日本語のパターンで、Shift_JIS や EUC-JP のファイルも検索できます。  
@@ -1207,6 +1209,33 @@ Table: search_grep の一致
 {"pattern": "connect(", "literal": true, "path": "/srv/app/src", "context": 3}
 ```
 
+### .gitignore の扱い
+
+`search_grep` と `search_files` は、既定で、git が無視するファイルとディレクトリを飛ばします。`gitignore: false` を指定すると、それらも対象にします。`exclude_dirs` は、これとは別に働きます。
+
+読む規則のファイルは次のとおりです。git の全体の設定 (`core.excludesFile`) は読みません。
+
+1. リポジトリの `.git/info/exclude` (検索の起点がリポジトリの中の場合)
+2. リポジトリのルートから検索の起点までの各ディレクトリの `.gitignore` (起点がリポジトリの外の場合は、起点の `.gitignore` から)
+3. 検索で降りる各ディレクトリの `.gitignore`
+
+git と同じく、後に読む規則 (深いディレクトリの規則) が優先し、同じファイルの中では後の行が優先します。リポジトリのルートは、`.git` のあるディレクトリです。
+
+| 書式 | 意味 |
+|---|---|
+| 空行、`#` で始まる行 | 無視する (`\#` で始めると `#` で始まる名前) |
+| 行末の空白 | 無視する (`\ ` で残す) |
+| `!pattern` | 否定。それまでの規則で無視したものを戻す |
+| `pattern/` | ディレクトリだけに一致する |
+| 先頭または途中に `/` がある | その `.gitignore` のディレクトリからの相対パスに一致する |
+| `/` がない | その `.gitignore` のディレクトリ以下の、どの深さの名前にも一致する |
+| `*`、`?`、`[...]`、`[!...]` | `/` 以外の任意の文字列、任意の 1 文字、文字の集合 |
+| `**` | 0 個以上のディレクトリ (`a/**/b`、`**/b`、`a/**`) |
+
+Table: .gitignore の書式
+
+無視したディレクトリには降りないため、その中のファイルを否定で戻すことはできません (git と同じ)。検索の起点そのものは、無視される場所でも検索します。Windows では、大文字と小文字を区別しません。
+
 ### search_files
 
 名前やパスが [glob](#glob) に一致するファイルやディレクトリを探します。
@@ -1217,6 +1246,7 @@ Table: search_grep の一致
 | `path` | string | | 探すディレクトリ。省略時は作業ディレクトリ |
 | `type` | string | | `file` (ディレクトリ以外)、`dir`、または省略 (両方) |
 | `exclude_dirs` | string[] | | 降りないディレクトリの名前 |
+| `gitignore` | boolean | | git が無視するファイルとディレクトリを飛ばす。省略時は `true` ([.gitignore の扱い](#gitignore-の扱い)) |
 | `sort` | string | | `path` (既定、たどった順) または `mtime` (更新時刻の新しい順) |
 | `max_results` | integer | | 返すパスの最大数。省略時は 1000 |
 
@@ -1937,7 +1967,6 @@ Table: 操作ログで置き換える値
 ## 制限事項
 
 - 疑似端末は `job_start` の `pty` だけで使えます。`exec_run` は端末なしで動きます。全画面のプログラム (`vi`、`top` など) は動きますが、`job_read` は画面の状態ではなく出力の流れを返すため、内容を読み取りにくい場合があります。
-- `search_grep` と `search_files` は `.gitignore` を解釈しません。`node_modules` などは `exclude_dirs` で除外してください。
 - 文字コードの自動判定は、UTF-8 として正しいかどうかと BOM だけで行います。UTF-8 以外の文字コードどうし (Shift_JIS と EUC-JP など) は区別しません。接続先の既定と異なる文字コードのファイルは、`charset` で指定してください。
 - まれに、UTF-8 以外の短い文字列が、UTF-8 としても正しいバイト列になることがあります。その場合は UTF-8 とみなすため、文字化けします。`output_encoding` や `charset` を明示してください。
 - `net_listen`、`svc_list`、`svc_control`、`log_query`、`sys_disks` は、Linux と Windows だけに対応します。Linux のサービスとログは systemd を前提にします。
