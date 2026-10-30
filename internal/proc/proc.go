@@ -158,11 +158,17 @@ func DefaultShell(windowsShell string) string {
 }
 
 // powershellArgs passes the script with -EncodedCommand to avoid differences in quote handling.
+//
+// Before the script, output is set to UTF-8. (Setting [Console]::InputEncoding there has no effect on
+// $input, which PowerShell sets up before the script runs; the tools encode stdin for PowerShell in
+// the console code page instead.) After the script, the exit code is taken from the
+// last statement, as with sh -c: 0 when it succeeded ($? is true), otherwise $LASTEXITCODE when a
+// native command set one, otherwise 1. A script that ends with exit N, or stops on a terminating
+// error, never reaches that part.
 func powershellArgs(script string, interactive bool) []string {
-	// Make output UTF-8 and carry over the exit code of native commands.
-	// TODO: consider how to handle cmdlets that fail in the middle of the script (reflecting $?).
 	script = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n" +
-		script + "\nif ($LASTEXITCODE) { exit $LASTEXITCODE }"
+		script +
+		"\n$hostShellOk = $?; if ($hostShellOk) { exit 0 }; if ($LASTEXITCODE) { exit $LASTEXITCODE }; exit 1"
 	u := utf16.Encode([]rune(script))
 	b := make([]byte, len(u)*2)
 	for i, c := range u {

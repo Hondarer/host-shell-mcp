@@ -4,7 +4,9 @@
   To use cmd, pass `"shell": "cmd"` to `exec_run` or `job_start` for that call (`pwsh` works the same way).
   The user can make cmd the default for the whole server by starting host-shell with `--windows-shell cmd`.
 - PowerShell scripts are passed with `-EncodedCommand`, so quotes, `$` and newlines in `command`
-  need no extra escaping. The exit code of the last native command is returned. Output is UTF-8.
+  need no extra escaping. Output is UTF-8. As with `sh -c`, the exit code follows the last statement:
+  0 if it succeeded, the native exit code if a native command failed, 1 if a cmdlet failed.
+  Set `$ErrorActionPreference = 'Stop'` at the top to stop at the first error.
 - For `cmd`, the command line is passed to `cmd /d /s /c` unchanged, with cmd quoting rules.
 - If output of a native program run from PowerShell is garbled, run it with `shell: "cmd"`;
   host-shell then converts from the console code page (`console_encoding`).
