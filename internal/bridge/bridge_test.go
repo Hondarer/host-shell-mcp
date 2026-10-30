@@ -5,9 +5,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -247,5 +249,44 @@ func TestLocalPolicy(t *testing.T) {
 	}
 	if !res.IsError || !strings.Contains(res.Content[0].(*mcp.TextContent).Text, "policy:") {
 		t.Errorf("push outside allowed path: %+v", res.Content)
+	}
+}
+
+func TestTransferParallel(t *testing.T) {
+	cs := connectBridge(t, policy.Options{}, Options{}, nil)
+	src := t.TempDir()
+	for i := 0; i < 40; i++ {
+		os.WriteFile(filepath.Join(src, fmt.Sprintf("f%02d.txt", i)), []byte(strings.Repeat("x", i)), 0o644)
+	}
+	big := make([]byte, 3<<20)
+	rand.Read(big)
+	os.WriteFile(filepath.Join(src, "big.bin"), big, 0o644)
+
+	var lists [][]string
+	for _, parallel := range []int{1, 4} {
+		remote := filepath.Join(t.TempDir(), "remote")
+		out := call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": src, "remote_path": remote, "parallel": parallel})
+		if out.Transferred != 41 || out.Failed != 0 {
+			t.Fatalf("parallel %d: %+v", parallel, out)
+		}
+		var paths []string
+		for _, f := range out.Files {
+			paths = append(paths, f.Path)
+		}
+		lists = append(lists, paths)
+		if got, _ := os.ReadFile(filepath.Join(remote, "big.bin")); !bytes.Equal(got, big) {
+			t.Errorf("parallel %d: big.bin differs", parallel)
+		}
+		back := filepath.Join(t.TempDir(), "back")
+		if out := call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": back, "remote_path": remote, "parallel": parallel}); out.Transferred != 41 || out.Failed != 0 {
+			t.Errorf("pull parallel %d: %+v", parallel, out)
+		}
+	}
+	if !slices.Equal(lists[0], lists[1]) {
+		t.Errorf("order differs:\n%v\n%v", lists[0], lists[1])
+	}
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "transfer_push", Arguments: map[string]any{"local_path": src, "remote_path": t.TempDir(), "parallel": 17}})
+	if err != nil || !res.IsError {
+		t.Errorf("parallel 17: %v %+v", err, res)
 	}
 }

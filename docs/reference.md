@@ -1801,6 +1801,7 @@ Table: bridge のオプション
 | `overwrite` | boolean | | 内容の違う既存のファイルを置き換える。同じ内容のファイルは常に送らない |
 | `exclude` | string[] | | 送らないファイルやディレクトリの名前の glob (例: `[".git", "node_modules", "*.pyc"]`)。どの階層でも一致する |
 | `dry_run` | boolean | | 送らずに、送るものを示す |
+| `parallel` | integer | | 同時に送るファイルの数 (1 から 16)。省略時は 4 |
 
 Table: transfer_push の引数
 
@@ -1826,6 +1827,8 @@ Table: transfer_push の引数
 Table: transfer_push と transfer_pull の出力
 
 要求に `progressToken` がある場合は、送ったバイト数と全体のバイト数を、1 秒ごとに進み具合として送ります。
+
+送るファイルの一覧を作った後、ファイルごとの処理 (分割した書き込み、照合、名前の変更) を、最大 `parallel` 個まで同時に行います。1 つのファイルの分割した書き込みは順に行います。結果の `files` は、同時に送っても、一覧の順に並びます。経路が遅い場合や、接続先の負荷を抑えたい場合は、`parallel` を小さくしてください。
 
 ### transfer_pull
 
@@ -1996,5 +1999,4 @@ Table: 操作ログで置き換える値
 - まれに、UTF-8 以外の短い文字列が、UTF-8 としても正しいバイト列になることがあります。その場合は UTF-8 とみなすため、文字化けします。`output_encoding` や `charset` を明示してください。
 - `net_listen`、`svc_list`、`svc_control`、`log_query`、`sys_disks` は、Linux と Windows だけに対応します。Linux のサービスとログは systemd を前提にします。
 - 制限 (方針) は、ツールの引数に対する検査です。OS の権限の境界ではありません。[制限の限界](#制限の限界) を参照してください。
-- bridge の転送は、ファイルを 1 つずつ順に送ります。小さいファイルがとても多い場合は、接続先で `tar` などにまとめてから送るほうが速くなります。
 - 動作する OS は、Go 1.26 の要件により、Windows 10 / Windows Server 2016 以降、Linux カーネル 3.2 以降、macOS 12 以降 (bridge) です。`pty` には、Windows 10 1809 / Windows Server 2019 以降が必要です。

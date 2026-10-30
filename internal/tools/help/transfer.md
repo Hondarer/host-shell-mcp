@@ -17,6 +17,7 @@ When host-shell is registered through `host-shell bridge` on your local machine,
   context. Each file is written under a temporary name, checked by SHA-256 and then renamed.
 - Identical files are skipped (`unchanged`), so repeating a push or pull syncs only the differences.
   Different existing files are reported as `exists` unless `overwrite` is set. `dry_run` previews.
+- Up to `parallel` files (default 4, at most 16) go at the same time; results keep the list order.
 - Executable bits are kept between Linux hosts. Empty directories and symbolic links are not copied.
 - If these tools are missing, host-shell is registered without bridge.
 

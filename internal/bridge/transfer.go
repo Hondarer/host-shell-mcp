@@ -16,6 +16,8 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -93,6 +95,46 @@ type TransferInput struct {
 	Overwrite  bool     `json:"overwrite,omitempty" jsonschema:"replace existing files whose contents differ (identical files are always skipped)"`
 	Exclude    []string `json:"exclude,omitempty" jsonschema:"names (globs) of files or directories to skip anywhere in the tree, e.g. [\".git\", \"node_modules\", \"*.pyc\"]"`
 	DryRun     bool     `json:"dry_run,omitempty" jsonschema:"only report what would be transferred"`
+	Parallel   int      `json:"parallel,omitempty" jsonschema:"files transferred at the same time, 1 to 16 (default 4). Lower it for a slow or busy link"`
+}
+
+// defaultParallel and maxParallel bound how many files are transferred at the same time.
+const (
+	defaultParallel = 4
+	maxParallel     = 16
+)
+
+// parallelism returns the number of files to transfer at the same time.
+func (in TransferInput) parallelism() (int, error) {
+	switch {
+	case in.Parallel == 0:
+		return defaultParallel, nil
+	case in.Parallel < 1 || in.Parallel > maxParallel:
+		return 0, fmt.Errorf("parallel must be 1 to %d: %d", maxParallel, in.Parallel)
+	}
+	return in.Parallel, nil
+}
+
+// forEach runs fn for the indexes 0..n-1, at most parallel at a time, and stops starting new ones
+// when ctx ends. Results are kept by index, so their order does not depend on timing.
+func forEach(ctx context.Context, n, parallel int, fn func(i int)) error {
+	sem := make(chan struct{}, parallel)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+			return ctx.Err()
+		}
+		wg.Add(1)
+		go func() {
+			defer func() { <-sem; wg.Done() }()
+			fn(i)
+		}()
+	}
+	wg.Wait()
+	return ctx.Err()
 }
 
 // FileResult is the result for one file.
@@ -179,6 +221,10 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 	if in.LocalPath == "" || in.RemotePath == "" {
 		return nil, TransferOutput{}, errors.New("local_path and remote_path are required")
 	}
+	parallel, err := in.parallelism()
+	if err != nil {
+		return nil, TransferOutput{}, err
+	}
 	if err := t.local.CheckPath(in.LocalPath, false); err != nil {
 		return nil, TransferOutput{}, err
 	}
@@ -255,30 +301,29 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 	}
 
 	out := TransferOutput{Source: absLocal(in.LocalPath), Destination: dest}
-	var total, done int64
+	var total int64
+	var done atomic.Int64
 	for _, f := range files {
 		total += f.size
 	}
 	pr := newProgress(ctx, req)
-	for _, f := range files {
-		if ctx.Err() != nil {
-			return nil, TransferOutput{}, ctx.Err()
-		}
+	results := make([]FileResult, len(files))
+	err = forEach(ctx, len(files), parallel, func(i int) {
+		f := files[i]
 		r := FileResult{Path: f.rel, Bytes: f.size}
+		defer func() { results[i] = r }()
 		target := dest
 		if info.IsDir() {
 			target = strings.TrimRight(dest, `/\`) + "/" + f.rel
 		}
 		if f.link {
 			r.Status = "skipped"
-			out.add(r)
-			continue
+			return
 		}
 		sum, err := hashLocal(f.full)
 		if err != nil {
 			r.Status, r.Error = "error", err.Error()
-			out.add(r)
-			continue
+			return
 		}
 		e, exists := remote[f.rel]
 		switch {
@@ -290,14 +335,19 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 			r.Status = "would-send"
 		default:
 			if err := t.sendFile(ctx, f, target, sum, func(n int64) {
-				pr.report(float64(done+n), float64(total), fmt.Sprintf("sending %s", f.rel))
+				pr.report(float64(done.Load()+n), float64(total), fmt.Sprintf("sending %s", f.rel))
 			}); err != nil {
 				r.Status, r.Error = "error", err.Error()
 			} else {
 				r.Status = "sent"
 			}
 		}
-		done += f.size
+		done.Add(f.size)
+	})
+	if err != nil {
+		return nil, TransferOutput{}, err
+	}
+	for _, r := range results {
 		out.add(r)
 	}
 	out.finish(start)
@@ -369,6 +419,10 @@ func (t *transfer) pull(ctx context.Context, req *mcp.CallToolRequest, in Transf
 	if in.LocalPath == "" || in.RemotePath == "" {
 		return nil, TransferOutput{}, errors.New("local_path and remote_path are required")
 	}
+	parallel, err := in.parallelism()
+	if err != nil {
+		return nil, TransferOutput{}, err
+	}
 	rstat, rexists, err := t.remoteStat(ctx, in.RemotePath)
 	if err != nil {
 		return nil, TransferOutput{}, err
@@ -398,19 +452,20 @@ func (t *transfer) pull(ctx context.Context, req *mcp.CallToolRequest, in Transf
 		return nil, TransferOutput{}, err
 	}
 	out := TransferOutput{Source: in.RemotePath, Destination: absLocal(dest)}
-	var total, done int64
+	if isDir {
+		entries = slices.DeleteFunc(entries, func(e remoteEntry) bool { return excluded(e.Path, in.Exclude) })
+	}
+	var total int64
+	var done atomic.Int64
 	for _, e := range entries {
 		total += e.Size
 	}
 	pr := newProgress(ctx, req)
-	for _, e := range entries {
-		if ctx.Err() != nil {
-			return nil, TransferOutput{}, ctx.Err()
-		}
-		if isDir && excluded(e.Path, in.Exclude) {
-			continue
-		}
+	results := make([]FileResult, len(entries))
+	err = forEach(ctx, len(entries), parallel, func(i int) {
+		e := entries[i]
 		r := FileResult{Path: e.Path, Bytes: e.Size}
+		defer func() { results[i] = r }()
 		src, target := in.RemotePath, dest
 		if isDir {
 			src = strings.TrimRight(in.RemotePath, `/\`) + "/" + e.Path
@@ -427,14 +482,19 @@ func (t *transfer) pull(ctx context.Context, req *mcp.CallToolRequest, in Transf
 			r.Status = "would-send"
 		default:
 			if err := t.fetchFile(ctx, src, target, e, func(n int64) {
-				pr.report(float64(done+n), float64(total), fmt.Sprintf("fetching %s", e.Path))
+				pr.report(float64(done.Load()+n), float64(total), fmt.Sprintf("fetching %s", e.Path))
 			}); err != nil {
 				r.Status, r.Error = "error", err.Error()
 			} else {
 				r.Status = "sent"
 			}
 		}
-		done += e.Size
+		done.Add(e.Size)
+	})
+	if err != nil {
+		return nil, TransferOutput{}, err
+	}
+	for _, r := range results {
 		out.add(r)
 	}
 	out.finish(start)
@@ -571,6 +631,7 @@ type progress struct {
 	ctx   context.Context
 	ss    *mcp.ServerSession
 	token any
+	mu    sync.Mutex // files are transferred in parallel
 	last  time.Time
 }
 
@@ -582,7 +643,12 @@ func newProgress(ctx context.Context, req *mcp.CallToolRequest) *progress {
 }
 
 func (p *progress) report(value, total float64, msg string) {
-	if p == nil || time.Since(p.last) < time.Second {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if time.Since(p.last) < time.Second {
 		return
 	}
 	p.last = time.Now()
