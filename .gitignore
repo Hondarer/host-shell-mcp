@@ -15,4 +15,4 @@ coverage.*
 Thumbs.db
 
 # Working folder
-prompt/
+/prompts/

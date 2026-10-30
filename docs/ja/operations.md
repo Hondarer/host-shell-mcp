@@ -1,5 +1,8 @@
 # host-shell 運用ガイド
 
+> [!NOTE]
+> この文書が正本です。英訳は [../en/operations.md](../en/operations.md) にあります。内容が一致しない場合は日本語版が優先されます。
+
 `host-shell` を安全に運用するための権限設計、制限オプション、ログ管理の手順を説明します。  
 導入手順は [利用ガイド](user-guide.md)、各機能の詳細仕様は [リファレンス](reference.md) を参照してください。
 
@@ -115,7 +118,7 @@ Match User hsagent
 
 ## sudo の設定
 
-`sudo_run` は、sudoers に `NOPASSWD` 設定がなくても `password` 引数でパスワードを渡せば実行できます。パスワードは `sudo` が要求したときのみ askpass 経由で渡され、実行コマンドの標準入力や操作ログには露出しません ([リファレンスの sudo_run](reference.md#sudo_run))。  
+`sudo_run` は、sudoers に `NOPASSWD` 設定がなくても `password` 引数でパスワードを渡せば実行できます。パスワードは `sudo` が要求したときのみ askpass 経由で渡され、実行コマンドの標準入力や操作ログには含まれません ([リファレンスの sudo_run](reference.md#sudo_run))。  
 ただし、パスワード文字列はエージェントおよび LLM サービスを経由します。パスワードを入力せずに運用する場合は、sudoers に `NOPASSWD` 規則を設定して許可コマンドを限定します。  
 なお、管理ツール (`proc_kill`、`svc_control`、`log_query`) の `sudo` オプションはパスワード不要の `sudo -n` のみに対応します。
 
@@ -221,6 +224,6 @@ jq -c 'select(.tool | IN("exec_run", "job_start", "job_write", "sudo_run", "fs_e
 - [ ] 必要な制限オプション (`--read-only`、`--tools`、`--allow-path` など) を決定した
 - [ ] sudoers の許可対象を必要なコマンドのみに限定した
 - [ ] `authorized_keys` の `command=` または `sshd_config` の `ForceCommand` で起動コマンドと制限オプションを固定した
-- [ ] SSH の各段に `-T` を指定し、非対話シェルが余計な標準出力を出さないことを確認した
+- [ ] SSH の各段に `-T` を指定し、非対話シェルが標準出力へ不要な出力を行わないことを確認した
 - [ ] エージェント側で変更系ツールの実行前承認を設定した
 - [ ] 操作ログの保存先と、長期保持が必要な場合の外部転送を設定した

@@ -1,169 +1,168 @@
 ---
 name: host-shell-connect
-description: host-shell (SSH 接続先で動作する MCP サーバー) を接続先に配置し、起動確認とエージェント登録コマンドの作成を行う。「host-shell を target に入れて」「hop1 経由で target を MCP で操作できるようにして」「host-shell を更新して」のように、接続先マシンへの host-shell 導入・更新時に使用する。Set up, deploy, update, or verify host-shell on a remote host over SSH.
+description: Deploy, update, or verify host-shell (an MCP server running on the SSH target) over SSH and prepare the agent registration command. Use for requests such as "put host-shell on target", "make target operable over MCP through hop1", or "update host-shell".
 ---
 
-# host-shell の接続準備
+# Preparing a host-shell connection
 
-接続先マシンに `host-shell` を配置し、SSH 経路上で MCP サーバーとして起動できることを確認したうえで、エージェントへの登録コマンドを作成します。  
-MCP サーバーの起動自体は登録後にエージェントが行うため、このスキルでは起動しません。
+Deploy `host-shell` to the target machine, verify that it starts as an MCP server over the SSH route, and prepare the agent registration command.  
+Do not start the MCP server in this skill; the agent starts it after registration.
 
-このスキルは単一ディレクトリで完結します。以降、`SKILL.md` があるディレクトリを `$SKILL` と表記します (リポジトリ内では `.agents/skills/host-shell-connect`)。
+Below, `$SKILL` refers to the directory containing `SKILL.md` (`.agents/skills/host-shell-connect` in the repository).
 
-## フォルダーの構成
+## Folder layout
 
-| パス | 内容 |
+| Path | Contents |
 |---|---|
-| `scripts/` | 経路確認、環境判定、配置、起動確認スクリプト |
-| `bin/host-shell-linux-amd64`、`bin/host-shell-linux-arm64` | Linux 用実行ファイル |
-| `bin/host-shell-windows-amd64.exe`、`bin/host-shell-windows-arm64.exe` | Windows 用実行ファイル |
-| `bin/host-shell-darwin-amd64`、`bin/host-shell-darwin-arm64` | macOS 用実行ファイル (ローカルで `host-shell bridge` として使用) |
-| `bin/VERSION` | 実行ファイルのバージョン |
+| `scripts/` | Scripts for route checks, environment detection, deployment, and startup verification |
+| `bin/host-shell-linux-amd64`, `bin/host-shell-linux-arm64` | Linux executables |
+| `bin/host-shell-windows-amd64.exe`, `bin/host-shell-windows-arm64.exe` | Windows executables |
+| `bin/host-shell-darwin-amd64`, `bin/host-shell-darwin-arm64` | macOS executables (used locally for `host-shell bridge`) |
+| `bin/VERSION` | Executable version |
 
-Table: フォルダーの構成
+Table: Folder layout
 
-`bin/` はリポジトリのルートで `make dist` を実行すると生成されます (`dist/` の複製)。  
-`bin/` が存在しない場合や最新バージョンが必要な場合は、リポジトリのルートで `make dist` を実行します (Go 1.26 以降が必要)。  
-リポジトリがない環境では、GitHub Release の `host-shell-mcp-<version>-bin.zip` (または `.tar.gz`) を展開した `host-shell-mcp-<version>/.agents/skills/host-shell-connect/` を使用します (アーカイブの取得は利用者に依頼します)。
+If `bin/` is missing or outdated, run `make dist` at the repository root (requires Go 1.26 or later; copies `dist/` to `bin/`).  
+Without the repository, use `host-shell-mcp-<version>/.agents/skills/host-shell-connect/` from the GitHub Release archive `host-shell-mcp-<version>-bin.zip` or `.tar.gz` (ask the user to obtain the archive).
 
-## スクリプト
+## Scripts
 
-いずれのスクリプトも SFTP とポート転送を使用しません。
+No script uses SFTP or port forwarding.
 
-| スクリプト | 内容 |
+| Script | Description |
 |---|---|
-| `remote.sh ROUTE COMMAND` | 中継サーバーを経由する `ssh` の入れ子と引用符を組み立てて接続先でコマンドを実行し、標準入力を接続先に渡す |
-| `detect.sh ROUTE` | 接続先の環境種別 (`linux-amd64`、`linux-arm64`、`windows-amd64`、`windows-arm64`) を出力する |
-| `deploy.sh ROUTE TYPE [REMOTE_PATH]` | `TYPE` に対応する `bin/` の実行ファイルを `ssh` の標準入力経由で転送し、SHA-256 照合と起動確認を行う。同一ファイルが配置済みなら転送せず、起動できなければ転送したファイルを削除する。`REMOTE_PATH` 省略時は既定の配置先を順に試す |
-| `probe.sh ROUTE REMOTE_PATH [OPTIONS...]` | 接続先の `host-shell` に MCP 初期化とツール一覧取得リクエストを送り、応答を確認する |
+| `remote.sh ROUTE COMMAND` | Runs `COMMAND` on the target over nested `ssh` hops and forwards standard input |
+| `detect.sh ROUTE` | Prints the target environment type (`linux-amd64`, `linux-arm64`, `windows-amd64`, `windows-arm64`) |
+| `deploy.sh ROUTE TYPE [REMOTE_PATH]` | Transfers the `TYPE` executable from `bin/` over `ssh` standard input, verifies its SHA-256, and checks startup. Skips transfer if an identical file exists; removes the file if startup fails. Tries default locations in order when `REMOTE_PATH` is omitted |
+| `probe.sh ROUTE REMOTE_PATH [OPTIONS...]` | Sends MCP `initialize` and `tools/list` requests to `host-shell` on the target and verifies the responses |
 
-Table: スクリプト
+Table: Scripts
 
-`ROUTE` には、経由ホストと接続先をローカルに近い順でカンマ区切りに指定します (例: `hop1,target`、直接接続なら `target`)。  
-ホスト名には `~/.ssh/config` の定義名も使用できます。各段は `-T -o BatchMode=yes` で接続します (`HOST_SHELL_SSH_OPTS` で変更可能)。  
-中継サーバーのシェルは POSIX sh 互換を前提とします。
+Specify `ROUTE` as a comma-separated list of jump hosts and the target from the local side (for example `hop1,target`, or `target` for a direct connection).  
+Host names defined in `~/.ssh/config` are supported. Each hop connects with `-T -o BatchMode=yes` (override with `HOST_SHELL_SSH_OPTS`).  
+Jump host shells must be POSIX `sh` compatible.
 
-## 手順
+## Procedure
 
-### 必要な情報の確認
+### Information needed
 
-利用者の依頼から次の項目を決定し、不明な項目のみ利用者に確認します。
+Determine the following items from the user's request and ask only about unclear items.
 
-| 項目 | 例 | 既定値 |
+| Item | Example | Default |
 |---|---|---|
-| 経路 (`ROUTE`) | `hop1,target` | なし (必須確認) |
-| 配置先 (`REMOTE_PATH`) | `/tmp/host-shell-1000/host-shell` | 省略 (`deploy.sh` が既定の候補を順に試す) |
-| 登録名 | `host-shell-target` | `host-shell-<接続先ホスト名>` |
-| `host-shell` のオプション | `--timeout 2m`、`--windows-shell cmd`、制限オプション | なし (制限なし) |
-| `bridge` の有無 | ローカル・接続先間でファイルを転送する場合に使用 | 使用する |
+| Route (`ROUTE`) | `hop1,target` | None (always confirm) |
+| Location (`REMOTE_PATH`) | `/tmp/host-shell-1000/host-shell` | Omitted (`deploy.sh` tries default candidates in order) |
+| Registration name | `host-shell-target` | `host-shell-<target host name>` |
+| `host-shell` options | `--timeout 2m`, `--windows-shell cmd`, restriction options | None (unrestricted) |
+| Whether to use `bridge` | Enables file transfer between the local machine and the target | Use `bridge` |
 
-Table: 必要な情報
+Table: Information needed
 
-利用者が制限を求めた場合は、次のオプションから選択します (指定がなければ制限を付けません)。
+Add restriction options only when requested by the user.
 
-| 要件 | オプション |
+| Requirement | Option |
 |---|---|
-| 読み取り専用にする | `--read-only` |
-| 公開ツールを絞る | `--tools files,search` (グループは `files`、`search`、`exec`、`net`、`admin`。`all,-admin` のように除外指定も可能) |
-| 操作対象パスを制限する | `--allow-path /srv/app`、`--allow-read-path /var/log` |
-| 実行可能プログラムを制限する | `--allow-command git,make,go` |
-| 変更前に利用者が確認する | `--confirm destructive` (クライアントの elicitation 対応が必要) |
-| ネットワーク接続先を制限する | `--allow-host localhost,10.0.0.0/8` |
-| 機密情報を出力から伏せる | `--redact`、`--unset-env 'AWS_*,*TOKEN*'` |
+| Read-only access | `--read-only` |
+| Limit published tools | `--tools files,search` (groups: `files`, `search`, `exec`, `net`, and `admin`, with exclusions such as `all,-admin`) |
+| Limit accessible paths | `--allow-path /srv/app`, `--allow-read-path /var/log` |
+| Limit runnable programs | `--allow-command git,make,go` |
+| Require user confirmation before changes | `--confirm destructive` (requires a client supporting elicitation) |
+| Limit network destinations | `--allow-host localhost,10.0.0.0/8` |
+| Mask secrets in output | `--redact`, `--unset-env 'AWS_*,*TOKEN*'` |
 
-Table: 制限オプション
+Table: Restriction options
 
-#### 配置先
+#### Location
 
-接続先のシステム領域を変更しないよう、接続ユーザー所有の一時領域またはホーム ディレクトリ配下に配置します。`deploy.sh` で `REMOTE_PATH` を省略すると、次の順に配置と起動確認を試みます。
+To avoid modifying system directories on the target, place the binary in a user-owned temporary directory or under the home directory. When `REMOTE_PATH` is omitted, `deploy.sh` tries the following candidates in order.
 
-| 接続先 | 1. 一時ディレクトリ | 2. ホーム ディレクトリ |
+| Target | 1. Temporary directory | 2. Home directory |
 |---|---|---|
-| Linux | `/tmp/host-shell-<uid>/host-shell` | `.local/bin/host-shell` (ホームからの相対パス) |
+| Linux | `/tmp/host-shell-<uid>/host-shell` | `.local/bin/host-shell` (relative to home) |
 | Windows | `%TEMP%/host-shell/host-shell.exe` | `%LOCALAPPDATA%/Programs/host-shell/host-shell.exe` |
 
-Table: 既定の配置先
+Table: Default locations
 
-- `/tmp` が `noexec` マウントされている場合、実行制限 (AppLocker など) で起動できない場合、またはディレクトリの権限が安全でない場合は、2 番目の候補へフォールバックします。
-- `/tmp` 配下のディレクトリは、他利用者によるバイナリ差し替えを防ぐため権限 `700` で作成します。シンボリック リンク、他利用者所有、グループ・他利用者に書き込み権限があるディレクトリは使用しません。
-- `/opt`、`/usr/local`、`C:/` 直下などのシステム領域には、利用者が明示的に指定した場合のみ配置します (`sudo` は使用しません)。
-- `/tmp` や `%TEMP%` の内容は再起動や定期削除 (`systemd-tmpfiles` など) で消去されることがあります。消去された場合は同じ手順を再実行して再配置します (エージェント側の登録は変更不要です)。
-- Linux で `/tmp` の配置先が消去されている間は、接続先の他利用者が同名ディレクトリを作成して偽の実行ファイルを配置できるため、信頼できない利用者がログインする環境では `.local/bin/host-shell` を明示指定します (`deploy.sh ROUTE TYPE .local/bin/host-shell`)。
-- 配置先には空白や引用符を含まないパスを使用します。Windows で `%TEMP%` などに空白が含まれる場合、その候補はスキップされます。
-- `.local/bin/host-shell` は、sshd がホーム ディレクトリを作業ディレクトリとしてコマンドを起動するため相対パスのまま登録できます (`~` はローカル シェルに展開されるため使用しません)。
+- If `/tmp` is mounted `noexec`, execution policies (such as AppLocker) block startup, or directory permissions are unsafe, `deploy.sh` falls back to the second candidate.
+- The `/tmp` directory is created with mode `700` to prevent replacement by other users. Symbolic links and directories owned or writable by other users are rejected.
+- Use system directories such as `/opt`, `/usr/local`, or `C:/` only when explicitly requested (`sudo` is not used).
+- Files in `/tmp` and `%TEMP%` may be removed on reboot or by periodic cleanup (such as `systemd-tmpfiles`). If removed, rerun the deployment procedure (agent registration does not change).
+- On Linux, if `/tmp/host-shell-<uid>` is deleted, another local user could recreate it with a fake binary. On multi-user systems with untrusted users, specify `.local/bin/host-shell` explicitly (`deploy.sh ROUTE TYPE .local/bin/host-shell`).
+- Use a path without spaces or quotes. On Windows, candidates containing spaces in `%TEMP%` or `%LOCALAPPDATA%` are skipped.
+- `.local/bin/host-shell` can be registered as a relative path because `sshd` starts commands in the user's home directory (avoid `~`, which the local shell would expand).
 
-### SSH 経路の確認
+### Checking the SSH route
 
 ```bash
 "$SKILL"/scripts/remote.sh hop1,target true | od -c | head
 ```
 
-- 何も出力されなければ正常です。
-- 出力がある場合は、接続先または中継サーバーのシェル初期化ファイルが非対話時にも標準出力へ書き込んでおり、MCP 通信が破損します。非対話時は出力しないよう初期化ファイルの修正を利用者に依頼して中断します (bash では `.bashrc` 先頭に `case $- in *i*) ;; *) return;; esac` を記述します)。
-- 認証エラー (`Permission denied`、`Host key verification failed`) が発生した場合は、パスワード入力なしで各段を通過できるよう設定を利用者に依頼して中断します。
+- Empty output means the route is clean.
+- Any output means a shell startup file on a jump host or the target writes to standard output during non-interactive sessions, which corrupts MCP communication. Ask the user to silence non-interactive output in their startup file and stop (for bash, add `case $- in *i*) ;; *) return;; esac` at the top of `.bashrc`).
+- On authentication errors (`Permission denied`, `Host key verification failed`), ask the user to configure passwordless SSH for each hop and stop.
 
-### 接続先環境の判定
+### Detecting the target environment
 
 ```bash
 "$SKILL"/scripts/detect.sh hop1,target
 ```
 
-出力 (例: `linux-amd64`) を次の手順の `TYPE` に指定します。  
-`detect.sh` で判定できない場合 (Windows で sshd の既定シェルが PowerShell の場合など) は、利用者に OS とアーキテクチャーを確認します。  
-あわせて `$SKILL/bin/` に対応する実行ファイルが存在することを確認し、なければ [フォルダーの構成](#フォルダーの構成) に従って用意します。
+Pass the output (for example `linux-amd64`) as `TYPE` in the next step.  
+If detection fails (for example on Windows when `sshd` uses PowerShell as the default shell), ask the user for the OS and architecture.  
+Verify that the corresponding binary exists in `$SKILL/bin/`. If missing, build or obtain it as described in [Folder layout](#folder-layout).
 
-### バイナリの配置
+### Deploying the binary
 
-接続先へファイルを書き込む前に、経路、転送するバージョン (`bin/VERSION`)、環境種別、配置先を利用者に提示して了承を得ます。
+Before writing to the target, show the user the route, version (`bin/VERSION`), environment type, and target path, and obtain their consent.
 
 ```bash
 "$SKILL"/scripts/deploy.sh hop1,target linux-amd64
 ```
 
-末尾に出力される `deployed: <配置先>` または `up to date: <配置先>` のパスを、以降の手順と登録に使用します (以降の例では `/tmp/host-shell-1000/host-shell`)。  
-配置先を明示する場合は第 3 引数に指定します。
+Use the path printed in `deployed: <location>` or `up to date: <location>` for subsequent steps and registration (the examples below use `/tmp/host-shell-1000/host-shell`).  
+To specify a path explicitly, pass it as the third argument.
 
-- `up to date`: 同一内容のファイルが配置済みのため転送を省略したことを示します。
-- `deployed`: 転送と SHA-256 照合が完了したことを示します。
-- `could not install`: そのパスへ配置できなかったことを示します (既定候補の試行時は次の候補へ進みます)。Windows で全候補が失敗する場合は、sshd の既定シェルが `cmd` でない可能性があります (`deploy.sh` は `cmd` から `powershell -Command "..."` を呼び出して転送します)。
-- `cannot run`: 配置後に起動できなかったため、転送したファイルを削除したことを示します。
-- `no default location worked`: 利用者所有の配置先を確認し、第 3 引数に指定して再実行します。
-- Windows では実行中の `host-shell.exe` を上書きできません。接続中のエージェント セッションを終了してから再実行します。
+- `up to date`: An identical binary already exists; transfer was skipped.
+- `deployed`: Transfer and SHA-256 verification succeeded.
+- `could not install`: Placement at that path failed (when using default candidates, the script tries the next candidate). If all candidates fail on Windows, the default shell of `sshd` may not be `cmd` (`deploy.sh` invokes `powershell -Command "..."` from `cmd`).
+- `cannot run`: The binary failed to start and was removed.
+- `no default location worked`: Ask the user for a writable user-owned path and rerun with it as the third argument.
+- On Windows, a running `host-shell.exe` cannot be overwritten. Disconnect the active agent session and rerun.
 
-### 起動の確認
+### Checking startup
 
 ```bash
 "$SKILL"/scripts/remote.sh hop1,target '/tmp/host-shell-1000/host-shell --version'
 "$SKILL"/scripts/probe.sh hop1,target /tmp/host-shell-1000/host-shell
 ```
 
-`probe.sh` が `OK:` と `sys_info` などのツール名を出力すれば利用可能です。  
-登録時に指定するオプションがある場合は、`probe.sh` の末尾にも同じオプションを渡して確認します。  
-`NG:` が出力された場合はメッセージに従って対処します。経路の遅延が大きい場合は `PROBE_WAIT=15` を指定して再試行します。  
-`open audit log` エラーが発生した場合は、操作ログの出力先に書き込めないため、`--log-file` で書き込み可能なパスを指定するか `--no-log` を指定します。
+`probe.sh` printing `OK:` with tool names such as `sys_info` confirms the server works.  
+If startup options will be used at registration, append the same options to `probe.sh` to verify them.  
+If `NG:` is printed, follow the error message. On high-latency routes, retry with `PROBE_WAIT=15`.  
+An `open audit log` error means the audit log path is not writable; specify a writable path with `--log-file` or disable logging with `--no-log`.
 
-### 登録コマンドの提示
+### Presenting the registration command
 
-エージェントへの登録設定は利用者が管理するため、コマンドと設定例を提示し、利用者から実行を求められた場合のみ実行します。
+Present the registration command and configuration examples to the user; run registration commands only if the user asks.
 
-各段に `-T` を付けた `ssh` の入れ子が接続先の `host-shell` を起動するコマンドです。  
-既定ではその手前にローカルの `host-shell bridge` を挟み、接続先ツールの中継に加えてファイル転送ツール (`transfer_push`、`transfer_pull`) を有効にします。
+Nested `ssh -T` commands start `host-shell` on the target.  
+By default, run `host-shell bridge` locally in front of `ssh` to relay target tools and enable file transfer (`transfer_push`, `transfer_pull`).
 
-ローカルの実行ファイルには、`$SKILL/bin/` のうちローカルの OS・アーキテクチャーに対応するバイナリ (`uname -sm` で確認。Linux x86_64 は `host-shell-linux-amd64`、macOS arm64 は `host-shell-darwin-arm64`、Windows は `.exe`) を絶対パスで指定します。スキル フォルダーを更新しても登録パスが変わらないよう、必要に応じて `~/.local/bin/host-shell` などへ複製してから指定します。
+For the local `bridge` binary, specify the absolute path of the matching executable in `$SKILL/bin/` (check with `uname -sm`: `host-shell-linux-amd64` for Linux x86_64, `host-shell-darwin-arm64` for macOS arm64, `.exe` for Windows). To keep the registered path stable across skill updates, copy the binary to `~/.local/bin/host-shell` or a similar location first.
 
-Claude Code (`bridge` あり):
+Claude Code (with `bridge`):
 
 ```bash
 claude mcp add host-shell-target -- /path/to/host-shell bridge -- ssh -T -o BatchMode=yes hop1 ssh -T -o BatchMode=yes target /tmp/host-shell-1000/host-shell --mcp
 ```
 
-Claude Code (`bridge` なし):
+Claude Code (without `bridge`):
 
 ```bash
 claude mcp add host-shell-target -- ssh -T -o BatchMode=yes hop1 ssh -T -o BatchMode=yes target /tmp/host-shell-1000/host-shell --mcp
 ```
 
-VS Code (`.vscode/mcp.json`) など JSON 設定のエージェント:
+JSON-configured agents such as VS Code (`.vscode/mcp.json`):
 
 ```json
 {
@@ -177,20 +176,20 @@ VS Code (`.vscode/mcp.json`) など JSON 設定のエージェント:
 }
 ```
 
-制限オプションは接続先の `--mcp` の後ろに追加します。ローカル側の転送許可パスを制限する場合は、`bridge` の後ろに `--allow-local-path DIR` を追加します。
+Append target restriction options after `--mcp`. To restrict local transfer paths, add `--allow-local-path DIR` after `bridge`.
 
-登録後はエージェント側で MCP サーバーの再読み込み (Claude Code では `/mcp` での再接続または再起動) を行い、`sys_info` で接続先のホスト名と OS が取得できることを確認するよう案内します。
+After registration, instruct the user to reload the MCP server in their agent (in Claude Code, run `/mcp` or restart) and verify that `sys_info` returns the target's host name and OS.
 
-## アンインストール
+## Uninstalling
 
-利用者から `host-shell` の削除を求められた場合は、配置先ディレクトリ (`/tmp/host-shell-<uid>/`、`%TEMP%/host-shell/` など。`.local/bin` の場合は `host-shell` ファイル単体) を削除します。  
-操作ログ (Linux は `~/.local/state/host-shell/`、Windows は `%LOCALAPPDATA%/host-shell/`) の削除要否は利用者に確認し、エージェント側の登録解除 (Claude Code では `claude mcp remove <名前>`) を案内します。
+When asked to remove `host-shell`, delete its installation directory (`/tmp/host-shell-<uid>/`, `%TEMP%/host-shell/`, or the `.local/bin/host-shell` file).  
+Ask whether to delete the audit log (`~/.local/state/host-shell/` on Linux, `%LOCALAPPDATA%/host-shell/` on Windows), and show how to unregister the server from the agent (`claude mcp remove <name>` in Claude Code).
 
-## 報告
+## Report
 
-作業完了時に次の項目をまとめて報告します。
+When finished, report the following items together.
 
-- 経路と接続先の環境種別
-- 配置先、バージョン、SHA-256、新規配置 (`deployed`) か既存維持 (`up to date`) か
-- `probe.sh` の確認結果 (バージョンと公開ツール数)
-- 登録コマンド (`bridge` の有無、指定した制限オプション) と MCP サーバーの再読み込み手順
+- Route and target environment type
+- Installation path, version, SHA-256, and whether it was newly deployed (`deployed`) or unchanged (`up to date`)
+- `probe.sh` result (version and number of published tools)
+- Registration command (with or without `bridge` and any restriction options) and how to reload the MCP server

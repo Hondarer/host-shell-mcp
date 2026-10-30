@@ -1,5 +1,8 @@
 # host-shell 利用ガイド
 
+> [!NOTE]
+> この文書が正本です。英訳は [../en/user-guide.md](../en/user-guide.md) にあります。内容が一致しない場合は日本語版が優先されます。
+
 `host-shell` を接続先に配置してエージェントから利用するまでの手順と、用途別の使い方を説明します。  
 各ツールの入出力仕様は [リファレンス](reference.md)、安全な運用設計は [運用ガイド](operations.md) を参照してください。
 
@@ -20,25 +23,26 @@
 `host-shell` は操作対象のマシン (接続先) に配置する MCP サーバーです。  
 エージェントには「SSH で `host-shell` を起動するコマンド」を MCP の stdio サーバーとして登録します。MCP の stdio 方式は子プロセスの標準入出力で JSON-RPC メッセージを送受信するため、SSH セッションの標準入出力がそのまま通信路になります。
 
-```plantuml
-@startuml host-shell の配置構成
-    caption host-shell の配置構成
-    node "クライアント" {
-        component "エージェント" as agent
-        component "ssh" as ssh0
-    }
-    node "中継サーバー" {
-        component "ssh" as ssh1
-    }
-    node "接続先 (Windows / Linux)" {
-        component "host-shell" as hs
-        component "シェル / OS" as os
-    }
-    agent --> ssh0 : stdio (MCP)
-    ssh0 --> ssh1 : SSH セッション
-    ssh1 --> hs : SSH セッション (stdio)
-    hs --> os : プロセス起動、ファイル操作
-@enduml
+```mermaid
+---
+title: host-shell の配置構成
+---
+flowchart TB
+    subgraph client ["クライアント"]
+        agent["エージェント"]
+        ssh0["ssh"]
+    end
+    subgraph jump ["中継サーバー"]
+        ssh1["ssh"]
+    end
+    subgraph target ["接続先 (Windows / Linux)"]
+        hs["host-shell"]
+        os["シェル / OS"]
+    end
+    agent -->|"stdio (MCP)"| ssh0
+    ssh0 -->|"SSH セッション"| ssh1
+    ssh1 -->|"SSH セッション (stdio)"| hs
+    hs -->|"プロセス起動、ファイル操作"| os
 ```
 
 中継サーバーを経由する場合も、ポート転送 (`-L`、`-R`、`-D`、`ProxyJump`、`-W`) や SFTP は使用しません。中継サーバー上で次の `ssh` を入れ子で起動するため、sshd の `AllowTcpForwarding no` の影響を受けずに接続できます。
@@ -51,23 +55,24 @@
 
 クライアント側で `host-shell bridge` を挟むと、ローカルと接続先の間でファイルやディレクトリを直接転送できます。
 
-```plantuml
-@startuml bridge を挟む構成
-    caption bridge を挟む構成
-    node "クライアント" {
-        component "エージェント" as agent
-        component "host-shell bridge" as bridge
-        component "ssh" as ssh0
-        folder "ローカル ファイル" as local
-    }
-    node "接続先 (Windows / Linux)" {
-        component "host-shell --mcp" as hs
-    }
-    agent --> bridge : stdio (MCP)
-    bridge --> ssh0 : stdio (MCP)
-    ssh0 --> hs : SSH セッション (多段可)
-    bridge --> local : transfer_push、transfer_pull
-@enduml
+```mermaid
+---
+title: bridge を挟む構成
+---
+flowchart TB
+    subgraph client ["クライアント"]
+        agent["エージェント"]
+        bridge["host-shell bridge"]
+        ssh0["ssh"]
+        local["ローカル ファイル"]
+    end
+    subgraph target ["接続先 (Windows / Linux)"]
+        hs["host-shell --mcp"]
+    end
+    agent -->|"stdio (MCP)"| bridge
+    bridge -->|"stdio (MCP)"| ssh0
+    ssh0 -->|"SSH セッション (多段可)"| hs
+    bridge -->|"transfer_push、transfer_pull"| local
 ```
 
 `bridge` は接続先の `host-shell` が公開するツールをそのまま中継しつつ、`transfer_push` (ローカルから接続先へ) と `transfer_pull` (接続先からローカルへ) を追加します。  
@@ -344,11 +349,11 @@ npx @modelcontextprotocol/inspector ssh -T hop1 ssh -T target /tmp/host-shell-10
 
 `host-shell` は MCP のプロトコル情報だけで使い方を把握できるよう、次の情報をエージェントへ提供します。
 
-- 初期化応答の `instructions`: 接続先のホスト名、OS、既定シェル、文字コード、出力上限、ツールの選び方、および適用中のポリシー制限。
+- 初期化応答の `instructions`: 接続先のホスト名、OS、既定シェル、文字コード、出力上限、ツールの選択方法、および適用中のポリシー制限。
 - ツールと引数の説明 (`description`): 各ツールの役割、使い分け、分割読み取りの継続方法。
 - `help` ツールとリソース: トピック別 (`files`、`edit`、`search`、`jobs`、`network`、`admin`、`transfer`、`policy` など) の手順、引数例、Windows 固有の注意点。同一内容を MCP リソース `host-shell://help/<topic>` としても公開します。
 
-エージェントが適切なツールを選べない場合は、「host-shell の help を読んでから作業して」と指示してください (Claude Code では `@` でリソースを会話に添付することも可能です)。
+エージェントが適切なツールを選択できない場合は、「host-shell の help を読んでから作業して」と指示してください (Claude Code では `@` でリソースを会話に添付することも可能です)。
 
 ### 調査する
 
@@ -461,7 +466,7 @@ SSH セッションが切断されると実行中のジョブはすべて停止�
 | エージェントが「接続できない」「サーバーが終了した」と表示する | ローカルで同じコマンドに `--version` を付けて実行し、SSH 経路とバイナリ配置を確認する。`--mcp` の指定漏れも確認する |
 | 初期化時に JSON 解析エラーになる | 接続先シェルの初期化ファイルが標準出力へ文字を出力している ([確認手順](#接続先のシェルが余計な出力をしない)) |
 | 接続が応答せず停止する | 経路途中でパスワードやホスト鍵確認を待機している。ローカルで一度 `ssh hop1 ssh target` を実行してホスト鍵を登録し、`BatchMode=yes` を指定する |
-| 疑似端末の警告が出る、改行が崩れる | 各段の `ssh` に `-T` を指定し、`~/.ssh/config` の `RequestTTY` 設定を確認する |
+| 疑似端末の警告が表示される、改行が崩れる | 各段の `ssh` に `-T` を指定し、`~/.ssh/config` の `RequestTTY` 設定を確認する |
 | 起動直後に `open audit log` エラーで終了する | 操作ログの保存先に書き込めない。`--log-file` で書き込み可能なパスを指定するか、`--no-log` を指定する |
 | `sudo: a password is required` が返る | sudoers に `NOPASSWD` 規則がない ([運用ガイド](operations.md#sudo-の設定))。パスワードを渡す場合は `sudo_run` の `password` 引数を使用する |
 | ツールが `policy:` で始まるエラーを返す | 接続先の起動オプションで制限されている。`sys_info` の `restrictions` で制限内容を確認する |

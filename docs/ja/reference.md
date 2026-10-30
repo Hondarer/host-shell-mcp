@@ -1,5 +1,8 @@
 # host-shell リファレンス
 
+> [!NOTE]
+> この文書が正本です。英訳は [../en/reference.md](../en/reference.md) にあります。内容が一致しない場合は日本語版が優先されます。
+
 `host-shell` の起動オプション、MCP サーバー仕様、各ツールの入出力、プロセス管理と操作ログの仕様を定義します。  
 導入手順と利用例は [利用ガイド](user-guide.md)、安全な運用設計は [運用ガイド](operations.md) を参照してください。
 
@@ -220,7 +223,7 @@ Table: MCP サーバーの仕様
 
 | 層 | 内容 | 取得タイミング |
 |---|---|---|
-| 初期化応答の `instructions` | 接続先ホスト名、OS・アーキテクチャー、作業ディレクトリ、既定シェル・文字コード、出力上限・タイムアウト、公開ツールの選び方、各呼び出しが独立プロセスである旨、および適用中の制限 | 接続時 |
+| 初期化応答の `instructions` | 接続先ホスト名、OS・アーキテクチャー、作業ディレクトリ、既定シェル・文字コード、出力上限・タイムアウト、公開ツールの選択方法、各呼び出しが独立プロセスである旨、および適用中の制限 | 接続時 |
 | ツールの `title`・`description` | ツールの役割、使用場面、併用するツール | `tools/list` 取得時 |
 | 入出力スキーマの `description` | 各引数の意味、既定値、分割読み取りの継続方法 | `tools/list` 取得時 |
 | [`help`](#help) ツールとリソース | トピック別の手順、引数例、Windows の注意点、各種上限 | 必要に応じた呼び出し時 |
@@ -515,15 +518,21 @@ Table: exec_run の出力
 
 ビルドやログ監視など長時間を要するコマンドは、バックグラウンド ジョブとして実行します。
 
-```plantuml
-@startuml ジョブの状態
-    caption ジョブの状態
+```mermaid
+---
+title: ジョブの状態
+---
+stateDiagram-v2
+    direction LR
     [*] --> running : job_start
-    running --> running : job_stop (kill 以外のシグナル)
+    note right of running
+        job_stop
+        (kill 以外のシグナル)
+        は running に戻る
+    end note
     running --> ended : コマンド終了
-    running --> ended : job_stop、タイムアウト、host-shell 終了
-    ended --> [*] : 終了済みジョブが 50 件を超過、または host-shell 終了
-@enduml
+    running --> ended : job_stop、タイムアウト、<br/>host-shell 終了
+    ended --> [*] : 終了済みジョブが<br/>50 件を超過、または<br/>host-shell 終了
 ```
 
 - ジョブ ID は `job-1`、`job-2` のように `host-shell` プロセスごとに連番で採番します。
@@ -1461,23 +1470,24 @@ Table: reg_delete の引数
 
 `host-shell bridge` はクライアント側で動作する中継サブコマンドです。エージェントに対して MCP サーバーとして振る舞い、子プロセスとして起動した接続先の `host-shell` と中継しつつ、ローカル・接続先間のファイル転送ツールを追加します。
 
-```plantuml
-@startuml bridge の構成
-    caption bridge の構成
-    rectangle "クライアント" {
-        component "エージェント" as agent
-        component "host-shell bridge" as bridge
-        folder "ローカル ファイル" as local
-    }
-    rectangle "接続先" {
-        component "host-shell --mcp" as remote
-        folder "接続先ファイル" as files
-    }
-    agent --> bridge : MCP (stdio)
-    bridge --> remote : MCP (ssh 入れ子の stdio)
-    bridge --> local : transfer_push、transfer_pull
+```mermaid
+---
+title: bridge の構成
+---
+flowchart TB
+    subgraph client ["クライアント"]
+        agent["エージェント"]
+        bridge["host-shell bridge"]
+        local["ローカル ファイル"]
+    end
+    subgraph target ["接続先"]
+        remote["host-shell --mcp"]
+        files["接続先ファイル"]
+    end
+    agent -->|"MCP (stdio)"| bridge
+    bridge -->|"MCP (ssh 入れ子の stdio)"| remote
+    bridge -->|"transfer_push、transfer_pull"| local
     remote --> files
-@enduml
 ```
 
 ### 書式
@@ -1555,14 +1565,14 @@ Table: transfer_push と transfer_pull の出力
 Table: シェルの起動の形
 
 Windows の既定シェルを PowerShell にしているのは、コマンド ラインを UTF-16LE の base64 で渡すことで `cmd` や SSH の引用符解釈の影響を排除し、出力を UTF-8 に統一できるためです。  
-`-Command` には、base64 のスクリプトを復元して実行する短い読み込み処理だけを渡します。読み込み処理は標準入力を `$input` としてスクリプトへ渡し、スクリプトを現在のスコープで実行します。`-EncodedCommand` は使いません。Windows PowerShell 5.1 は `-EncodedCommand` で起動するとエラー、警告、進行状況を CLIXML (XML) で標準エラーへ出力するためです。
+`-Command` には base64 スクリプトを復元して実行する短いローダーのみを渡し、標準入力を `$input` として現在のスコープで実行します。Windows PowerShell 5.1 は `-EncodedCommand` 指定時にエラー・警告・進行状況を CLIXML (XML) で標準エラーへ出力するため、`-EncodedCommand` は使用しません。
 
 スクリプトの前には次の処理が付加されます。
 
 | 処理 | 目的 |
 |---|---|
 | `$ProgressPreference = 'SilentlyContinue'` | 進行状況 (初回のモジュール読み込み、`Invoke-WebRequest` など) を出力しない |
-| `if ($PSStyle) { $PSStyle.OutputRendering = 'PlainText' }` | PowerShell 7 の色の制御文字を出力しない (5.1 では何もしない) |
+| `if ($PSStyle) { $PSStyle.OutputRendering = 'PlainText' }` | PowerShell 7 の色制御シーケンスを出力しない (5.1 では無処理) |
 | `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` | PowerShell の出力を UTF-8 に統一する |
 
 Table: PowerShell のスクリプトの前に付加する処理
@@ -1584,21 +1594,21 @@ PowerShell から呼び出した Shift_JIS 出力のネイティブ コマンド
 
 #### Windows の PowerShell の標準入力
 
-PowerShell は標準入力 (`$input`) を、起動時のコンソールの入力コード ページで読み取ります。スクリプト内で `[Console]::InputEncoding` を変更しても `$input` には反映されません。  
-そこで `host-shell` は、ウィンドウのないコンソールを自身で用意し、入力と出力のコード ページを 65001 (UTF-8) に設定したうえで、PowerShell をこのコンソールで起動します。これにより、接続先のコード ページによらず任意の Unicode 文字を `stdin` で渡せます。
+PowerShell は標準入力 (`$input`) を起動時コンソールの入力コード ページで読み取るため、スクリプト内で `[Console]::InputEncoding` を変更しても `$input` には反映されません。  
+そのため `host-shell` は非表示コンソールを作成して入出力コード ページを 65001 (UTF-8) に設定し、PowerShell をこのコンソール上で起動します。これにより、接続先のコード ページによらず任意の Unicode 文字を `stdin` で渡せます。
 
-| 条件 | `stdin_encoding` の既定 | PowerShell が使うコンソール |
+| 条件 | `stdin_encoding` の既定 | PowerShell が使用するコンソール |
 |---|---|---|
 | `stdin_encoding` 省略、または `utf-8` | `utf-8` | `host-shell` のコンソール (65001) |
-| `stdin_encoding` に `utf-8` 以外を指定 | (指定どおり) | PowerShell 自身のコンソール (コード ページは変更しない) |
+| `stdin_encoding` に `utf-8` 以外を指定 | 指定値 | PowerShell 自身のコンソール (コード ページ不変) |
 | `host-shell` の標準入出力がコンソール (端末から直接起動した場合) | `shell` 指定時は `system`、`argv` 指定時は `utf-8` | PowerShell 自身のコンソール |
 
 Table: Windows の PowerShell の標準入力
 
-- 対象は、`shell` が `powershell` または `pwsh` のコマンド ラインと、`argv` の先頭が `powershell` または `pwsh` (`.exe` やディレクトリの有無を問わない) の起動です。`argv` の引数は変更しません。`pty` ジョブは ConPTY を使うため対象外です。
-- コンソールは、最初に PowerShell を起動するときに 1 回だけ用意します (約 100 ms)。端末から直接起動した場合は、利用者のコンソールのコード ページを変えないよう、用意しません。
-- cmd とその他のネイティブ コマンドは、従来どおり各自のコンソール (OEM コード ページ) で動作します。
-- 日本語などの環境では、`host-shell` のコンソールで動く PowerShell と、そこから呼び出したネイティブ コマンドのメッセージが英語になる場合があります。コンソールのコード ページで UI の言語を表せない場合に、Windows が英語のメッセージへ切り替えるためです。
+- 対象は `shell` が `powershell` または `pwsh` の呼び出しと、`argv` の先頭が `powershell` または `pwsh` (`.exe` やディレクトリの有無を問わない) の呼び出しです。`argv` の引数は変更しません。`pty` ジョブは ConPTY を使用するため対象外です。
+- 非表示コンソールは初回 PowerShell 起動時に 1 回だけ作成します (約 100 ms)。端末から直接起動した場合は、利用者のコンソールのコード ページを変更しないよう作成しません。
+- `cmd` とその他のネイティブ コマンドは、各自のコンソール (OEM コード ページ) で動作します。
+- 日本語などの環境では、`host-shell` のコンソール (コード ページ 65001) 上で動作する PowerShell やそこから起動したネイティブ コマンドのメッセージが英語になる場合があります (コンソールのコード ページで UI 言語を表現できない場合に Windows が英語メッセージへ切り替えるため)。
 
 ### argv による起動
 
