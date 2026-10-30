@@ -21,9 +21,11 @@ func shellCommand(ctx context.Context, sh, line string, interactive bool) (*exec
 }
 
 // setupProcess starts the child in a new process group,
-// so that timeouts and stops end the whole group (including grandchildren).
+// so that timeouts and stops end the whole group (including grandchildren),
+// and ends the child when host-shell exits (SetParentDeathSignal).
 func setupProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	SetParentDeathSignal(cmd.SysProcAttr)
 	cmd.Cancel = func() error {
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}

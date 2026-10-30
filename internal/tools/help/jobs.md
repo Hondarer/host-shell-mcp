@@ -9,6 +9,11 @@
 4. `job_stop` kills the job and its child processes. `job_list` shows all jobs of this session
    (the 50 most recent finished jobs are kept).
 
+Jobs and their child processes end when host-shell exits (the session closes), even if host-shell is
+killed. To keep a program running after the session, start it outside host-shell: on Linux with
+`systemd-run --user --unit=NAME ...`, on Windows as a service or a scheduled task (`schtasks`,
+`Register-ScheduledTask`).
+
 Each job keeps the most recent part of its output (four times the output limit). If the job writes
 faster than you read, older output is discarded and `dropped` says how many bytes you missed.
 `more: true` means output beyond `next_offset` is already available: read again right away.

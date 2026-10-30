@@ -13,6 +13,8 @@ import (
 	"syscall"
 
 	cpty "github.com/creack/pty"
+
+	"github.com/hondarer/host-shell-mcp/internal/proc"
 )
 
 // Terminal is a process attached to a pseudo terminal.
@@ -31,8 +33,9 @@ func start(_ context.Context, cmd *exec.Cmd, cols, rows int) (*Terminal, error) 
 	}
 	// Create a new session and make the terminal its controlling terminal. The session leader is also the
 	// process group leader, so the stop handling set by proc (SIGKILL to the whole group) still works.
-	f, err := cpty.StartWithAttrs(cmd, &cpty.Winsize{Cols: uint16(cols), Rows: uint16(rows)},
-		&syscall.SysProcAttr{Setsid: true, Setctty: true})
+	attr := &syscall.SysProcAttr{Setsid: true, Setctty: true}
+	proc.SetParentDeathSignal(attr)
+	f, err := cpty.StartWithAttrs(cmd, &cpty.Winsize{Cols: uint16(cols), Rows: uint16(rows)}, attr)
 	if err != nil {
 		return nil, err
 	}
