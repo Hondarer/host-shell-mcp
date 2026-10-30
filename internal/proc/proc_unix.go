@@ -21,8 +21,9 @@ func shellCommand(ctx context.Context, sh, line string, interactive bool) (*exec
 }
 
 // setupProcess places the child in a new process group (so cancellation kills the entire group,
-// including grandchildren) and configures parent-death termination.
-func setupProcess(cmd *exec.Cmd) {
+// including grandchildren) and configures parent-death termination. sharedConsole applies to
+// Windows only.
+func setupProcess(cmd *exec.Cmd, sharedConsole bool) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	SetParentDeathSignal(cmd.SysProcAttr)
 	cmd.Cancel = func() error {

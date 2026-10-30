@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hondarer/host-shell-mcp/internal/proc"
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
@@ -50,20 +51,76 @@ func TestPowerShellExitCode(t *testing.T) {
 	}
 }
 
-// TestPowerShellStdin checks that Japanese text passed as stdin reaches PowerShell intact.
+// psStdin is text that no single legacy code page can represent.
+const psStdin = "日本語 😀 Ελληνικά"
+
+// needUTF8Console skips the test when host-shell has no UTF-8 console for PowerShell, which happens
+// when the test runs with stdin or stdout on a console (see proc.UTF8Console).
+func needUTF8Console(t *testing.T) {
+	if !proc.UTF8Console() {
+		t.Skip("no UTF-8 console for PowerShell: the test's stdin or stdout is a console")
+	}
+}
+
+// TestPowerShellStdin checks that text passed as stdin reaches PowerShell intact, whatever the
+// console code page, with stdin_encoding omitted or set to utf-8.
 func TestPowerShellStdin(t *testing.T) {
 	shells := powershells(t)
-	if _, err := textenc.Console().Encode("日本語"); err != nil {
-		t.Skipf("the console code page %s cannot represent Japanese", textenc.Console().Name)
+	needUTF8Console(t)
+	cs := connect(t)
+	for _, sh := range shells {
+		for _, enc := range []string{"", "utf-8"} {
+			out := call[struct {
+				Stdout string `json:"stdout"`
+				Stderr string `json:"stderr"`
+			}](t, cs, "exec_run", map[string]any{"command": `$input | ForEach-Object { $_ }`, "shell": sh, "stdin": psStdin + "\n", "stdin_encoding": enc})
+			if strings.TrimSpace(out.Stdout) != psStdin {
+				t.Errorf("%s (stdin_encoding %q): stdout %q, stderr %q", sh, enc, out.Stdout, out.Stderr)
+			}
+		}
 	}
+}
+
+// TestPowerShellStdinJob checks stdin sent to a PowerShell job with job_write.
+func TestPowerShellStdinJob(t *testing.T) {
+	shells := powershells(t)
+	needUTF8Console(t)
+	cs := connect(t)
+	for _, sh := range shells {
+		st := call[jobStatus](t, cs, "job_start", map[string]any{"command": `$input | ForEach-Object { "got: $_" }`, "shell": sh, "stdin_open": true})
+		call[map[string]any](t, cs, "job_write", map[string]any{"id": st.ID, "input": psStdin + "\n", "close": true})
+		r := call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 30, "until": "got: "})
+		if !strings.Contains(r.Output, "got: "+psStdin) {
+			t.Errorf("%s: output %q", sh, r.Output)
+		}
+	}
+}
+
+// TestPowerShellArgvStdin checks stdin for PowerShell started with argv.
+func TestPowerShellArgvStdin(t *testing.T) {
+	shells := powershells(t)
+	needUTF8Console(t)
 	cs := connect(t)
 	for _, sh := range shells {
 		out := call[struct {
 			Stdout string `json:"stdout"`
-		}](t, cs, "exec_run", map[string]any{"command": `$input | ForEach-Object { $_ }`, "shell": sh, "stdin": "日本語\n"})
-		if strings.TrimSpace(out.Stdout) != "日本語" {
-			t.Errorf("%s: stdout = %q", sh, out.Stdout)
+		}](t, cs, "exec_run", map[string]any{"argv": []string{sh + ".exe", "-NoProfile", "-Command", "[Console]::OutputEncoding = [Text.Encoding]::UTF8; $input"}, "stdin": psStdin + "\n"})
+		if strings.TrimSpace(out.Stdout) != psStdin {
+			t.Errorf("%s: stdout %q", sh, out.Stdout)
 		}
+	}
+}
+
+// TestPowerShellCmdConsole checks that cmd keeps a console of its own in the OEM code page.
+func TestPowerShellCmdConsole(t *testing.T) {
+	powershells(t)
+	needUTF8Console(t)
+	cs := connect(t)
+	out := call[struct {
+		Stdout string `json:"stdout"`
+	}](t, cs, "exec_run", map[string]any{"command": "chcp", "shell": "cmd"})
+	if strings.Contains(out.Stdout, "65001") && textenc.Console().Name != textenc.UTF8.Name {
+		t.Errorf("chcp in cmd: %q, want the OEM code page (%s)", out.Stdout, textenc.Console().Name)
 	}
 }
 

@@ -65,12 +65,16 @@ func KillChildrenOnExit() error {
 	return nil
 }
 
-// setupProcess hides the console window and kills the entire process tree via taskkill /T on cancellation.
-func setupProcess(cmd *exec.Cmd) {
+// setupProcess starts the process in a console of its own without a window (CREATE_NO_WINDOW), or,
+// with sharedConsole, in host-shell's console (UTF8Console), and kills the entire process tree via
+// taskkill /T on cancellation.
+func setupProcess(cmd *exec.Cmd, sharedConsole bool) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
-	cmd.SysProcAttr.CreationFlags |= createNoWindow
+	if !sharedConsole {
+		cmd.SysProcAttr.CreationFlags |= createNoWindow
+	}
 	cmd.Cancel = func() error {
 		_ = exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
 		return cmd.Process.Kill()

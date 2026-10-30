@@ -31,37 +31,51 @@ type CommandSpec struct {
 // IOEncoding specifies the encoding of command input and output.
 type IOEncoding struct {
 	OutputEncoding string `json:"output_encoding,omitempty" jsonschema:"stdout/stderr encoding: auto (default: per-line UTF-8 if valid, else console code page), utf-8, system, or a charset name (shift_jis, euc-jp, utf-16le, ...)"`
-	StdinEncoding  string `json:"stdin_encoding,omitempty" jsonschema:"stdin encoding: utf-8 (default; system for Windows PowerShell), system, or a charset name"`
+	StdinEncoding  string `json:"stdin_encoding,omitempty" jsonschema:"stdin encoding: utf-8 (default), system, or a charset name"`
 }
 
-// resolve parses the output encoding choice and encodes stdin (using def when StdinEncoding is empty).
-func (e IOEncoding) resolve(stdin string, def textenc.Encoding) (textenc.Choice, string, error) {
+// resolve parses the output encoding choice and encodes stdin (using def when StdinEncoding is
+// empty). It also returns the stdin encoding.
+func (e IOEncoding) resolve(stdin string, def textenc.Encoding) (textenc.Choice, string, textenc.Encoding, error) {
 	out, err := textenc.Parse(e.OutputEncoding, textenc.Console, true, textenc.UTF8)
 	if err != nil {
-		return textenc.Choice{}, "", fmt.Errorf("output_encoding: %w", err)
+		return textenc.Choice{}, "", textenc.Encoding{}, fmt.Errorf("output_encoding: %w", err)
 	}
 	in, err := textenc.Parse(e.StdinEncoding, textenc.Console, false, def)
 	if err != nil {
-		return textenc.Choice{}, "", fmt.Errorf("stdin_encoding: %w", err)
+		return textenc.Choice{}, "", textenc.Encoding{}, fmt.Errorf("stdin_encoding: %w", err)
 	}
 	b, err := in.Enc.Encode(stdin)
 	if err != nil {
-		return textenc.Choice{}, "", fmt.Errorf("stdin: %w (set stdin_encoding to an encoding the command reads, e.g. utf-8)", err)
+		return textenc.Choice{}, "", textenc.Encoding{}, fmt.Errorf("stdin: %w (set stdin_encoding to an encoding the command reads, e.g. utf-8)", err)
 	}
-	return out, string(b), nil
+	return out, string(b), in.Enc, nil
 }
 
-// stdinDefault returns the default stdin encoding: console code page for non-PTY Windows PowerShell
-// (which reads $input in the console code page), and UTF-8 otherwise.
+// stdinDefault returns the default stdin encoding: UTF-8, except for a PowerShell command line on
+// Windows when host-shell has no UTF-8 console for it (proc.UTF8Console), where PowerShell reads
+// $input in the console code page of its own console.
 func (d *Deps) stdinDefault(c CommandSpec, pty bool) textenc.Encoding {
 	if runtime.GOOS != "windows" || pty || len(c.Argv) > 0 {
 		return textenc.UTF8
 	}
 	switch orDefault(c.Shell, d.DefaultShell) {
 	case "powershell", "pwsh":
-		return textenc.Console()
+		if !proc.UTF8Console() {
+			return textenc.Console()
+		}
 	}
 	return textenc.UTF8
+}
+
+// commandSpec builds the proc.Spec for exec_run and job_start. PowerShell whose stdin is UTF-8 runs
+// in host-shell's UTF-8 console (outside pty jobs), so that it reads stdin as UTF-8; with another
+// stdin encoding, it gets a console of its own, whose code page is left as it is.
+func (d *Deps) commandSpec(c CommandSpec, pty bool, stdin textenc.Encoding) proc.Spec {
+	spec := d.procSpec(c)
+	spec.SharedConsole = runtime.GOOS == "windows" && !pty && stdin.Name == textenc.UTF8.Name &&
+		proc.IsPowerShell(spec, d.DefaultShell) && proc.UTF8Console()
+	return spec
 }
 
 // procSpec builds a proc.Spec with policy environment filtering applied.
@@ -96,13 +110,13 @@ func (c CommandSpec) AuditArgs() any {
 }
 
 func (d *Deps) execRun(ctx context.Context, req *mcp.CallToolRequest, in CommandSpec) (*mcp.CallToolResult, proc.Result, error) {
-	output, stdin, err := in.resolve(in.Stdin, d.stdinDefault(in, false))
+	output, stdin, stdinEnc, err := in.resolve(in.Stdin, d.stdinDefault(in, false))
 	if err != nil {
 		return nil, proc.Result{}, err
 	}
 	tap, stop := watchOutput(newProgress(ctx, req))
 	defer stop()
-	res, err := proc.Run(ctx, d.procSpec(in), proc.Options{
+	res, err := proc.Run(ctx, d.commandSpec(in, false, stdinEnc), proc.Options{
 		DefaultShell: d.DefaultShell,
 		Stdin:        stdin,
 		Output:       output,
@@ -134,19 +148,14 @@ func (d *Deps) jobStart(_ context.Context, _ *mcp.CallToolRequest, in JobStartIn
 	if in.TimeoutSec > 0 {
 		timeout = time.Duration(in.TimeoutSec) * time.Second
 	}
-	def := d.stdinDefault(in.CommandSpec, in.PTY)
-	output, stdin, err := in.resolve(in.Stdin, def)
+	output, stdin, stdinEnc, err := in.resolve(in.Stdin, d.stdinDefault(in.CommandSpec, in.PTY))
 	if err != nil {
 		return nil, jobs.Status{}, err
 	}
-	stdinEnc, err := textenc.Parse(in.StdinEncoding, textenc.Console, false, def)
-	if err != nil {
-		return nil, jobs.Status{}, fmt.Errorf("stdin_encoding: %w", err)
-	}
-	j, err := d.Jobs.Start(d.procSpec(in.CommandSpec), jobs.StartOptions{
+	j, err := d.Jobs.Start(d.commandSpec(in.CommandSpec, in.PTY, stdinEnc), jobs.StartOptions{
 		Stdin:         stdin,
 		KeepStdin:     in.StdinOpen,
-		StdinEncoding: stdinEnc.Enc,
+		StdinEncoding: stdinEnc,
 		Output:        output,
 		Timeout:       timeout,
 		PTY:           in.PTY,

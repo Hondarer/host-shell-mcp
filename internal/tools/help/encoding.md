@@ -14,7 +14,7 @@ All MCP requests and responses use UTF-8; host-shell converts encodings on the r
 ## Commands
 
 - `output_encoding` (default `auto`) decodes stdout and stderr. When conversion occurs, `stdout_encoding` and `stderr_encoding` (or `status.output_encoding` for jobs) report the detected source encoding.
-- `stdin_encoding` encodes `stdin` and `job_write` input (default `utf-8`; defaults to `system` for Windows PowerShell, which reads stdin in the console code page).
+- `stdin_encoding` encodes `stdin` and `job_write` input (default `utf-8`). On Windows, PowerShell runs in a UTF-8 console so it reads `utf-8` stdin intact; with another `stdin_encoding`, it runs in its own console and must read that code page. In the UTF-8 console, messages from PowerShell and the programs it runs may be in English.
 
 ## Files
 

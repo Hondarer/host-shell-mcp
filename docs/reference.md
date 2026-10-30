@@ -364,7 +364,7 @@ ASCII 文字や改行を含む UTF-16 テキストはこの条件を満たし、
 | ツール | 引数 | 既定値 |
 |---|---|---|
 | `exec_run`、`job_start`、`sudo_run` | `output_encoding` (標準出力・標準エラー) | `auto` (コンソール) |
-| | `stdin_encoding` (標準入力) | `utf-8` (Windows の PowerShell 実行時は `system`) |
+| | `stdin_encoding` (標準入力) | `utf-8` (Windows の PowerShell は [シェル](#シェル) を参照) |
 | `job_write` | (`job_start` の `stdin_encoding` を継承) | `job_start` と同じ |
 | `sys_processes` | なし | `auto` (コンソール) |
 | `fs_read` (`text`) | `charset` | `auto` (ファイル) |
@@ -471,7 +471,7 @@ Table: help の topic
 | `stdin` | string | | 標準入力へ渡すテキスト (書き込み後にクローズ。省略時は空入力) |
 | `timeout_sec` | integer | | タイムアウト秒数。省略時は `--timeout`、上限は `--max-timeout` |
 | `output_encoding` | string | | 標準出力・標準エラーの文字コード。省略時は `auto` ([文字コードの指定](#文字コードの指定)) |
-| `stdin_encoding` | string | | `stdin` の変換先文字コード。省略時は `utf-8` (Windows の PowerShell 実行時のみ `system`)。`auto` は指定不可 |
+| `stdin_encoding` | string | | `stdin` の変換先文字コード。省略時は `utf-8`。Windows の PowerShell に `utf-8` 以外を指定した場合は、PowerShell がそのコード ページで読む前提で渡す ([シェル](#シェル))。`auto` は指定不可 |
 
 Table: exec_run の引数 (※ `command` と `argv` のいずれか一方が必須)
 
@@ -1580,8 +1580,25 @@ PowerShell 実行時は末尾に終了コード決定処理が付加され、Lin
 
 Table: PowerShell の終了コード
 
-PowerShell は標準入力 (`$input`) をコンソールのコード ページで読み取るため、Windows で非 PTY の PowerShell を実行する際は `stdin_encoding` の既定値を `system` (コンソール コード ページ) にします。  
-また、PowerShell から呼び出した Shift_JIS 出力のネイティブ コマンドが文字化けする場合は `"shell": "cmd"` を指定してください (`cmd` には `/d` を付けて AutoRun を無効化し、コマンド ラインをそのまま渡します)。
+PowerShell から呼び出した Shift_JIS 出力のネイティブ コマンドが文字化けする場合は `"shell": "cmd"` を指定してください (`cmd` には `/d` を付けて AutoRun を無効化し、コマンド ラインをそのまま渡します)。
+
+#### Windows の PowerShell の標準入力
+
+PowerShell は標準入力 (`$input`) を、起動時のコンソールの入力コード ページで読み取ります。スクリプト内で `[Console]::InputEncoding` を変更しても `$input` には反映されません。  
+そこで `host-shell` は、ウィンドウのないコンソールを自身で用意し、入力と出力のコード ページを 65001 (UTF-8) に設定したうえで、PowerShell をこのコンソールで起動します。これにより、接続先のコード ページによらず任意の Unicode 文字を `stdin` で渡せます。
+
+| 条件 | `stdin_encoding` の既定 | PowerShell が使うコンソール |
+|---|---|---|
+| `stdin_encoding` 省略、または `utf-8` | `utf-8` | `host-shell` のコンソール (65001) |
+| `stdin_encoding` に `utf-8` 以外を指定 | (指定どおり) | PowerShell 自身のコンソール (コード ページは変更しない) |
+| `host-shell` の標準入出力がコンソール (端末から直接起動した場合) | `shell` 指定時は `system`、`argv` 指定時は `utf-8` | PowerShell 自身のコンソール |
+
+Table: Windows の PowerShell の標準入力
+
+- 対象は、`shell` が `powershell` または `pwsh` のコマンド ラインと、`argv` の先頭が `powershell` または `pwsh` (`.exe` やディレクトリの有無を問わない) の起動です。`argv` の引数は変更しません。`pty` ジョブは ConPTY を使うため対象外です。
+- コンソールは、最初に PowerShell を起動するときに 1 回だけ用意します (約 100 ms)。端末から直接起動した場合は、利用者のコンソールのコード ページを変えないよう、用意しません。
+- cmd とその他のネイティブ コマンドは、従来どおり各自のコンソール (OEM コード ページ) で動作します。
+- 日本語などの環境では、`host-shell` のコンソールで動く PowerShell と、そこから呼び出したネイティブ コマンドのメッセージが英語になる場合があります。コンソールのコード ページで UI の言語を表せない場合に、Windows が英語のメッセージへ切り替えるためです。
 
 ### argv による起動
 

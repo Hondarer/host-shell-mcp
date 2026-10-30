@@ -58,7 +58,7 @@ func (d *Deps) sudoRun(ctx context.Context, req *mcp.CallToolRequest, in SudoRun
 		argv = append(argv, "-u", in.User)
 	}
 	argv = append(argv, "--", "sh", "-c", in.Command)
-	output, stdin, err := in.resolve(in.Stdin, textenc.UTF8)
+	output, stdin, _, err := in.resolve(in.Stdin, textenc.UTF8)
 	if err != nil {
 		return nil, proc.Result{}, err
 	}

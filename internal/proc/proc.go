@@ -37,6 +37,28 @@ type Spec struct {
 	EnvFilter func([]string) []string
 	// Interactive indicates an interactive terminal session (omits PowerShell's -NonInteractive).
 	Interactive bool
+	// SharedConsole starts the process in host-shell's console (see UTF8Console) instead of a
+	// console of its own. Only for PowerShell; ignored outside Windows and for interactive sessions.
+	SharedConsole bool
+}
+
+// IsPowerShell reports whether spec runs PowerShell: a command line for the powershell or pwsh
+// shell (defaultShell when Shell is empty), or argv whose program is powershell or pwsh, with or
+// without a directory and .exe, in any case.
+func IsPowerShell(spec Spec, defaultShell string) bool {
+	if len(spec.Argv) > 0 {
+		name := strings.ToLower(spec.Argv[0])
+		if i := strings.LastIndexAny(name, `/\`); i >= 0 {
+			name = name[i+1:]
+		}
+		name = strings.TrimSuffix(name, ".exe")
+		return name == "powershell" || name == "pwsh"
+	}
+	sh := spec.Shell
+	if sh == "" {
+		sh = defaultShell
+	}
+	return sh == "powershell" || sh == "pwsh"
 }
 
 // waitDelay bounds how long to wait for pipes held open by grandchildren after process exit.
@@ -73,7 +95,7 @@ func Command(ctx context.Context, spec Spec, defaultShell string) (*exec.Cmd, er
 		}
 		cmd.Env = mergeEnv(base, spec.Env)
 	}
-	setupProcess(cmd)
+	setupProcess(cmd, spec.SharedConsole && !spec.Interactive)
 	cmd.WaitDelay = waitDelay
 	return cmd, nil
 }
