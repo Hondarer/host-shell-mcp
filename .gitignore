@@ -13,3 +13,6 @@ coverage.*
 *.swp
 .DS_Store
 Thumbs.db
+
+# Working folder
+prompt/
