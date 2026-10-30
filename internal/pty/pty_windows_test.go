@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// TestConPTY は、ConPTY につないだ cmd と PowerShell が、プロンプトを出し、入力を受け取り、
-// 標準出力に書いた内容が端末に届くことを確かめます。
+// TestConPTY checks that cmd and PowerShell attached to ConPTY show a prompt, accept input,
+// and that what they write to standard output reaches the terminal.
 func TestConPTY(t *testing.T) {
 	for _, argv := range [][]string{
 		{"cmd", "/v:on", "/c", "set /p n=name? & echo hello !n!"},

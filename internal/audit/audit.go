@@ -1,6 +1,6 @@
-// Package audit は host-shell が受け付けたすべての操作を接続先のログ ファイルに記録します。
+// Package audit records every operation host-shell accepts in a log file on the target.
 //
-// 標準出力は MCP の JSON-RPC 専用のため、ここでは決して標準出力に書きません。
+// Standard output carries MCP JSON-RPC only, so this package never writes to it.
 package audit
 
 import (
@@ -11,19 +11,19 @@ import (
 	"time"
 )
 
-// Redactor はログに残す引数を差し替えたい入力型が実装します。
-// 書き込み内容やパスワードなど、ログに残すべきでない値を除くために使います。
+// Redactor is implemented by input types that replace the arguments written to the log.
+// It keeps values such as written content and passwords out of the log.
 type Redactor interface {
 	AuditArgs() any
 }
 
-// Logger は操作ログを JSON Lines で書き出します。
+// Logger writes the audit log as JSON Lines.
 type Logger struct {
 	l *slog.Logger
 	c io.Closer
 }
 
-// Open は path にログを追記するロガーを作ります。path が空の場合は何も記録しません。
+// Open creates a logger that appends to path. An empty path records nothing.
 func Open(path string) (*Logger, error) {
 	if path == "" {
 		return &Logger{l: slog.New(slog.DiscardHandler)}, nil
@@ -38,7 +38,7 @@ func Open(path string) (*Logger, error) {
 	return &Logger{l: slog.New(slog.NewJSONHandler(f, nil)), c: f}, nil
 }
 
-// Close はログ ファイルを閉じます。
+// Close closes the log file.
 func (a *Logger) Close() error {
 	if a.c == nil {
 		return nil
@@ -46,12 +46,12 @@ func (a *Logger) Close() error {
 	return a.c.Close()
 }
 
-// Event はサーバーの起動、停止などの出来事を記録します。
+// Event records an event such as server start or stop.
 func (a *Logger) Event(msg string, attrs ...any) {
 	a.l.Info(msg, attrs...)
 }
 
-// Tool はツールの呼び出しを 1 行で記録します。
+// Tool records one tool call on one line.
 func (a *Logger) Tool(name string, args any, d time.Duration, isError bool, err error) {
 	if r, ok := args.(Redactor); ok {
 		args = r.AuditArgs()

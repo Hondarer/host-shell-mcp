@@ -1,11 +1,11 @@
 #!/bin/sh
-# 接続先の host-shell を MCP サーバーとして起動し、初期化とツールの一覧の取得に応答するかを確かめます。
-# エージェントが実際に使うのと同じ経路 (ssh の標準入出力) で確かめます。
+# Starts host-shell on the target as an MCP server and checks that it answers initialize and tools/list.
+# Checks over the same path the agent uses (ssh standard input and output).
 #
-# 使い方: probe.sh ROUTE REMOTE_PATH [HOST_SHELL_OPTIONS...]
+# Usage: probe.sh ROUTE REMOTE_PATH [HOST_SHELL_OPTIONS...]
 #
-# 環境変数:
-#   PROBE_WAIT  応答を待つ秒数 (既定: 5)
+# Environment:
+#   PROBE_WAIT  seconds to wait for responses (default: 5)
 set -eu
 
 if [ $# -lt 2 ]; then

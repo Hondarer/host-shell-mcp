@@ -9,7 +9,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// レジストリは Windows だけにあります。ツールは Windows でだけ登録します。
+// The registry exists only on Windows. The tools are registered only on Windows.
 
 var errNoRegistry = errors.New("the registry exists only on Windows")
 

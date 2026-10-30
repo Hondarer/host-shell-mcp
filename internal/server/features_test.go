@@ -150,11 +150,11 @@ func TestConfirm(t *testing.T) {
 	if msg := callErr(t, cs, "fs_write", map[string]any{"path": path, "content": "y"}); !strings.Contains(msg, "did not allow") {
 		t.Errorf("decline: %s", msg)
 	}
-	call[map[string]any](t, cs, "fs_read", map[string]any{"path": path}) // 確認の対象外
+	call[map[string]any](t, cs, "fs_read", map[string]any{"path": path}) // not subject to confirmation
 	if asked.Load() != 2 {
 		t.Errorf("asked %d times", asked.Load())
 	}
-	// elicitation に対応しないクライアントでは実行しない。
+	// Clients without elicitation support do not run it.
 	cs = connectWith(t, policy.Options{Confirm: "destructive"}, nil)
 	if msg := callErr(t, cs, "fs_write", map[string]any{"path": path, "content": "z"}); !strings.Contains(msg, "requires confirmation") {
 		t.Errorf("no elicitation: %s", msg)
@@ -188,7 +188,7 @@ func TestProgressAndCancel(t *testing.T) {
 	}
 	mu.Unlock()
 
-	// 取り消すと、プロセス ツリーを止める。
+	// Cancelling stops the process tree.
 	pidFile := filepath.Join(t.TempDir(), "pid")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -448,7 +448,7 @@ func TestAdmin(t *testing.T) {
 		t.Error("proc_kill: process did not exit")
 	}
 
-	// サービスとログは、環境 (systemd の有無、権限) によって使えないことがある。
+	// Services and logs may be unavailable depending on the environment (systemd, permissions).
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "svc_list", Arguments: map[string]any{}})
 	if err != nil {
 		t.Fatal(err)

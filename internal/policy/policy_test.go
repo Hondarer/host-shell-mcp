@@ -64,15 +64,15 @@ func TestPaths(t *testing.T) {
 	ng(filepath.Join(ro, "a.txt"), true)
 	ng(filepath.Join(dir, "other"), false)
 	ng(filepath.Join(rw, "..", "other"), true)
-	ng(rw+"x", false) // 名前の前方一致は許さない。
+	ng(rw+"x", false) // A name prefix match is not allowed.
 
 	if runtime.GOOS != "windows" {
-		// 許可した場所の中から外を指すシンボリック リンクは、解決してから判定する。
+		// A symbolic link inside an allowed location that points outside is judged after resolving it.
 		os.Symlink(dir, filepath.Join(rw, "escape"))
 		ng(filepath.Join(rw, "escape", "other"), false)
 	}
 
-	// 読み取りだけを指定した場合、書き込みはどこにも許さない。
+	// When only read-only locations are given, writes are allowed nowhere.
 	p, _ = New(Options{AllowReadPaths: []string{ro}}, nil)
 	if p.CheckPath(filepath.Join(ro, "x"), true) == nil {
 		t.Error("write must be refused with only read paths")

@@ -23,14 +23,14 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// defaultExcludeDirs は検索で既定で降りないディレクトリです。
+// defaultExcludeDirs are the directories searches skip by default.
 var defaultExcludeDirs = []string{".git", ".hg", ".svn"}
 
-// errStop は走査を途中で終えるための目印です。
+// errStop marks an early end of the walk.
 var errStop = errors.New("stop walking")
 
-// walkFiles は root 以下を走査します。読めない項目は数えて飛ばします。
-// fn には、パスと、root からの相対パス ("/" 区切り) を渡します。
+// walkFiles walks everything under root. Unreadable entries are counted and skipped.
+// fn receives the path and the path relative to root ("/" separated).
 func walkFiles(ctx context.Context, root string, excludeDirs []string, fn func(path, rel string, d fs.DirEntry) error) (skipped int, err error) {
 	if excludeDirs == nil {
 		excludeDirs = defaultExcludeDirs
@@ -61,7 +61,7 @@ func walkFiles(ctx context.Context, root string, excludeDirs []string, fn func(p
 	return skipped, err
 }
 
-// SearchGrepInput は search_grep の入力です。
+// SearchGrepInput is the input of search_grep.
 type SearchGrepInput struct {
 	Pattern      string   `json:"pattern" jsonschema:"regular expression (Go RE2 syntax: no lookaround or backreferences). Set literal to search for a plain string"`
 	Path         string   `json:"path,omitempty" jsonschema:"root directory or a single file (default: current directory)"`
@@ -78,7 +78,7 @@ type SearchGrepInput struct {
 	Charset      string   `json:"charset,omitempty" jsonschema:"encoding of the files: auto (default: BOM, then UTF-8 if valid, otherwise the host file code page, decided per line), utf-8, system, or a charset name such as shift_jis, euc-jp, utf-16le"`
 }
 
-// Match は検索で一致した 1 行です。
+// Match is one matching line.
 type Match struct {
 	Path    string   `json:"path"`
 	Line    int      `json:"line" jsonschema:"1-based line number"`
@@ -88,13 +88,13 @@ type Match struct {
 	Charset string   `json:"charset,omitempty" jsonschema:"set when the line was converted to UTF-8 from this encoding"`
 }
 
-// FileMatches は 1 ファイルの一致の件数です。
+// FileMatches is the number of matches in one file.
 type FileMatches struct {
 	Path  string `json:"path"`
 	Count int    `json:"count,omitempty" jsonschema:"count mode: number of matching lines"`
 }
 
-// SearchGrepOutput は search_grep の出力です。
+// SearchGrepOutput is the output of search_grep.
 type SearchGrepOutput struct {
 	Matches      []Match       `json:"matches,omitempty" jsonschema:"content mode: matching lines"`
 	Files        []FileMatches `json:"files,omitempty" jsonschema:"files and count modes: matching files"`
@@ -106,13 +106,13 @@ type SearchGrepOutput struct {
 
 const maxMatchLineBytes = 500
 
-// grepAction は一致を受け取った側が、検索をどう続けるかを示します。
+// grepAction tells how the search continues after a match is handled.
 type grepAction int
 
 const (
-	grepContinue grepAction = iota // 同じファイルの検索を続ける
-	grepNextFile                   // 次のファイルへ進む
-	grepStop                       // 検索を終える
+	grepContinue grepAction = iota // continue searching the same file
+	grepNextFile                   // move on to the next file
+	grepStop                       // end the search
 )
 
 func (d *Deps) searchGrep(ctx context.Context, _ *mcp.CallToolRequest, in SearchGrepInput) (*mcp.CallToolResult, SearchGrepOutput, error) {
@@ -204,15 +204,15 @@ func (d *Deps) searchGrep(ctx context.Context, _ *mcp.CallToolRequest, in Search
 	return nil, out, nil
 }
 
-// grepOptions は 1 ファイルの検索の指定です。
+// grepOptions specifies the search of one file.
 type grepOptions struct {
 	re            *regexp.Regexp
 	ch            textenc.Choice
 	before, after int
 }
 
-// grepFile は 1 ファイルを行ごとに UTF-8 に変換しながら検索します。
-// BOM のない UTF-16 のファイルは、文字コードを指定しない限りバイナリとみなして飛ばします。
+// grepFile searches one file line by line, converting it to UTF-8.
+// UTF-16 files without a BOM are treated as binary and skipped unless an encoding is given.
 func grepFile(path string, opt grepOptions, emit func(Match) grepAction) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -227,7 +227,7 @@ func grepFile(path string, opt grepOptions, emit func(Match) grepAction) error {
 		br.Discard(n)
 		ch = textenc.Choice{Enc: bomEnc}
 	} else if ch.Enc.ASCIICompatible() && bytes.IndexByte(head, 0) >= 0 {
-		return nil // バイナリとみなす。
+		return nil // treat as binary
 	}
 
 	var src io.Reader = br
@@ -246,8 +246,8 @@ func grepFile(path string, opt grepOptions, emit func(Match) grepAction) error {
 	}
 
 	var (
-		before  []string // 直前の行 (前の文脈)
-		pending *Match   // 後の文脈を集めている一致
+		before  []string // preceding lines (leading context)
+		pending *Match   // match collecting trailing context
 		stopped bool
 	)
 	flush := func() {
@@ -275,7 +275,7 @@ func grepFile(path string, opt grepOptions, emit func(Match) grepAction) error {
 		}
 		if opt.re.Match(line) {
 			if opt.after == 0 && opt.before == 0 {
-				// 文脈を返さない場合は、受け取った側の指示に従って先へ進む。
+				// Without context, follow the handler's instruction on how to continue.
 				switch emit(Match{Path: path, Line: n, Text: text, Charset: cs}) {
 				case grepNextFile:
 					return nil
@@ -301,10 +301,10 @@ func grepFile(path string, opt grepOptions, emit func(Match) grepAction) error {
 	if stopped {
 		return errStop
 	}
-	return nil // 長すぎる行などで読み取りを打ち切ったファイルは、そこまでの結果だけを返す。
+	return nil // For a file whose reading stopped early (for example at an overlong line), return the results so far.
 }
 
-// clipLine は 1 行を上限の長さに切り詰め、UTF-8 の文字列にします。
+// clipLine shortens a line to the limit and makes it a UTF-8 string.
 func clipLine(line []byte) string {
 	if len(line) > maxMatchLineBytes {
 		line = line[:maxMatchLineBytes]
@@ -313,7 +313,7 @@ func clipLine(line []byte) string {
 	return string(bytes.ToValidUTF8(line, []byte("�")))
 }
 
-// SearchFilesInput は search_files の入力です。
+// SearchFilesInput is the input of search_files.
 type SearchFilesInput struct {
 	Pattern     string   `json:"pattern,omitempty" jsonschema:"glob. Without a slash it matches the base name (*.log, *.{yml,yaml}); with a slash it matches the path relative to path (**/test/*.py, src/*/main.go). Default: all"`
 	Path        string   `json:"path,omitempty" jsonschema:"root directory (default: current directory)"`
@@ -323,14 +323,14 @@ type SearchFilesInput struct {
 	MaxResults  int      `json:"max_results,omitempty" jsonschema:"maximum paths to return (default 1000)"`
 }
 
-// SearchFilesOutput は search_files の出力です。
+// SearchFilesOutput is the output of search_files.
 type SearchFilesOutput struct {
 	Paths     []string `json:"paths"`
 	Skipped   int      `json:"skipped,omitempty" jsonschema:"entries skipped because they could not be read"`
 	Truncated bool     `json:"truncated,omitempty" jsonschema:"max_results was reached"`
 }
 
-// maxSortCandidates は更新日時で並べるときに集める候補の上限です。
+// maxSortCandidates caps the candidates collected when sorting by modification time.
 const maxSortCandidates = 100000
 
 func (d *Deps) searchFiles(ctx context.Context, _ *mcp.CallToolRequest, in SearchFilesInput) (*mcp.CallToolResult, SearchFilesOutput, error) {
@@ -405,7 +405,7 @@ func (d *Deps) searchFiles(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 	return nil, out, nil
 }
 
-// FsManifestInput は fs_manifest の入力です。
+// FsManifestInput is the input of fs_manifest.
 type FsManifestInput struct {
 	Path        string   `json:"path,omitempty" jsonschema:"root directory (default: current directory)"`
 	Include     string   `json:"include,omitempty" jsonschema:"glob for files to list (same syntax as search_files pattern), e.g. *.c or src/**/*.h"`
@@ -413,7 +413,7 @@ type FsManifestInput struct {
 	MaxFiles    int      `json:"max_files,omitempty" jsonschema:"maximum files to return (default 2000)"`
 }
 
-// ManifestEntry は 1 ファイルのパスとハッシュです。
+// ManifestEntry is the path and hash of one file.
 type ManifestEntry struct {
 	Path   string `json:"path" jsonschema:"path relative to root, with forward slashes"`
 	Size   int64  `json:"size"`
@@ -421,7 +421,7 @@ type ManifestEntry struct {
 	SHA256 string `json:"sha256"`
 }
 
-// FsManifestOutput は fs_manifest の出力です。
+// FsManifestOutput is the output of fs_manifest.
 type FsManifestOutput struct {
 	Root      string          `json:"root"`
 	Files     []ManifestEntry `json:"files"`

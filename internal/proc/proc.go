@@ -1,7 +1,7 @@
-// Package proc は Windows と Linux の差を吸収して子プロセスを起動します。
+// Package proc starts child processes, hiding the differences between Windows and Linux.
 //
-// 子プロセスの標準入力に host-shell 自身の標準入力 (MCP の通信路) を渡さないこと、
-// 標準出力に host-shell 自身の標準出力を渡さないことが重要です。
+// It is essential not to give child processes host-shell's own standard input (the MCP channel)
+// as their standard input, nor host-shell's own standard output as their standard output.
 package proc
 
 import (
@@ -22,28 +22,28 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// Spec は起動するコマンドの指定です。Command と Argv はどちらか一方だけを指定します。
+// Spec specifies the command to start. Set exactly one of Command and Argv.
 type Spec struct {
-	// Command はシェルに渡すコマンド行です。
+	// Command is the command line passed to the shell.
 	Command string
-	// Argv はシェルを介さずに起動する引数列です。Argv[0] がプログラムです。
+	// Argv is the argument list started without a shell. Argv[0] is the program.
 	Argv []string
-	// Shell は Command を解釈するシェルです。空の場合は OS の既定を使います。
+	// Shell interprets Command. Empty means the OS default.
 	Shell string
-	// Dir は作業ディレクトリです。
+	// Dir is the working directory.
 	Dir string
-	// Env は既存の環境変数に追加、上書きする環境変数です。
+	// Env adds to or overrides the inherited environment variables.
 	Env map[string]string
-	// EnvFilter は、子プロセスに渡す前に環境変数を絞り込みます (利用者が指定した制限)。nil の場合は絞り込みません。
+	// EnvFilter narrows the environment before it is passed to the child (user restrictions). nil means no filtering.
 	EnvFilter func([]string) []string
-	// Interactive は端末につないで対話的に使うことを示します。PowerShell の -NonInteractive を付けません。
+	// Interactive means the command is used interactively on a terminal. PowerShell then gets no -NonInteractive.
 	Interactive bool
 }
 
-// waitDelay は、終了後も孫プロセスがパイプを握っている場合に待つ時間です。
+// waitDelay is how long to wait when grandchildren still hold the pipes after the process exits.
 const waitDelay = 2 * time.Second
 
-// Command は spec から exec.Cmd を作ります。標準入出力は呼び出し側で設定します。
+// Command builds an exec.Cmd from spec. The caller sets up standard input and output.
 func Command(ctx context.Context, spec Spec, defaultShell string) (*exec.Cmd, error) {
 	var cmd *exec.Cmd
 	switch {
@@ -79,7 +79,7 @@ func Command(ctx context.Context, spec Spec, defaultShell string) (*exec.Cmd, er
 	return cmd, nil
 }
 
-// Result は Run の結果です。
+// Result is the result of Run.
 type Result struct {
 	ExitCode        int    `json:"exit_code" jsonschema:"process exit code (-1 if killed or unknown)"`
 	Stdout          string `json:"stdout"`
@@ -93,21 +93,21 @@ type Result struct {
 	DurationMs      int64  `json:"duration_ms"`
 }
 
-// Options は Run の動作を指定します。
+// Options control how Run behaves.
 type Options struct {
 	DefaultShell string
-	// Stdin は標準入力に渡すバイト列です。文字コードの変換は呼び出し側で済ませます。
+	// Stdin is the bytes passed to standard input. The caller has already converted the encoding.
 	Stdin string
-	// Output は標準出力と標準エラーの文字コードです。ゼロ値は UTF-8 (変換なし) です。
+	// Output is the encoding of standard output and standard error. The zero value is UTF-8 (no conversion).
 	Output    textenc.Choice
 	Timeout   time.Duration
 	MaxOutput int
-	// OnOutput は、標準出力と標準エラーに書かれたバイト列 (変換前) を受け取ります。進み具合の通知に使います。
+	// OnOutput receives the bytes written to standard output and standard error (before conversion). Used for progress notifications.
 	OnOutput func([]byte)
 }
 
-// Run はコマンドを実行し、終了を待って結果を返します。
-// 終了コードが 0 以外でもエラーにはしません。起動できなかった場合だけエラーを返します。
+// Run runs the command, waits for it to end and returns the result.
+// A non-zero exit code is not an error; an error is returned only when the command could not start.
 func Run(parent context.Context, spec Spec, opt Options) (Result, error) {
 	ctx, cancel := context.WithTimeout(parent, opt.Timeout)
 	defer cancel()
@@ -149,7 +149,7 @@ func Run(parent context.Context, spec Spec, opt Options) (Result, error) {
 	return res, nil
 }
 
-// DefaultShell はこの OS で shell が省略されたときに使うシェルを返します。
+// DefaultShell returns the shell used on this OS when shell is omitted.
 func DefaultShell(windowsShell string) string {
 	if runtime.GOOS == "windows" {
 		return windowsShell
@@ -157,10 +157,10 @@ func DefaultShell(windowsShell string) string {
 	return "sh"
 }
 
-// powershellArgs は、引用符の解釈の違いを避けるため、スクリプトを -EncodedCommand で渡す引数を作ります。
+// powershellArgs passes the script with -EncodedCommand to avoid differences in quote handling.
 func powershellArgs(script string, interactive bool) []string {
-	// 出力を UTF-8 にそろえ、ネイティブ コマンドの終了コードを引き継ぐ。
-	// TODO: スクリプトの途中で失敗したコマンドレットの扱い ($? の反映) を検討する。
+	// Make output UTF-8 and carry over the exit code of native commands.
+	// TODO: consider how to handle cmdlets that fail in the middle of the script (reflecting $?).
 	script = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n" +
 		script + "\nif ($LASTEXITCODE) { exit $LASTEXITCODE }"
 	u := utf16.Encode([]rune(script))
@@ -195,7 +195,7 @@ func mergeEnv(base []string, add map[string]string) []string {
 
 func hasKey(m map[string]string, key string) bool {
 	for k := range m {
-		// Windows の環境変数名は大文字と小文字を区別しない。
+		// Windows environment variable names are case-insensitive.
 		if k == key || (runtime.GOOS == "windows" && strings.EqualFold(k, key)) {
 			return true
 		}

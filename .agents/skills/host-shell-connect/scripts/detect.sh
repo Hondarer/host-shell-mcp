@@ -1,7 +1,7 @@
 #!/bin/sh
-# 接続先の OS とアーキテクチャを調べ、配布する実行ファイルの種類 (linux-amd64 など) を出力します。
+# Detects the target's OS and architecture and prints the executable type to deploy (linux-amd64 etc.).
 #
-# 使い方: detect.sh ROUTE
+# Usage: detect.sh ROUTE
 set -eu
 
 if [ $# -ne 1 ]; then
@@ -10,7 +10,7 @@ if [ $# -ne 1 ]; then
 fi
 dir=$(cd "$(dirname "$0")" && pwd)
 
-# Linux (および uname のある環境)
+# Linux (and other systems with uname)
 if out=$("$dir/remote.sh" "$1" 'uname -sm' 2>/dev/null); then
 	case $out in
 	Linux\ x86_64* | Linux\ amd64*) echo linux-amd64; exit 0 ;;
@@ -19,7 +19,7 @@ if out=$("$dir/remote.sh" "$1" 'uname -sm' 2>/dev/null); then
 	esac
 fi
 
-# Windows (OpenSSH の既定のシェルの cmd)。Git for Windows などの uname がある場合もここに来る。
+# Windows (cmd, the default OpenSSH shell). Also reached when uname exists, e.g. from Git for Windows.
 out=$("$dir/remote.sh" "$1" 'echo %OS% %PROCESSOR_ARCHITECTURE%' 2>/dev/null | tr -d '\r') || true
 case $out in
 Windows_NT\ AMD64*) echo windows-amd64; exit 0 ;;

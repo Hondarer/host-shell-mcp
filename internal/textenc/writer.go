@@ -9,27 +9,27 @@ import (
 	"golang.org/x/text/transform"
 )
 
-// maxPending は、改行が来ないときに判定を保留しておく最大のバイト数です。
+// maxPending is the most bytes held for detection while no newline arrives.
 const maxPending = 4096
 
-// Writer は、子プロセスの出力を UTF-8 に変換しながら w に書く io.Writer です。
+// Writer is an io.Writer that converts child process output to UTF-8 while writing it to w.
 //
-// 自動判定では行 (\n または \r まで) ごとに、UTF-8 として正しければそのまま、
-// 正しくなければ代わりの文字コードとみなして変換します。
-// UTF-8 とそれ以外が混ざった出力も、行単位で正しく変換できます。
-// 出力の先頭に UTF-16 の BOM がある場合は、出力全体を UTF-16 として変換します。
+// With automatic detection, each line (up to \n or \r) is passed through when it is valid UTF-8,
+// and otherwise converted from the fallback encoding.
+// Output mixing UTF-8 and other encodings is converted correctly line by line.
+// When the output starts with a UTF-16 BOM, the whole output is converted as UTF-16.
 type Writer struct {
 	mu       sync.Mutex
 	w        io.Writer
 	auto     bool
 	fallback Encoding
-	conv     io.WriteCloser // 出力全体を変換するときの変換器
+	conv     io.WriteCloser // converter used when the whole output is converted
 	started  bool
 	pending  []byte
 	used     string
 }
 
-// NewWriter は c に従って変換する Writer を作ります。
+// NewWriter creates a Writer that converts according to c.
 func NewWriter(w io.Writer, c Choice) *Writer {
 	if c.Enc.enc == nil {
 		c.Enc = UTF8
@@ -38,7 +38,7 @@ func NewWriter(w io.Writer, c Choice) *Writer {
 	if !c.Auto && !c.Enc.IsUTF8() {
 		tw.startConv(c.Enc)
 	}
-	// 代わりの文字コードが UTF-8 の場合も、UTF-16 の BOM だけは調べる。
+	// Even when the fallback encoding is UTF-8, check for a UTF-16 BOM.
 	tw.started = !c.Auto
 	return tw
 }
@@ -48,7 +48,7 @@ func (w *Writer) startConv(e Encoding) {
 	w.used = e.Name
 }
 
-// Write は io.Writer を実装します。
+// Write implements io.Writer.
 func (w *Writer) Write(p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -83,7 +83,7 @@ func (w *Writer) Write(p []byte) (int, error) {
 	return n, w.flushLines(false)
 }
 
-// flushLines は保留中の出力を行ごとに変換して書きます。
+// flushLines converts and writes the pending output line by line.
 func (w *Writer) flushLines(final bool) error {
 	for {
 		i := bytes.IndexAny(w.pending, "\n\r")
@@ -106,7 +106,7 @@ func (w *Writer) flushLines(final bool) error {
 	return nil
 }
 
-// emit は 1 行 (または行の一部) を変換して書き、処理したバイト数を返します。
+// emit converts and writes one line (or part of one) and returns the number of bytes processed.
 func (w *Writer) emit(b []byte, final bool) (int, error) {
 	n := len(b)
 	if !final {
@@ -122,9 +122,9 @@ func (w *Writer) emit(b []byte, final bool) (int, error) {
 	return consumed, err
 }
 
-// Flush は、改行を待たずに保留中の出力を書き出します。文字の途中で切れている末尾だけは残します。
-// 改行のないプロンプト (「Password: 」など) を、行が終わる前に読めるようにするために使います。
-// 自動判定では、書き出した部分と行の残りを別々に判定します。
+// Flush writes out the pending output without waiting for a newline, keeping only a tail cut in the middle of a character.
+// It makes prompts without a newline (such as "Password: ") readable before the line ends.
+// With automatic detection, the part written out and the rest of the line are detected separately.
 func (w *Writer) Flush() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -141,7 +141,7 @@ func (w *Writer) Flush() error {
 	return err
 }
 
-// Close は保留中の出力を書き出します。子プロセスの終了後に呼びます。
+// Close writes out the pending output. Call it after the child process ends.
 func (w *Writer) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -159,7 +159,7 @@ func (w *Writer) Close() error {
 	return w.flushLines(true)
 }
 
-// Converted は、UTF-8 以外から変換した場合にその文字コードの名前を返します。変換していなければ空文字です。
+// Converted returns the name of the encoding converted from, or an empty string when nothing was converted.
 func (w *Writer) Converted() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()

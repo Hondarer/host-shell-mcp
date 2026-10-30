@@ -24,8 +24,8 @@ func shellCommand(ctx context.Context, sh, line string, interactive bool) (*exec
 			comspec = "cmd.exe"
 		}
 		cmd := exec.CommandContext(ctx, comspec)
-		// cmd は独自の引用符規則を持つため、Go の引数エスケープを使わずにコマンド行をそのまま渡す。
-		// TODO: cmd の内部コマンドの出力は OEM コード ページ (日本語環境では CP932) になるため、UTF-8 への変換を検討する。
+		// cmd has its own quoting rules, so pass the command line as is instead of using Go's argument escaping.
+		// TODO: output of cmd's internal commands is in the OEM code page (CP932 on Japanese systems); consider converting it to UTF-8.
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			CmdLine: fmt.Sprintf(`"%s" /d /s /c "%s"`, comspec, line),
 		}
@@ -39,9 +39,9 @@ func shellCommand(ctx context.Context, sh, line string, interactive bool) (*exec
 	}
 }
 
-// setupProcess はコンソール ウィンドウを作らずに起動し、
-// タイムアウトや停止のときに taskkill /T でプロセス ツリー全体を終了させます。
-// TODO: Job Object を使い、host-shell の終了時に子孫プロセスも確実に終了させる。
+// setupProcess starts the process without a console window,
+// and timeouts and stops end the whole process tree with taskkill /T.
+// TODO: use a Job Object so that descendants surely end when host-shell exits.
 func setupProcess(cmd *exec.Cmd) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
@@ -53,11 +53,11 @@ func setupProcess(cmd *exec.Cmd) {
 	}
 }
 
-// SignalNames は Signal で使える名前です。Windows ではプロセスの強制終了だけです。
+// SignalNames are the names Signal accepts. On Windows, only killing the process.
 const SignalNames = "kill"
 
-// Signal はプロセスを終了させます。Windows ではシグナルがないため、kill だけに対応します。
-// group の場合は、子孫のプロセスもまとめて終了させます。
+// Signal ends a process. Windows has no signals, so only kill is supported.
+// With group, descendant processes are ended too.
 func Signal(pid int, name string, group bool) error {
 	if name != "kill" {
 		return fmt.Errorf("signal %q is not supported on Windows (only kill)", name)

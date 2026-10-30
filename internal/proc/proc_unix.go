@@ -20,8 +20,8 @@ func shellCommand(ctx context.Context, sh, line string, interactive bool) (*exec
 	}
 }
 
-// setupProcess は子プロセスを新しいプロセス グループで起動し、
-// タイムアウトや停止のときにグループ全体 (孫プロセスを含む) を終了させます。
+// setupProcess starts the child in a new process group,
+// so that timeouts and stops end the whole group (including grandchildren).
 func setupProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
@@ -29,7 +29,7 @@ func setupProcess(cmd *exec.Cmd) {
 	}
 }
 
-// signals は Signal で送れるシグナルの名前です。
+// signals are the signal names Signal can send.
 var signals = map[string]syscall.Signal{
 	"interrupt": syscall.SIGINT,
 	"terminate": syscall.SIGTERM,
@@ -42,10 +42,10 @@ var signals = map[string]syscall.Signal{
 	"usr2":      syscall.SIGUSR2,
 }
 
-// SignalNames は Signal で使える名前です。
+// SignalNames are the names Signal accepts.
 const SignalNames = "interrupt, terminate, hangup, quit, kill, stop, continue, usr1, usr2"
 
-// Signal はプロセスにシグナルを送ります。group の場合は、pid をリーダーとするプロセス グループ全体に送ります。
+// Signal sends a signal to a process. With group, it is sent to the whole process group led by pid.
 func Signal(pid int, name string, group bool) error {
 	sig, ok := signals[name]
 	if !ok {

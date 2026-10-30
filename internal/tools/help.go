@@ -15,18 +15,18 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// helpFS はエージェント向けの使い方の説明です。topic ごとに 1 ファイルです。
+// helpFS holds the usage guides for agents, one file per topic.
 //
 //go:embed help/*.md
 var helpFS embed.FS
 
-// helpTopics は help の topic の一覧です。表示の順に並べます。
+// helpTopics lists the help topics in display order.
 var helpTopics = []string{"overview", "files", "edit", "search", "commands", "jobs", "network", "admin", "transfer", "encoding", "windows", "policy", "limits"}
 
-// helpResourcePrefix は help の topic を MCP のリソースとして公開するときの URI の接頭辞です。
+// helpResourcePrefix is the URI prefix under which help topics are exposed as MCP resources.
 const helpResourcePrefix = "host-shell://help/"
 
-// HelpInput は help の入力です。
+// HelpInput is the input of help.
 type HelpInput struct {
 	Topic string `json:"topic,omitempty" jsonschema:"overview (default), files, edit, search, commands, jobs, network, admin, transfer, encoding, windows, policy, limits, or all"`
 }
@@ -60,7 +60,7 @@ func helpText(topic string) string {
 	return strings.TrimSpace(string(b))
 }
 
-// registerHelp は help の各 topic をリソースとしても公開します。
+// registerHelp also exposes each help topic as a resource.
 func registerHelp(s *mcp.Server, d *Deps) {
 	for _, t := range helpTopics {
 		uri := helpResourcePrefix + t
@@ -81,7 +81,7 @@ func registerHelp(s *mcp.Server, d *Deps) {
 	}
 }
 
-// hostSummary は接続先とサーバーの設定を Markdown で返します。
+// hostSummary returns the target and server settings as Markdown.
 func (d *Deps) hostSummary() string {
 	host, _ := os.Hostname()
 	cwd, _ := os.Getwd()
@@ -116,7 +116,7 @@ func (d *Deps) hostSummary() string {
 	return strings.TrimSpace(sb.String())
 }
 
-// Instructions は初期化の応答でエージェントに渡す案内を返します。公開しているツールの案内だけを含めます。
+// Instructions returns the guidance given to the agent in the initialize response, covering only the exposed tools.
 func Instructions(d *Deps) string {
 	host, _ := os.Hostname()
 	cwd, _ := os.Getwd()

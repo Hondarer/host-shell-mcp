@@ -1,7 +1,7 @@
 name: Release
 
-# Release を公開すると、そのタグでビルドし、skill のアーカイブ (bin/ を含む)、
-# 実行ファイル、SHA256SUMS を Release に添付する。
+# When a Release is published, build at its tag and attach the skill archive (with bin/),
+# the executables and SHA256SUMS to the Release.
 on:
   release:
     types: [published]

@@ -25,7 +25,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// Entry はディレクトリの 1 項目です。
+// Entry is one directory entry.
 type Entry struct {
 	Name    string `json:"name"`
 	Type    string `json:"type" jsonschema:"file, dir, symlink or other"`
@@ -57,13 +57,13 @@ func fileType(m fs.FileMode) string {
 	}
 }
 
-// FsListInput は fs_list の入力です。
+// FsListInput is the input of fs_list.
 type FsListInput struct {
 	Path       string `json:"path,omitempty" jsonschema:"directory path (default: current directory)"`
 	MaxEntries int    `json:"max_entries,omitempty" jsonschema:"maximum entries to return (default 1000)"`
 }
 
-// FsListOutput は fs_list の出力です。
+// FsListOutput is the output of fs_list.
 type FsListOutput struct {
 	Path      string  `json:"path"`
 	Entries   []Entry `json:"entries"`
@@ -85,19 +85,19 @@ func (d *Deps) fsList(_ context.Context, _ *mcp.CallToolRequest, in FsListInput)
 		}
 		info, err := e.Info()
 		if err != nil {
-			continue // 列挙後に削除された項目は無視する。
+			continue // Ignore entries removed after listing.
 		}
 		out.Entries = append(out.Entries, newEntry(e.Name(), info))
 	}
 	return nil, out, nil
 }
 
-// FsStatInput は fs_stat の入力です。
+// FsStatInput is the input of fs_stat.
 type FsStatInput struct {
 	Path string `json:"path"`
 }
 
-// FsStatOutput は fs_stat の出力です。
+// FsStatOutput is the output of fs_stat.
 type FsStatOutput struct {
 	Path       string `json:"path"`
 	Entry      Entry  `json:"entry"`
@@ -116,7 +116,7 @@ func (d *Deps) fsStat(_ context.Context, _ *mcp.CallToolRequest, in FsStatInput)
 	return nil, out, nil
 }
 
-// FsReadInput は fs_read の入力です。
+// FsReadInput is the input of fs_read.
 type FsReadInput struct {
 	Path        string `json:"path"`
 	Encoding    string `json:"encoding,omitempty" jsonschema:"text (default) or base64"`
@@ -128,7 +128,7 @@ type FsReadInput struct {
 	Length      int    `json:"length,omitempty" jsonschema:"maximum bytes to read (capped by the server output limit)"`
 }
 
-// FsReadOutput は fs_read の出力です。
+// FsReadOutput is the output of fs_read.
 type FsReadOutput struct {
 	Path       string `json:"path"`
 	Size       int64  `json:"size"`
@@ -165,9 +165,9 @@ func (d *Deps) fsRead(_ context.Context, req *mcp.CallToolRequest, in FsReadInpu
 		if in.Charset != "" {
 			return nil, FsReadOutput{}, errors.New("charset applies to encoding text only")
 		}
-		limit := d.Cfg.MaxOutputBytes / 4 * 3 // base64 で膨らんだ後に上限に収める。
+		limit := d.Cfg.MaxOutputBytes / 4 * 3 // stay within the limit after base64 expansion
 		if fromBridge(req) {
-			// bridge の転送はエージェントの文脈を通らないため、大きな単位で読む。
+			// Bridge transfers do not pass through the agent's context, so read in large chunks.
 			limit = TransferChunkBytes
 		}
 		err = d.readBase64(f, in, limit, &out)
@@ -180,13 +180,13 @@ func (d *Deps) fsRead(_ context.Context, req *mcp.CallToolRequest, in FsReadInpu
 	return nil, out, nil
 }
 
-// readText はファイルを UTF-8 に変換しながら読みます。
+// readText reads a file, converting it to UTF-8.
 func (d *Deps) readText(f *os.File, in FsReadInput, out *FsReadOutput) error {
 	ch, err := textenc.Parse(in.Charset, textenc.File, true, textenc.UTF8)
 	if err != nil {
 		return fmt.Errorf("charset: %w", err)
 	}
-	// BOM は読む範囲によらず、ファイルの先頭で調べる。
+	// Check the BOM at the start of the file regardless of the range read.
 	head := make([]byte, 4)
 	k, _ := f.ReadAt(head, 0)
 	skip := 0
@@ -215,7 +215,7 @@ func (d *Deps) readLines(f *os.File, skip int64, ch textenc.Choice, in FsReadInp
 	converted := false
 	decode := func(b []byte) string { return string(b) }
 	if ch.Auto {
-		// 行ごとに、UTF-8 として正しければそのまま、正しくなければ接続先の既定の文字コードとみなす。
+		// Per line: pass through when valid UTF-8, otherwise treat it as the target's default encoding.
 		r = bufio.NewReader(src)
 		decode = func(b []byte) string {
 			if utf8.Valid(b) {
@@ -234,7 +234,7 @@ func (d *Deps) readLines(f *os.File, skip int64, ch textenc.Choice, in FsReadInp
 	for ; line < in.LineStart+count; line++ {
 		b, err := r.ReadBytes('\n')
 		if len(b) == 0 && errors.Is(err, io.EOF) {
-			out.EOF = true // 最後の改行の後ろは行として数えない。
+			out.EOF = true // Text after the last newline does not count as a line.
 			break
 		}
 		if line >= in.LineStart {
@@ -245,7 +245,7 @@ func (d *Deps) readLines(f *os.File, skip int64, ch textenc.Choice, in FsReadInp
 			if sb.Len()+len(s) > d.Cfg.MaxOutputBytes {
 				out.Truncated = true
 				if sb.Len() == 0 {
-					// 1 行だけで上限を超える場合は、その行を切り詰めて返し、次の行へ進める。
+					// When a single line exceeds the limit, return it truncated and move on to the next line.
 					s, _ = limit.Text(s, d.Cfg.MaxOutputBytes)
 					sb.WriteString(s)
 					line++
@@ -296,7 +296,7 @@ func (d *Deps) readTextBytes(f *os.File, skip int64, ch textenc.Choice, in FsRea
 	if ch.Auto && textenc.LooksUTF8(buf) {
 		enc = textenc.UTF8
 	}
-	// 変換後の大きさを上限に収め、範囲の末尾で分断された文字は次の読み取りに回す。
+	// Fit the converted size within the limit and leave a character split at the end of the range for the next read.
 	s, consumed, full := enc.DecodePrefix(buf, d.Cfg.MaxOutputBytes, atEOF)
 	if consumed == 0 && k > 0 {
 		s, consumed, full = enc.DecodePrefix(buf, d.Cfg.MaxOutputBytes, true)
@@ -326,13 +326,13 @@ func (d *Deps) readBase64(f *os.File, in FsReadInput, n int, out *FsReadOutput) 
 	return nil
 }
 
-// BridgeClientName は host-shell bridge が接続するときのクライアントの名前です。
+// BridgeClientName is the client name host-shell bridge connects with.
 const BridgeClientName = "host-shell-bridge"
 
-// TransferChunkBytes は bridge がファイルを送るときの 1 回の読み書きの大きさです。
+// TransferChunkBytes is the size of each read or write when the bridge transfers files.
 const TransferChunkBytes = 1 << 20
 
-// fromBridge は要求が host-shell bridge からのものかを返します。
+// fromBridge reports whether the request comes from host-shell bridge.
 func fromBridge(req *mcp.CallToolRequest) bool {
 	if req == nil || req.Session == nil {
 		return false
@@ -341,7 +341,7 @@ func fromBridge(req *mcp.CallToolRequest) bool {
 	return p != nil && p.ClientInfo != nil && p.ClientInfo.Name == BridgeClientName
 }
 
-// FsWriteInput は fs_write の入力です。
+// FsWriteInput is the input of fs_write.
 type FsWriteInput struct {
 	Path     string `json:"path"`
 	Content  string `json:"content"`
@@ -355,14 +355,14 @@ type FsWriteInput struct {
 	BOM      bool   `json:"bom,omitempty" jsonschema:"text: prepend a byte order mark (utf-8, utf-16le, utf-16be only). Only when writing at the start of the file"`
 }
 
-// AuditArgs は書き込み内容の代わりに長さとハッシュをログに残します。
+// AuditArgs logs the length and hash instead of the written content.
 func (in FsWriteInput) AuditArgs() any {
 	sum := sha256.Sum256([]byte(in.Content))
 	in.Content = fmt.Sprintf("<%d chars, sha256 %s>", len(in.Content), hex.EncodeToString(sum[:]))
 	return in
 }
 
-// data は書き込むバイト列を作ります。テキストは改行と文字コードを変換し、指定があれば BOM を付けます。
+// data builds the bytes to write. Text gets its newlines and encoding converted, and a BOM if requested.
 func (in FsWriteInput) data() ([]byte, error) {
 	switch orDefault(in.Encoding, "text") {
 	case "text":
@@ -404,7 +404,7 @@ func (in FsWriteInput) data() ([]byte, error) {
 	return b, nil
 }
 
-// FsWriteOutput は fs_write の出力です。
+// FsWriteOutput is the output of fs_write.
 type FsWriteOutput struct {
 	Path         string `json:"path"`
 	BytesWritten int    `json:"bytes_written"`
@@ -424,7 +424,7 @@ func (d *Deps) fsWrite(_ context.Context, _ *mcp.CallToolRequest, in FsWriteInpu
 		return nil, FsWriteOutput{}, fmt.Errorf("unknown mode %q", in.Mode)
 	}
 	if in.Offset != nil {
-		// 位置を指定した書き込みは、既存の内容を切り詰めずに指定した範囲だけを置き換える。
+		// A write at an offset replaces only that range without truncating the existing content.
 		switch {
 		case *in.Offset < 0:
 			return nil, FsWriteOutput{}, fmt.Errorf("offset must not be negative: %d", *in.Offset)
@@ -452,7 +452,7 @@ func (d *Deps) fsWrite(_ context.Context, _ *mcp.CallToolRequest, in FsWriteInpu
 		}
 	}
 
-	// TODO: 上書き時に一時ファイルと rename で原子的に置き換えるか検討する (所有者や属性の維持と相反する)。
+	// TODO: consider replacing atomically with a temporary file and rename when overwriting (conflicts with keeping owner and attributes).
 	f, err := os.OpenFile(in.Path, flag, perm)
 	if err != nil {
 		return nil, FsWriteOutput{}, err

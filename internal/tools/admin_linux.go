@@ -21,7 +21,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// runTool は管理用のコマンドを実行します。sudo の場合は sudo -n を前に付けます。
+// runTool runs an administrative command, prefixed with sudo -n when sudo is set.
 func (d *Deps) runTool(ctx context.Context, argv []string, sudo bool) (proc.Result, error) {
 	if sudo && os.Geteuid() != 0 {
 		argv = append([]string{"sudo", "-n", "--"}, argv...)
@@ -68,14 +68,14 @@ func killProcess(ctx context.Context, d *Deps, pid int, sig string, tree, sudo b
 			if p == pid {
 				return done, err
 			}
-			continue // 子孫はすでに終了していることがある。
+			continue // Descendants may already have exited.
 		}
 		done = append(done, p)
 	}
 	return done, nil
 }
 
-// descendants は /proc の親子関係から、pid のすべての子孫を返します。
+// descendants returns all descendants of pid from the parent links in /proc.
 func descendants(pid int) []int {
 	children := map[int][]int{}
 	stats, _ := filepath.Glob("/proc/[0-9]*/stat")
@@ -84,7 +84,7 @@ func descendants(pid int) []int {
 		if err != nil {
 			continue
 		}
-		// "pid (comm) state ppid ..." の comm は空白や括弧を含みうるため、最後の ")" の後を読む。
+		// comm in "pid (comm) state ppid ..." may contain spaces and parentheses, so read after the last ")".
 		s := string(b)
 		i := strings.LastIndexByte(s, ')')
 		if i < 0 {
@@ -116,7 +116,7 @@ func processAlive(pid int) bool {
 	if err != nil {
 		return false
 	}
-	// ゾンビ (Z) は終了済みとみなす。
+	// Zombies (Z) count as exited.
 	s := string(b)
 	if i := strings.LastIndexByte(s, ')'); i >= 0 && len(s) > i+2 {
 		return s[i+2] != 'Z'
@@ -153,7 +153,7 @@ func listServices(ctx context.Context, d *Deps, user bool) ([]Service, error) {
 		byName[s.Name] = s
 		out = append(out, s)
 	}
-	// 読み込まれていない (一度も起動していない) ユニットと、有効かどうかを list-unit-files で補う。
+	// Add units that are not loaded (never started) and whether they are enabled, from list-unit-files.
 	if res, err := d.runTool(ctx, systemctl(user, "list-unit-files", "--type=service", "--plain", "--no-legend"), false); err == nil && res.ExitCode == 0 {
 		for _, line := range strings.Split(res.Stdout, "\n") {
 			f := strings.Fields(line)
@@ -177,7 +177,7 @@ func listServices(ctx context.Context, d *Deps, user bool) ([]Service, error) {
 	return list, nil
 }
 
-// serviceState は systemd の状態を、OS によらない名前にします。
+// serviceState maps systemd states to OS-independent names.
 func serviceState(active, sub string) string {
 	switch active {
 	case "active":
@@ -297,7 +297,7 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error
 		if grep, err = regexp.Compile("(?i)" + in.Grep); err != nil {
 			return nil, fmt.Errorf("grep: %w", err)
 		}
-		// journalctl -g は PCRE2 なしでビルドされていると使えないため、ここで絞り込む。件数は多めに取る。
+		// journalctl -g is unavailable when built without PCRE2, so filter here and fetch extra entries.
 		argv[5] = strconv.Itoa(min(in.Lines*20, 50000))
 	}
 	res, err := d.runTool(ctx, argv, in.Sudo)
@@ -341,8 +341,8 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error
 	return out, nil
 }
 
-// journalString は journalctl -o json の値を文字列にします。
-// 表示できないバイトを含む値は、バイトの配列として出力されます。
+// journalString turns a journalctl -o json value into a string.
+// Values with unprintable bytes are output as arrays of bytes.
 func journalString(v any) string {
 	switch x := v.(type) {
 	case string:
@@ -366,7 +366,7 @@ func journalString(v any) string {
 
 // ---- sys_disks ----
 
-// pseudoFS は使用量を示す意味のないファイル システムです。
+// pseudoFS lists file systems whose usage means nothing.
 var pseudoFS = map[string]bool{
 	"proc": true, "sysfs": true, "cgroup": true, "cgroup2": true, "devpts": true, "mqueue": true, "debugfs": true,
 	"tracefs": true, "securityfs": true, "pstore": true, "bpf": true, "configfs": true, "fusectl": true,
@@ -410,7 +410,7 @@ func listDisks(all bool) ([]Disk, error) {
 	return out, sc.Err()
 }
 
-// unescapeMount は /proc/self/mounts の 8 進のエスケープ (\040 など) を戻します。
+// unescapeMount undoes the octal escapes (\040 and so on) of /proc/self/mounts.
 func unescapeMount(s string) string {
 	if !strings.Contains(s, `\`) {
 		return s

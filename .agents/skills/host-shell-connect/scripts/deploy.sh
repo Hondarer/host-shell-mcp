@@ -1,11 +1,11 @@
 #!/bin/sh
-# host-shell の実行ファイルを、ssh の標準入力で接続先に送ります。SFTP もポート転送も使いません。
-# 接続先に同じ内容のファイルがすでにある場合は送りません。送ったあとは SHA-256 を手元と比べます。
+# Sends the host-shell executable to the target over ssh's standard input. Uses neither SFTP nor port forwarding.
+# Skips sending when the target already has a file with the same content. After sending, compares SHA-256 with the local file.
 #
-# 使い方: deploy.sh ROUTE TYPE REMOTE_PATH
-#   TYPE         接続先の種類。detect.sh の出力 (linux-amd64、linux-arm64、windows-amd64、windows-arm64)
-#   REMOTE_PATH  接続先の配置先。空白と引用符を含まないこと (例: /opt/host-shell/host-shell、C:/tools/host-shell.exe)
-# 送る実行ファイルは、この skill の bin/ にあるものです。
+# Usage: deploy.sh ROUTE TYPE REMOTE_PATH
+#   TYPE         target type, as printed by detect.sh (linux-amd64, linux-arm64, windows-amd64, windows-arm64)
+#   REMOTE_PATH  install path on the target; must not contain spaces or quotes (e.g. /opt/host-shell/host-shell, C:/tools/host-shell.exe)
+# The executable sent is the one in this skill's bin/.
 set -eu
 
 if [ $# -ne 3 ]; then
@@ -40,7 +40,7 @@ fi
 case $os in
 linux)
 	query="sha256sum $path 2>/dev/null || true"
-	# 一時ファイルに書いてから名前を変えるため、実行中の host-shell があっても置き換えられる。
+	# Write to a temporary file and rename it, so a running host-shell can be replaced.
 	upload="mkdir -p \$(dirname $path) && cat > $path.new && chmod 755 $path.new && mv -f $path.new $path && sha256sum $path"
 	;;
 windows)

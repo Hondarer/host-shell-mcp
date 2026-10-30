@@ -1,9 +1,9 @@
-// Package policy は host-shell の利用者が起動時に指定する制限を表します。
+// Package policy represents the restrictions the user of host-shell specifies at startup.
 //
-// 既定は制限なしです。オプションで指定したものだけを制限します。
-// ここでの検査は、ツールの引数に対するものです。exec_run などでコマンドを実行できる場合、
-// コマンドはファイルやネットワークに自由に触れられるため、厳密に制限するには、
-// コマンド実行のツールの組 (exec) を --tools で外します。
+// The default is no restriction; only what the options specify is restricted.
+// The checks here apply to tool arguments. When commands can be run with exec_run and similar
+// tools, the commands can touch files and the network freely, so for strict restriction remove
+// the command execution group (exec) with --tools.
 package policy
 
 import (
@@ -19,33 +19,33 @@ import (
 	"strings"
 )
 
-// Options は起動時のオプションから作る制限の指定です。
+// Options are the restrictions built from the startup options.
 type Options struct {
-	// Tools は公開するツールの指定です (例: "all,-admin,-sudo_run")。空の場合は all です。
+	// Tools selects the exposed tools (e.g. "all,-admin,-sudo_run"). Empty means all.
 	Tools string
-	// ReadOnly は接続先を変更するツールを公開しないことを示します。
+	// ReadOnly hides the tools that change the target.
 	ReadOnly bool
-	// Confirm は実行の前に利用者の確認 (MCP の elicitation) を求めるツールの指定です。
+	// Confirm selects the tools that need user confirmation (MCP elicitation) before they run.
 	Confirm string
-	// AllowPaths はファイルの読み書きを許す場所です。空の場合は制限しません。
+	// AllowPaths are the locations where files may be read and written. Empty means no restriction.
 	AllowPaths []string
-	// AllowReadPaths はファイルの読み取りだけを許す場所です。
+	// AllowReadPaths are the locations where files may only be read.
 	AllowReadPaths []string
-	// AllowCommands は実行を許すプログラムの名前 (glob) です。空の場合は制限しません。
+	// AllowCommands are the program names (globs) allowed to run. Empty means no restriction.
 	AllowCommands []string
-	// DenyCommands は実行を拒むコマンド行の正規表現です。
+	// DenyCommands are regular expressions for command lines that are refused.
 	DenyCommands []string
-	// AllowHosts はネットワークのツールが接続してよい宛先です。空の場合は制限しません。
+	// AllowHosts are the destinations the network tools may connect to. Empty means no restriction.
 	AllowHosts []string
-	// UnsetEnv は子プロセスに渡さない環境変数の名前 (glob) です。
+	// UnsetEnv are the names (globs) of environment variables not passed to child processes.
 	UnsetEnv []string
-	// Redact は、出力に含まれる秘密情報 (鍵、トークン、パスワードの類) を伏せ字にすることを示します。
+	// Redact masks secrets (keys, tokens, passwords and the like) in the output.
 	Redact bool
-	// RedactPatterns は伏せ字にする追加の正規表現です。
+	// RedactPatterns are additional regular expressions to mask.
 	RedactPatterns []string
 }
 
-// Policy は検査に使う形に変換した制限です。ゼロ値は制限なしです。
+// Policy holds the restrictions in the form used for checks. The zero value means no restriction.
 type Policy struct {
 	ReadOnly bool
 
@@ -65,7 +65,7 @@ type Policy struct {
 	redact []redaction
 }
 
-// New はオプションを検査して Policy を作ります。known はツールの名前から組の名前への対応です。
+// New validates the options and builds a Policy. known maps tool names to group names.
 func New(o Options, known map[string]string) (*Policy, error) {
 	p := &Policy{ReadOnly: o.ReadOnly}
 	var err error
@@ -93,7 +93,7 @@ func New(o Options, known map[string]string) (*Policy, error) {
 		p.readRoots = append(p.readRoots, root)
 	}
 	if len(p.readRoots) > 0 && len(p.writeRoots) == 0 {
-		// 読み取りだけの場所を指定した場合、書き込みはどこにも許さない。
+		// When only read-only locations are given, writes are allowed nowhere.
 		p.writeRoots = []string{}
 	}
 	for _, c := range o.AllowCommands {
@@ -135,23 +135,23 @@ func New(o Options, known map[string]string) (*Policy, error) {
 	return p, nil
 }
 
-// Unrestricted は制限のない Policy を返します。
+// Unrestricted returns a Policy with no restriction.
 func Unrestricted() *Policy {
 	p, _ := New(Options{}, nil)
 	return p
 }
 
-// Enabled はツールを公開するかを返します。
+// Enabled reports whether the tool is exposed.
 func (p *Policy) Enabled(tool, group string, readOnlyTool bool) bool {
 	return p.tools.match(tool, group, !readOnlyTool)
 }
 
-// NeedsConfirm はツールの実行の前に利用者の確認が必要かを返します。
+// NeedsConfirm reports whether the tool needs user confirmation before it runs.
 func (p *Policy) NeedsConfirm(tool, group string, readOnlyTool bool) bool {
 	return p.confirm.match(tool, group, !readOnlyTool)
 }
 
-// Summary は制限の内容を、項目と値の組で返します。制限のない項目は含めません。
+// Summary returns the restrictions as name and value pairs. Unrestricted items are left out.
 func (p *Policy) Summary() [][2]string {
 	var out [][2]string
 	if p.tools.spec != "all" {
@@ -200,9 +200,9 @@ func listOrNone(s []string) string {
 	return strings.Join(s, ", ")
 }
 
-// ---- ツールの選択 ----
+// ---- Tool selection ----
 
-// selector は "all,-admin,net,-sudo_run" のような指定です。左から順に適用します。
+// selector is a specification such as "all,-admin,net,-sudo_run", applied from left to right.
 type selector struct {
 	spec  string
 	items []selItem
@@ -213,11 +213,11 @@ type selItem struct {
 	name   string
 }
 
-// 組の名前のほかに使える特別な名前です。
+// Special names usable in addition to group names.
 const (
 	selAll         = "all"
-	selDestructive = "destructive" // 接続先を変更しうるツール
-	selReadOnly    = "readonly"    // 接続先を変更しないツール
+	selDestructive = "destructive" // tools that may change the target
+	selReadOnly    = "readonly"    // tools that do not change the target
 )
 
 func parseSelector(spec string, known map[string]string) (selector, error) {
@@ -258,9 +258,9 @@ func (s selector) match(tool, group string, destructive bool) bool {
 	return on
 }
 
-// ---- パス ----
+// ---- Paths ----
 
-// CheckPath は path の読み取り (write が false) または書き込みが許されるかを調べます。
+// CheckPath checks whether reading (write is false) or writing path is allowed.
 func (p *Policy) CheckPath(pth string, write bool) error {
 	roots := p.readRoots
 	kind := "read"
@@ -284,7 +284,7 @@ func (p *Policy) CheckPath(pth string, write bool) error {
 	return fmt.Errorf("policy: %s access to %s is not allowed (allowed: %s)", kind, abs, listOrNone(roots))
 }
 
-// resolveRoot は許可する場所を、シンボリック リンクを解決した絶対パスにします。
+// resolveRoot turns an allowed location into an absolute path with symbolic links resolved.
 func resolveRoot(r string) (string, error) {
 	if r == "" {
 		return "", errors.New("empty path")
@@ -296,8 +296,8 @@ func resolveRoot(r string) (string, error) {
 	return resolveExisting(abs), nil
 }
 
-// resolveExisting は、存在する部分までのシンボリック リンクを解決し、残りをつなげます。
-// 作成前のファイルでも、その親のリンクを解決して判定するためです。
+// resolveExisting resolves symbolic links in the part that exists and appends the rest,
+// so that a file not yet created is judged by its resolved parent.
 func resolveExisting(abs string) string {
 	rest := ""
 	cur := filepath.Clean(abs)
@@ -325,9 +325,9 @@ func within(p, root string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)
 }
 
-// ---- コマンド ----
+// ---- Commands ----
 
-// CheckCommand は programs (起動するプログラムやシェル) と、コマンド行の全体 text が許されるかを調べます。
+// CheckCommand checks whether programs (the programs or shells started) and the whole command line text are allowed.
 func (p *Policy) CheckCommand(programs []string, text string) error {
 	if len(p.allowCommands) > 0 {
 		for _, prog := range programs {
@@ -349,7 +349,7 @@ func (p *Policy) CheckCommand(programs []string, text string) error {
 	return nil
 }
 
-// baseName は OS によらずパスの最後の要素を返します。
+// baseName returns the last element of a path regardless of the OS.
 func baseName(p string) string {
 	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
 		return p[i+1:]
@@ -357,7 +357,7 @@ func baseName(p string) string {
 	return p
 }
 
-// normalizeProgram は Windows では小文字にし、実行ファイルの拡張子を除きます。
+// normalizeProgram lowercases the name and drops the executable extension on Windows.
 func normalizeProgram(name string) string {
 	if runtime.GOOS != "windows" {
 		return name
@@ -371,9 +371,9 @@ func normalizeProgram(name string) string {
 	return name
 }
 
-// ---- 環境変数 ----
+// ---- Environment variables ----
 
-// FilterEnv は env (KEY=VALUE の並び) から、渡さない環境変数を除きます。
+// FilterEnv removes the variables that must not be passed from env (a list of KEY=VALUE).
 func (p *Policy) FilterEnv(env []string) []string {
 	if len(p.unsetEnv) == 0 {
 		return env
@@ -388,7 +388,7 @@ func (p *Policy) FilterEnv(env []string) []string {
 	return out
 }
 
-// FiltersEnv は FilterEnv が何かを除く設定かを返します。
+// FiltersEnv reports whether FilterEnv removes anything.
 func (p *Policy) FiltersEnv() bool { return len(p.unsetEnv) > 0 }
 
 func (p *Policy) envUnset(name string) bool {
@@ -404,10 +404,10 @@ func (p *Policy) envUnset(name string) bool {
 	return false
 }
 
-// ---- ネットワーク ----
+// ---- Network ----
 
-// hostRule は宛先の許可です。host は glob か CIDR、port は空 (すべて) か番号の glob です。
-// "unix:" で始まるものは Unix ドメイン ソケットのパスの glob です。
+// hostRule allows a destination. host is a glob or a CIDR; port is empty (any) or a glob of numbers.
+// Rules starting with "unix:" are globs of Unix domain socket paths.
 type hostRule struct {
 	spec string
 	host string
@@ -440,8 +440,8 @@ func parseHostRule(s string) (hostRule, error) {
 	return r, nil
 }
 
-// CheckHost は host:port への接続が許されるかを調べます。
-// 名前を CIDR の規則と照合する場合は、名前を解決したすべてのアドレスが範囲に入ることを求めます。
+// CheckHost checks whether connecting to host:port is allowed.
+// When a name is matched against a CIDR rule, every address the name resolves to must be in the range.
 func (p *Policy) CheckHost(host string, port int) error {
 	if len(p.allowHosts) == 0 {
 		return nil
@@ -480,7 +480,7 @@ func (p *Policy) CheckHost(host string, port int) error {
 	return fmt.Errorf("policy: connection to %s is not allowed (allowed: %s)", net.JoinHostPort(h, ps), p.hostList())
 }
 
-// CheckUnixSocket は Unix ドメイン ソケットへの接続が許されるかを調べます。
+// CheckUnixSocket checks whether connecting to a Unix domain socket is allowed.
 func (p *Policy) CheckUnixSocket(sock string) error {
 	if len(p.allowHosts) == 0 {
 		return nil
@@ -503,15 +503,15 @@ func (p *Policy) hostList() string {
 	return strings.Join(s, ", ")
 }
 
-// ---- 伏せ字 ----
+// ---- Redaction ----
 
 type redaction struct {
 	re   *regexp.Regexp
 	repl string
 }
 
-// builtinRedactions は、よくある秘密情報の形です。
-// 名前と区切りを残し、値だけを伏せます。
+// builtinRedactions are common shapes of secrets.
+// They keep the name and the separator and mask only the value.
 func builtinRedactions() []redaction {
 	r := func(expr, repl string) redaction { return redaction{re: regexp.MustCompile(expr), repl: repl} }
 	return []redaction{
@@ -528,10 +528,10 @@ func builtinRedactions() []redaction {
 	}
 }
 
-// Redacting は伏せ字の設定があるかを返します。
+// Redacting reports whether any redaction is configured.
 func (p *Policy) Redacting() bool { return len(p.redact) > 0 }
 
-// RedactString は s の秘密情報を伏せ字にします。
+// RedactString masks the secrets in s.
 func (p *Policy) RedactString(s string) string {
 	for _, r := range p.redact {
 		s = r.re.ReplaceAllString(s, r.repl)

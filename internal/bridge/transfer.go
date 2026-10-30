@@ -29,13 +29,13 @@ const transferInstructions = `This connection goes through host-shell bridge on 
 - Use them instead of reading a file with fs_read and writing it with fs_write: the contents are sent directly, are verified by SHA-256, and do not use your context. Unchanged files are skipped, so they also work for syncing.
 - local_path is on your local machine (relative to the agent's working directory); remote_path is on the remote host.`
 
-// partSuffix は送信中のファイルの名前に付ける接尾辞です。送り終えて照合してから正しい名前に変えます。
+// partSuffix is appended to the name of a file being sent. The file is renamed after it is sent and verified.
 const partSuffix = ".host-shell-part"
 
-// maxListed は結果に載せるファイルの数の上限です。
+// maxListed caps the number of files listed in the result.
 const maxListed = 500
 
-// transfer は手元と接続先の間でファイルを送るツールです。
+// transfer provides the tools that send files between the local machine and the target.
 type transfer struct {
 	remote *mcp.ClientSession
 	local  *policy.Policy
@@ -86,7 +86,7 @@ func (t *transfer) register(srv *mcp.Server) {
 	}, t.pull)
 }
 
-// TransferInput は transfer_push と transfer_pull の入力です。
+// TransferInput is the input of transfer_push and transfer_pull.
 type TransferInput struct {
 	LocalPath  string   `json:"local_path" jsonschema:"path on the local machine (absolute, or relative to the agent's working directory)"`
 	RemotePath string   `json:"remote_path" jsonschema:"path on the remote host"`
@@ -95,7 +95,7 @@ type TransferInput struct {
 	DryRun     bool     `json:"dry_run,omitempty" jsonschema:"only report what would be transferred"`
 }
 
-// FileResult は 1 つのファイルの結果です。
+// FileResult is the result for one file.
 type FileResult struct {
 	Path   string `json:"path" jsonschema:"path relative to the source"`
 	Bytes  int64  `json:"bytes"`
@@ -103,7 +103,7 @@ type FileResult struct {
 	Error  string `json:"error,omitempty"`
 }
 
-// TransferOutput は転送の結果です。
+// TransferOutput is the result of a transfer.
 type TransferOutput struct {
 	Source      string       `json:"source"`
 	Destination string       `json:"destination"`
@@ -131,7 +131,7 @@ func (o *TransferOutput) add(r FileResult) {
 	o.Files = append(o.Files, r)
 }
 
-// finish は一覧が長すぎる場合に、変化のなかったファイルから省きます。
+// finish drops unchanged files first when the list is too long.
 func (o *TransferOutput) finish(start time.Time) {
 	o.DurationMs = time.Since(start).Milliseconds()
 	if len(o.Files) > maxListed {
@@ -146,16 +146,16 @@ func (o *TransferOutput) finish(start time.Time) {
 	}
 }
 
-// localFile は手元のファイルです。
+// localFile is a local file.
 type localFile struct {
-	rel  string // 送り元からの相対パス (/ 区切り)
+	rel  string // path relative to the source (/ separated)
 	full string
 	size int64
 	mode fs.FileMode
 	link bool
 }
 
-// remoteEntry は fs_manifest の 1 件です。
+// remoteEntry is one entry of fs_manifest.
 type remoteEntry struct {
 	Path   string `json:"path"`
 	Size   int64  `json:"size"`
@@ -204,7 +204,7 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 		return nil, TransferOutput{}, fmt.Errorf("remote %s exists and is not a file", dest)
 	}
 
-	// 送るファイルの一覧
+	// Files to send
 	var files []localFile
 	if info.IsDir() {
 		err = filepath.WalkDir(in.LocalPath, func(p string, de fs.DirEntry, err error) error {
@@ -239,7 +239,7 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 		files = []localFile{{rel: filepath.Base(in.LocalPath), full: in.LocalPath, size: info.Size(), mode: info.Mode()}}
 	}
 
-	// 接続先にすでにある内容
+	// What the target already has
 	remote := map[string]remoteEntry{}
 	if rexists {
 		entries, err := t.manifest(ctx, dest)
@@ -304,7 +304,7 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 	return nil, out, nil
 }
 
-// sendFile は 1 つのファイルを分割して送り、照合してから正しい名前に変えます。
+// sendFile sends one file in chunks, verifies it and renames it to its final name.
 func (t *transfer) sendFile(ctx context.Context, f localFile, target, sum string, onProgress func(int64)) error {
 	src, err := os.Open(f.full)
 	if err != nil {
@@ -441,7 +441,7 @@ func (t *transfer) pull(ctx context.Context, req *mcp.CallToolRequest, in Transf
 	return nil, out, nil
 }
 
-// fetchFile は 1 つのファイルを分割して受け取り、照合してから正しい名前に変えます。
+// fetchFile receives one file in chunks, verifies it and renames it to its final name.
 func (t *transfer) fetchFile(ctx context.Context, src, target string, e remoteEntry, onProgress func(int64)) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
@@ -504,7 +504,7 @@ func (t *transfer) fetchFile(ctx context.Context, src, target string, e remoteEn
 	return nil
 }
 
-// remoteStat は接続先のパスの種類 (file、dir、symlink、other) と、存在するかを返します。
+// remoteStat returns the kind of a path on the target (file, dir, symlink, other) and whether it exists.
 func (t *transfer) remoteStat(ctx context.Context, p string) (string, bool, error) {
 	var st struct {
 		Entry struct {
@@ -522,7 +522,7 @@ func (t *transfer) remoteStat(ctx context.Context, p string) (string, bool, erro
 	return st.Entry.Type, true, nil
 }
 
-// notExist は接続先のエラーが、パスが存在しないことを示すかを返します。
+// notExist reports whether an error from the target means the path does not exist.
 func notExist(msg string) bool {
 	m := strings.ToLower(msg)
 	return strings.Contains(m, "no such file") || strings.Contains(m, "cannot find the") || strings.Contains(m, "does not exist")
@@ -566,7 +566,7 @@ func absLocal(p string) string {
 	return p
 }
 
-// progress は、エージェントが求めた場合に転送の進み具合を送ります。
+// progress reports transfer progress when the agent asked for it.
 type progress struct {
 	ctx   context.Context
 	ss    *mcp.ServerSession

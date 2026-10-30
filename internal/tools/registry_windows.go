@@ -27,7 +27,7 @@ var regTypeNames = map[uint32]string{
 	registry.FULL_RESOURCE_DESCRIPTOR: "REG_FULL_RESOURCE_DESCRIPTOR", registry.RESOURCE_REQUIREMENTS_LIST: "REG_RESOURCE_REQUIREMENTS_LIST",
 }
 
-// splitRegKey は "HKLM\SOFTWARE\..." をルートのキーとパスに分けます。
+// splitRegKey splits "HKLM\SOFTWARE\..." into the root key and the path.
 func splitRegKey(key string) (registry.Key, string, error) {
 	key = strings.Trim(strings.ReplaceAll(key, "/", `\`), `\`)
 	root, rest, _ := strings.Cut(key, `\`)

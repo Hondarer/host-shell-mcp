@@ -15,7 +15,7 @@ import (
 	cpty "github.com/creack/pty"
 )
 
-// Terminal は疑似端末につないだプロセスです。
+// Terminal is a process attached to a pseudo terminal.
 type Terminal struct {
 	cmd  *exec.Cmd
 	f    *os.File
@@ -29,8 +29,8 @@ func start(_ context.Context, cmd *exec.Cmd, cols, rows int) (*Terminal, error) 
 	if !slices.ContainsFunc(cmd.Env, func(kv string) bool { return strings.HasPrefix(kv, "TERM=") }) {
 		cmd.Env = append(cmd.Env, "TERM=xterm-256color")
 	}
-	// 新しいセッションを作り、端末を制御端末にする。セッションのリーダーはプロセス グループのリーダーでもあるため、
-	// proc が設定した停止の処理 (グループ全体への SIGKILL) はそのまま使える。
+	// Create a new session and make the terminal its controlling terminal. The session leader is also the
+	// process group leader, so the stop handling set by proc (SIGKILL to the whole group) still works.
 	f, err := cpty.StartWithAttrs(cmd, &cpty.Winsize{Cols: uint16(cols), Rows: uint16(rows)},
 		&syscall.SysProcAttr{Setsid: true, Setctty: true})
 	if err != nil {
@@ -39,28 +39,28 @@ func start(_ context.Context, cmd *exec.Cmd, cols, rows int) (*Terminal, error) 
 	return &Terminal{cmd: cmd, f: f}, nil
 }
 
-// Pid はプロセスの識別子を返します。
+// Pid returns the process ID.
 func (t *Terminal) Pid() int { return t.cmd.Process.Pid }
 
-// Read は端末の出力を読みます。すべての書き手が端末を閉じると io.EOF を返します。
+// Read reads terminal output. It returns io.EOF when every writer has closed the terminal.
 func (t *Terminal) Read(p []byte) (int, error) {
 	n, err := t.f.Read(p)
 	if err != nil && (errors.Is(err, syscall.EIO) || errors.Is(err, os.ErrClosed)) {
-		// Linux では、端末の子側がすべて閉じられると EIO になる。
+		// On Linux, reads fail with EIO once all child ends of the terminal are closed.
 		err = errEOF
 	}
 	return n, err
 }
 
-// Write は端末に入力を送ります。
+// Write sends input to the terminal.
 func (t *Terminal) Write(p []byte) (int, error) { return t.f.Write(p) }
 
-// Resize は端末の大きさを変えます。
+// Resize changes the terminal size.
 func (t *Terminal) Resize(cols, rows int) error {
 	return cpty.Setsize(t.f, &cpty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
 }
 
-// Wait はプロセスの終了を待ち、終了コードを返します。
+// Wait waits for the process to end and returns its exit code.
 func (t *Terminal) Wait() (int, error) {
 	err := t.cmd.Wait()
 	if t.cmd.ProcessState == nil {
@@ -73,12 +73,12 @@ func (t *Terminal) Wait() (int, error) {
 	return t.cmd.ProcessState.ExitCode(), err
 }
 
-// Close は端末を閉じます。読み取り中の Read は終わります。
+// Close closes the terminal. A Read in progress returns.
 func (t *Terminal) Close() error {
 	var err error
 	t.once.Do(func() { err = t.f.Close() })
 	return err
 }
 
-// EOF は入力の終わりを伝えるための、端末に送る文字です (Ctrl-D)。
+// EOF is the character sent to the terminal to signal end of input (Ctrl-D).
 const EOF = "\x04"

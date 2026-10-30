@@ -26,7 +26,7 @@ func TestEdit(t *testing.T) {
 	orig := "int a = 1;\r\nint b = 1;\r\n\r\nint main() {\r\n\treturn a;\r\n}\r\n"
 	os.WriteFile(path, []byte(orig), 0o644)
 
-	// LF で指定しても CRLF のファイルに一致し、CRLF のまま書き戻す。
+	// An LF search string matches a CRLF file, which is written back with CRLF.
 	out := call[editOut](t, cs, "fs_edit", map[string]any{"path": path,
 		"old_string": "int main() {\n\treturn a;\n", "new_string": "int main() {\n\tint c = a + b;\n\treturn c;\n"})
 	want := "int a = 1;\r\nint b = 1;\r\n\r\nint main() {\r\n\tint c = a + b;\r\n\treturn c;\r\n}\r\n"
@@ -37,28 +37,28 @@ func TestEdit(t *testing.T) {
 		t.Fatalf("fs_edit got %+v", out)
 	}
 
-	// 複数の箇所に一致する場合は、その行を示してエラーにする。
+	// Multiple matches are an error that shows their lines.
 	if msg := callErr(t, cs, "fs_edit", map[string]any{"path": path, "old_string": "= 1;", "new_string": "= 2;"}); !strings.Contains(msg, "lines 1, 2") {
 		t.Fatalf("error = %s", msg)
 	}
-	// 空白だけが違う候補があれば、その行を示す。
+	// Candidates that differ only in whitespace are shown with their lines.
 	if msg := callErr(t, cs, "fs_edit", map[string]any{"path": path, "old_string": "int  b = 1;", "new_string": "x"}); !strings.Contains(msg, "line 2") {
 		t.Fatalf("error = %s", msg)
 	}
-	// 途中の置換が失敗した場合は、何も書き込まない。
+	// If a later replacement fails, nothing is written.
 	before, _ := os.ReadFile(path)
 	callErr(t, cs, "fs_edit", map[string]any{"path": path, "edits": []map[string]any{
 		{"old_string": "int a", "new_string": "long a"}, {"old_string": "missing", "new_string": "x"}}})
 	if after, _ := os.ReadFile(path); string(after) != string(before) {
 		t.Fatal("file changed by a failed edit")
 	}
-	// 複数の置換と replace_all。
+	// Multiple replacements and replace_all.
 	out = call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "edits": []map[string]any{
 		{"old_string": "= 1;", "new_string": "= 2;", "replace_all": true}, {"old_string": "return c;", "new_string": "return 0;"}}})
 	if out.Replacements != 3 || len(out.Lines) != 3 {
 		t.Fatalf("fs_edit got %+v", out)
 	}
-	// dry_run は書き込まない。
+	// dry_run does not write.
 	before, _ = os.ReadFile(path)
 	call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "old_string": "return 0;", "new_string": "return 1;", "dry_run": true})
 	if after, _ := os.ReadFile(path); string(after) != string(before) {
@@ -73,7 +73,7 @@ func TestEditKeepsEncoding(t *testing.T) {
 	t.Setenv("LC_ALL", "ja_JP.SJIS")
 	cs := connect(t)
 	path := filepath.Join(t.TempDir(), "s.txt")
-	os.WriteFile(path, []byte("\x93\xfa\x96\x7b\x8c\xea\n"), 0o644) // 日本語 (Shift_JIS)
+	os.WriteFile(path, []byte("\x93\xfa\x96\x7b\x8c\xea\n"), 0o644) // "日本語" in Shift_JIS
 	out := call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "old_string": "本", "new_string": "英"})
 	if b, _ := os.ReadFile(path); string(b) != "\x93\xfa\x89\x70\x8c\xea\n" || out.Charset != "shift_jis" {
 		t.Fatalf("file = %x, out = %+v", b, out)
@@ -106,7 +106,7 @@ func TestFileOperations(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(src, "sub", "f.txt"), []byte("data"), 0o644)
 
-	// ディレクトリのコピーには recursive が必要。
+	// Copying a directory needs recursive.
 	callErr(t, cs, "fs_copy", map[string]any{"source": src, "destination": filepath.Join(dir, "copy")})
 	cp := call[struct {
 		Files int   `json:"files"`
@@ -119,7 +119,7 @@ func TestFileOperations(t *testing.T) {
 		t.Fatalf("copied content = %q", b)
 	}
 
-	// 移動先が存在する場合は overwrite が必要。
+	// An existing destination needs overwrite.
 	os.WriteFile(filepath.Join(dir, "other.txt"), []byte("x"), 0o644)
 	callErr(t, cs, "fs_move", map[string]any{"source": filepath.Join(dir, "other.txt"), "destination": filepath.Join(dir, "copy", "sub", "f.txt")})
 	call[map[string]any](t, cs, "fs_move", map[string]any{"source": filepath.Join(dir, "copy"), "destination": filepath.Join(dir, "moved")})
@@ -127,7 +127,7 @@ func TestFileOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 空でないディレクトリの削除には recursive が必要。
+	// Removing a non-empty directory needs recursive.
 	if msg := callErr(t, cs, "fs_remove", map[string]any{"path": filepath.Join(dir, "moved")}); !strings.Contains(msg, "recursive") {
 		t.Fatalf("error = %s", msg)
 	}
@@ -179,7 +179,7 @@ func TestSearchModes(t *testing.T) {
 		t.Fatalf("files got %+v", g)
 	}
 
-	// 更新日時の新しい順に並べる。
+	// Sorted by modification time, newest first.
 	old := time.Now().Add(-time.Hour)
 	os.Chtimes(filepath.Join(dir, "src", "a", "x.go"), old, old)
 	f := call[struct {

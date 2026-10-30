@@ -16,17 +16,17 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// maxEditBytes は fs_edit で扱うファイルの大きさの上限です。
+// maxEditBytes is the largest file fs_edit handles.
 const maxEditBytes = 32 << 20
 
-// EditOp は 1 つの置換です。
+// EditOp is one replacement.
 type EditOp struct {
 	OldString  string `json:"old_string" jsonschema:"exact text to replace, including whitespace and indentation. Must occur exactly once unless replace_all is set"`
 	NewString  string `json:"new_string" jsonschema:"replacement text (empty to delete old_string)"`
 	ReplaceAll bool   `json:"replace_all,omitempty" jsonschema:"replace every occurrence instead of requiring a unique match"`
 }
 
-// FsEditInput は fs_edit の入力です。
+// FsEditInput is the input of fs_edit.
 type FsEditInput struct {
 	Path       string   `json:"path"`
 	OldString  string   `json:"old_string,omitempty" jsonschema:"single edit: exact text to replace (copy it from fs_read output, without line number prefixes). Must occur exactly once unless replace_all is set"`
@@ -37,7 +37,7 @@ type FsEditInput struct {
 	DryRun     bool     `json:"dry_run,omitempty" jsonschema:"check the edits and return the snippet without writing the file"`
 }
 
-// AuditArgs は置換の内容の代わりに長さをログに残します。
+// AuditArgs logs the lengths of the replacements instead of their content.
 func (in FsEditInput) AuditArgs() any {
 	in.OldString, in.NewString = redactedLen(in.OldString), redactedLen(in.NewString)
 	edits := make([]EditOp, len(in.Edits))
@@ -48,7 +48,7 @@ func (in FsEditInput) AuditArgs() any {
 	return in
 }
 
-// FsEditOutput は fs_edit の出力です。
+// FsEditOutput is the output of fs_edit.
 type FsEditOutput struct {
 	Path         string `json:"path"`
 	Replacements int    `json:"replacements" jsonschema:"total number of replaced occurrences"`
@@ -129,15 +129,15 @@ func (d *Deps) fsEdit(_ context.Context, _ *mcp.CallToolRequest, in FsEditInput)
 	return nil, out, nil
 }
 
-// textFile は UTF-8 に変換して読み込んだテキスト ファイルです。
+// textFile is a text file read and converted to UTF-8.
 type textFile struct {
 	enc  textenc.Encoding
 	bom  []byte
 	text string
 }
 
-// loadText はファイル全体を読み、文字コードを判定して UTF-8 に変換します。
-// 書き戻したときに元のバイト列を再現できない (文字コードの判定が誤っている) 場合はエラーにします。
+// loadText reads the whole file, detects its encoding and converts it to UTF-8.
+// It fails when writing back could not reproduce the original bytes (the encoding was detected wrongly).
 func loadText(path, charset string) (textFile, error) {
 	ch, err := textenc.Parse(charset, textenc.File, true, textenc.UTF8)
 	if err != nil {
@@ -183,7 +183,7 @@ func loadText(path, charset string) (textFile, error) {
 	return tf, nil
 }
 
-// overwriteFile は既存のファイルの内容を置き換えます。所有者と権限はそのまま残ります。
+// overwriteFile replaces the content of an existing file, keeping its owner and permissions.
 func overwriteFile(path string, data []byte) error {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0)
 	if err != nil {
@@ -196,8 +196,8 @@ func overwriteFile(path string, data []byte) error {
 	return err
 }
 
-// matchEdit は置換前後の文字列と、出現の回数を返します。
-// エージェントは改行を LF で送ることが多いため、CRLF のファイルでは改行を CRLF にそろえて照合します。
+// matchEdit returns the strings before and after replacement and the number of occurrences.
+// Agents often send LF newlines, so in CRLF files the newlines are made CRLF before matching.
 func matchEdit(text string, op EditOp, nl string) (old, repl string, n int) {
 	crlf := func(s string) string { s, _ = textenc.ConvertNewline(s, "crlf"); return s }
 	plain := func() (string, string, int) {
@@ -222,7 +222,7 @@ func matchEdit(text string, op EditOp, nl string) (old, repl string, n int) {
 	return
 }
 
-// notFoundMessage は old_string が見つからない場合の説明を作ります。空白だけが違う候補があれば、その行を示します。
+// notFoundMessage explains that old_string was not found, showing the lines of candidates that differ only in whitespace.
 func notFoundMessage(path, text, old string) string {
 	msg := fmt.Sprintf("old_string not found in %s. It must match the file exactly, including whitespace, indentation and line endings; re-read the file with fs_read (line_numbers: true) and copy the text without the line number prefixes", path)
 	if line := fuzzyLine(text, old); line > 0 {
@@ -231,7 +231,7 @@ func notFoundMessage(path, text, old string) string {
 	return msg
 }
 
-// fuzzyLine は、各行の前後の空白を無視すると old に一致する箇所の行番号を返します。なければ 0 です。
+// fuzzyLine returns the line number where old matches when leading and trailing whitespace of each line is ignored, or 0.
 func fuzzyLine(text, old string) int {
 	want := trimLines(strings.TrimRight(old, "\r\n"))
 	if len(want) == 0 || (len(want) == 1 && want[0] == "") {
@@ -241,7 +241,7 @@ func fuzzyLine(text, old string) int {
 	for i := 0; i+len(want) <= len(lines); i++ {
 		ok := true
 		for j, w := range want {
-			// 先頭と末尾の行は、行の一部だけを指定することがあるため部分一致とする。
+			// The first and last lines may give only part of a line, so they match partially.
 			l := lines[i+j]
 			switch {
 			case len(want) == 1:
@@ -272,7 +272,7 @@ func trimLines(s string) []string {
 	return lines
 }
 
-// occurrenceLines は old が現れる行番号を最大 max 件返します。
+// occurrenceLines returns up to max line numbers where old occurs.
 func occurrenceLines(text, old string, max int) []int {
 	var lines []int
 	pos := 0
@@ -288,16 +288,16 @@ func occurrenceLines(text, old string, max int) []int {
 	return lines
 }
 
-// span は置換で入れた文字列の範囲 (バイト位置) です。
+// span is the range (byte offsets) of a string inserted by a replacement.
 type span struct{ start, end int }
 
-// replaceTracked は old をすべて repl に置き換え、置き換えた範囲を記録します。
-// 以前の置換で記録した範囲は、置換による位置のずれに合わせて動かします。
+// replaceTracked replaces every old with repl and records the replaced ranges.
+// Ranges recorded by earlier replacements are shifted to follow the replacement.
 func replaceTracked(text, old, repl string, spans []span) (string, []span) {
 	var sb strings.Builder
 	var added []span
 	delta := len(repl) - len(old)
-	var cuts []int // 置換した位置 (置換前の座標)
+	var cuts []int // replaced offsets (in the coordinates before replacement)
 	pos := 0
 	for {
 		i := strings.Index(text[pos:], old)
@@ -320,7 +320,7 @@ func replaceTracked(text, old, repl string, spans []span) (string, []span) {
 			if c+len(old) <= p {
 				n++
 			} else if c < p {
-				// 置き換えた範囲の内側は、置換後の範囲の先頭に寄せる。
+				// A range inside the replaced text moves to the start of the new range.
 				return c + n*delta
 			}
 		}
@@ -333,7 +333,7 @@ func replaceTracked(text, old, repl string, spans []span) (string, []span) {
 	return sb.String(), append(moved, added...)
 }
 
-// lineAt はバイト位置 pos を含む行の番号 (1 から) を返します。
+// lineAt returns the number (from 1) of the line containing byte offset pos.
 func lineAt(text string, pos int) int {
 	return strings.Count(text[:min(pos, len(text))], "\n") + 1
 }
@@ -349,7 +349,7 @@ func spanLines(text string, spans []span, max int) []int {
 	return lines
 }
 
-// snippet は置換した範囲を、前後 ctx 行とともに行番号付きで返します。全体で最大 maxLines 行です。
+// snippet returns the replaced range with ctx lines around it, numbered, at most maxLines lines in all.
 func snippet(text string, spans []span, ctx, maxLines int) string {
 	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 	show := make([]bool, len(lines))

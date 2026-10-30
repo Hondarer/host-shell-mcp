@@ -1,14 +1,14 @@
-# ビルド成果物
+# Build outputs
 /dist/
 /.agents/skills/host-shell-connect/bin/
 *.exe
 
-# テスト、カバレッジ
+# Tests and coverage
 *.test
 *.out
 coverage.*
 
-# エディターと OS
+# Editors and OS
 .idea/
 *.swp
 .DS_Store

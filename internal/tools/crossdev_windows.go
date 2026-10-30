@@ -5,8 +5,8 @@ import (
 	"syscall"
 )
 
-// errorNotSameDevice は Windows の ERROR_NOT_SAME_DEVICE です。
+// errorNotSameDevice is Windows' ERROR_NOT_SAME_DEVICE.
 const errorNotSameDevice = syscall.Errno(17)
 
-// isCrossDevice は rename がドライブをまたぐために失敗したかを返します。
+// isCrossDevice reports whether rename failed because it crosses drives.
 func isCrossDevice(err error) bool { return errors.Is(err, errorNotSameDevice) }

@@ -16,17 +16,17 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 )
 
-// pathArgs は、読み書きするパスを方針の検査に渡す入力型が実装します。
+// pathArgs is implemented by input types that pass the paths they read and write to the policy check.
 type pathArgs interface {
 	PathArgs() (read, write []string)
 }
 
-// commandArgs は、起動するプログラムとコマンド行を方針の検査に渡す入力型が実装します。
+// commandArgs is implemented by input types that pass the programs they start and the command line to the policy check.
 type commandArgs interface {
 	CommandArgs(defaultShell string) (programs []string, text string)
 }
 
-// checkPolicy は入力が利用者の指定した制限に収まるかを調べます。
+// checkPolicy checks whether the input stays within the restrictions the user specified.
 func (d *Deps) checkPolicy(in any) error {
 	if pa, ok := in.(pathArgs); ok {
 		read, write := pa.PathArgs()
@@ -50,20 +50,20 @@ func (d *Deps) checkPolicy(in any) error {
 	return nil
 }
 
-// confirmID は、確認の問い合わせ (input request) の識別子です。
+// confirmID identifies the confirmation request (input request).
 const confirmID = "confirm"
 
-// confirm は MCP の elicitation で、操作の実行を利用者に確認します。
+// confirm asks the user, through MCP elicitation, to confirm running an operation.
 //
-// MCP の multi round-trip requests (SEP-2322) に従い、最初の呼び出しでは確認の問い合わせを結果として返します
-// (ask が nil でない)。クライアントが利用者の回答を付けて同じ呼び出しをやり直すと、回答を調べて、
-// 許可されていれば nil を返します。古い版のクライアントでは、SDK が問い合わせとやり直しを代わりに行います。
-// クライアントが elicitation に対応していない場合は、実行しません。
+// Following MCP multi round-trip requests (SEP-2322), the first call returns the confirmation request as its result
+// (ask is not nil). When the client retries the same call with the user's answer, the answer is checked and
+// nil is returned if it allows the operation. For older clients, the SDK does the asking and retrying on their behalf.
+// When the client does not support elicitation, the operation is not run.
 func (d *Deps) confirm(req *mcp.CallToolRequest, name string, in any) (ask *mcp.CallToolResult, err error) {
 	if p := req.Session.InitializeParams(); p == nil || p.Capabilities == nil || p.Capabilities.Elicitation == nil {
 		return nil, fmt.Errorf("policy: %s requires confirmation by the user, but the client cannot ask the user (no elicitation support)", name)
 	}
-	// 回答は、同じ引数のやり直しにだけ使えるよう、引数に結び付けた状態で受け取る。
+	// The answer is accepted together with state bound to the arguments, so it only applies to a retry with the same arguments.
 	state := d.confirmState(name, req.Params.Arguments)
 	if resp, ok := req.Params.InputResponses[confirmID]; ok && hmac.Equal([]byte(req.Params.RequestState), []byte(state)) {
 		r, ok := resp.(*mcp.ElicitResult)
@@ -108,7 +108,7 @@ func (d *Deps) confirm(req *mcp.CallToolRequest, name string, in any) (ask *mcp.
 	}, nil
 }
 
-// confirmState は、ツールの名前と引数に対する署名を作ります。鍵はサーバーの起動ごとに作ります。
+// confirmState signs the tool name and arguments. The key is created each time the server starts.
 func (d *Deps) confirmState(name string, args []byte) string {
 	d.keyOnce.Do(func() {
 		d.confirmKey = make([]byte, 32)
@@ -121,7 +121,7 @@ func (d *Deps) confirmState(name string, args []byte) string {
 	return hex.EncodeToString(m.Sum(nil))
 }
 
-// redactOutput は出力に含まれる文字列のすべてに伏せ字の処理をします。
+// redactOutput applies redaction to every string in the output.
 func redactOutput[T any](d *Deps, res *mcp.CallToolResult, out T) (*mcp.CallToolResult, T) {
 	if res != nil {
 		for _, c := range res.Content {
@@ -146,7 +146,7 @@ func redactValue(d *Deps, v reflect.Value) {
 		if !v.IsNil() {
 			e := v.Elem()
 			if v.Kind() == reflect.Interface {
-				// インターフェースの中身は直接書き換えられないため、複製を書き換えて入れ直す。
+				// The value inside an interface cannot be modified in place, so modify a copy and put it back.
 				c := reflect.New(e.Type()).Elem()
 				c.Set(e)
 				redactValue(d, c)
@@ -178,7 +178,7 @@ func redactValue(d *Deps, v reflect.Value) {
 	}
 }
 
-// 以下は、各ツールの入力が読み書きするパスです。
+// The paths each tool input reads and writes.
 
 func (in FsListInput) PathArgs() (read, write []string) {
 	return []string{orDefault(in.Path, ".")}, nil

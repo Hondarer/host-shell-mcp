@@ -1,7 +1,7 @@
-// Package jobs は長時間実行するコマンドを管理します。
+// Package jobs manages long-running commands.
 //
-// 実行を開始して識別子を返し、後から出力の取得、入力の送信、状態の確認、停止を行います。
-// 標準入出力をパイプにつなぐ方式と、疑似端末 (PTY) につなぐ方式があります。
+// Starting a job returns an ID; output, input, status and stopping are handled afterwards.
+// Standard input and output are connected either to pipes or to a pseudo terminal (PTY).
 package jobs
 
 import (
@@ -21,13 +21,13 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// maxFinished は保持する終了済みのジョブの数です。超えると古いものから破棄します。
+// maxFinished is how many finished jobs are kept. Older ones are dropped beyond that.
 const maxFinished = 50
 
-// drainWait は、プロセスの終了後に残りの出力を読み切るまで待つ時間です。
+// drainWait is how long to wait for the remaining output after the process exits.
 const drainWait = 2 * time.Second
 
-// Manager はジョブの一覧を保持します。
+// Manager holds the jobs.
 type Manager struct {
 	mu           sync.Mutex
 	jobs         map[string]*Job
@@ -36,12 +36,12 @@ type Manager struct {
 	bufferBytes  int
 }
 
-// NewManager は Manager を作ります。bufferBytes はジョブごとに保持する出力の量です。
+// NewManager creates a Manager. bufferBytes is the amount of output kept per job.
 func NewManager(defaultShell string, bufferBytes int) *Manager {
 	return &Manager{jobs: map[string]*Job{}, defaultShell: defaultShell, bufferBytes: bufferBytes}
 }
 
-// Job は 1 つの長時間実行コマンドです。標準出力と標準エラーは 1 つのストリームにまとめます。
+// Job is one long-running command. Standard output and standard error are merged into one stream.
 type Job struct {
 	id      string
 	label   string
@@ -51,9 +51,9 @@ type Job struct {
 	out     *limit.Ring
 	conv    *textenc.Writer
 	done    chan struct{}
-	term    *pty.Terminal // PTY のジョブの場合だけ
+	term    *pty.Terminal // PTY jobs only
 
-	// stdin は入力の書き込み口です。stdinMu で書き込みを直列にします。
+	// stdin is where input is written. stdinMu serializes writes.
 	stdinMu  sync.Mutex
 	stdin    io.WriteCloser
 	stdinEnc textenc.Encoding
@@ -65,7 +65,7 @@ type Job struct {
 	signaled string
 }
 
-// Status はジョブの状態です。
+// Status is the state of a job.
 type Status struct {
 	ID        string `json:"id"`
 	Command   string `json:"command"`
@@ -82,26 +82,26 @@ type Status struct {
 	Output    int64  `json:"output_bytes" jsonschema:"total bytes of output produced so far"`
 }
 
-// StartOptions はジョブの起動の指定です。
+// StartOptions specifies how to start a job.
 type StartOptions struct {
-	// Stdin は最初に標準入力に渡すバイト列です (変換済み)。
+	// Stdin is the bytes first passed to standard input (already encoded).
 	Stdin string
-	// KeepStdin は、標準入力を開いたままにし、Write で後から送れるようにします。PTY の場合は常に開いています。
+	// KeepStdin keeps standard input open so that Write can send more later. A PTY is always open.
 	KeepStdin bool
-	// StdinEncoding は Write で送る文字列の変換先です。
+	// StdinEncoding is the encoding of strings sent with Write.
 	StdinEncoding textenc.Encoding
-	// Output は出力の文字コードです。出力は UTF-8 に変換してから保持します。
+	// Output is the encoding of the output. Output is converted to UTF-8 before it is kept.
 	Output textenc.Choice
-	// Timeout は時間制限です。0 の場合は時間制限なしで実行します。
+	// Timeout is the time limit. 0 runs without a time limit.
 	Timeout time.Duration
-	// PTY は疑似端末につないで起動することを示します。Cols と Rows は端末の大きさです。
+	// PTY starts the job attached to a pseudo terminal. Cols and Rows are the terminal size.
 	PTY        bool
 	Cols, Rows int
 }
 
-// Start はジョブを開始します。
+// Start starts a job.
 func (m *Manager) Start(spec proc.Spec, opt StartOptions) (*Job, error) {
-	// ジョブはツール呼び出しより長く生きるため、呼び出しの ctx ではなく独自の ctx を使う。
+	// A job outlives the tool call, so it uses its own ctx instead of the call's.
 	var (
 		ctx    context.Context
 		cancel context.CancelFunc
@@ -207,8 +207,8 @@ func (j *Job) startPTY(ctx context.Context, cmd *exec.Cmd, opt StartOptions) (fu
 	}()
 	return func() (int, error) {
 		code, err := t.Wait()
-		// 孫プロセスが端末を握ったままの場合に備え、読み切るのを待つ時間に上限を設ける。
-		// Windows では、出力が落ち着くのを待ってから端末を閉じるため、その分も待つ。
+		// Cap the wait for the remaining output in case a grandchild keeps the terminal open.
+		// On Windows, also allow for waiting until the output settles before the terminal is closed.
 		select {
 		case <-copied:
 		case <-time.After(drainWait + time.Second):
@@ -220,7 +220,7 @@ func (j *Job) startPTY(ctx context.Context, cmd *exec.Cmd, opt StartOptions) (fu
 	}, nil
 }
 
-// ptyInput は端末への入力です。閉じると、端末に入力の終わり (Ctrl-D、Windows では Ctrl-Z) を送ります。
+// ptyInput is the input to the terminal. Closing it sends end of input to the terminal (Ctrl-D, Ctrl-Z on Windows).
 type ptyInput struct{ t *pty.Terminal }
 
 func (p ptyInput) Write(b []byte) (int, error) { return p.t.Write(b) }
@@ -229,7 +229,7 @@ func (p ptyInput) Close() error {
 	return err
 }
 
-// pruneLocked は終了済みのジョブが maxFinished を超えた分を古い順に破棄します。
+// pruneLocked drops the oldest finished jobs beyond maxFinished.
 func (m *Manager) pruneLocked() {
 	var finished []*Job
 	for _, j := range m.jobs {
@@ -248,7 +248,7 @@ func (m *Manager) pruneLocked() {
 	}
 }
 
-// Get は識別子に対応するジョブを返します。
+// Get returns the job with the given ID.
 func (m *Manager) Get(id string) (*Job, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -259,7 +259,7 @@ func (m *Manager) Get(id string) (*Job, error) {
 	return j, nil
 }
 
-// List はすべてのジョブの状態を開始順に返します。
+// List returns the status of all jobs in start order.
 func (m *Manager) List() []Status {
 	m.mu.Lock()
 	all := make([]*Job, 0, len(m.jobs))
@@ -275,8 +275,8 @@ func (m *Manager) List() []Status {
 	return out
 }
 
-// StopAll は実行中のすべてのジョブを停止します。host-shell の終了時に呼びます。
-// SSH が切断されると host-shell も終了するため、ジョブも停止します。
+// StopAll stops all running jobs. It is called when host-shell exits.
+// host-shell exits when SSH disconnects, so jobs stop then as well.
 func (m *Manager) StopAll(wait time.Duration) {
 	m.mu.Lock()
 	all := make([]*Job, 0, len(m.jobs))
@@ -289,18 +289,18 @@ func (m *Manager) StopAll(wait time.Duration) {
 	}
 }
 
-// ID はジョブの識別子を返します。
+// ID returns the job ID.
 func (j *Job) ID() string { return j.id }
 
-// PTY はジョブが疑似端末で動いているかを返します。
+// PTY reports whether the job runs in a pseudo terminal.
 func (j *Job) PTY() bool { return j.term != nil }
 
-// Done はジョブの終了時に閉じるチャネルを返します。
+// Done returns a channel that is closed when the job ends.
 func (j *Job) Done() <-chan struct{} { return j.done }
 
-// Status はジョブの状態を返します。
+// Status returns the state of the job.
 func (j *Job) Status() Status {
-	// 改行のないプロンプトも出力の量に数え、読めるようにする。
+	// Count a prompt without a newline as output too, so it can be read.
 	j.conv.Flush()
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -327,20 +327,20 @@ func (j *Job) Status() Status {
 	return s
 }
 
-// Read は絶対位置 offset から最大 n バイトの出力を返します。
+// Read returns up to n bytes of output from absolute offset offset.
 func (j *Job) Read(offset int64, n int) (data string, next, dropped int64) {
 	j.conv.Flush()
 	return j.out.Read(offset, n)
 }
 
-// StdinEncoding は Write で送る文字列の変換先を返します。
+// StdinEncoding returns the encoding of strings sent with Write.
 func (j *Job) StdinEncoding() textenc.Encoding { return j.stdinEnc }
 
-// ErrStdinClosed は標準入力が開いていないジョブに書き込んだことを示します。
+// ErrStdinClosed reports a write to a job whose standard input is not open.
 var ErrStdinClosed = errors.New("stdin is not open (start the job with stdin_open or pty, and do not close it before writing)")
 
-// Write は標準入力にバイト列 (変換済み) を書き込みます。
-// 子プロセスが読み取らずに wait を過ぎた場合はエラーを返し、書き込みは裏で続けます。
+// Write writes bytes (already encoded) to standard input.
+// If the child does not read them within wait, it returns an error and the write continues in the background.
 func (j *Job) Write(data string, wait time.Duration) error {
 	if !j.stdinOpen() {
 		return ErrStdinClosed
@@ -365,7 +365,7 @@ func (j *Job) write(data string) error {
 	return err
 }
 
-// CloseStdin は標準入力を閉じ、子プロセスに入力の終わり (EOF) を伝えます。
+// CloseStdin closes standard input, telling the child the input has ended (EOF).
 func (j *Job) CloseStdin() error {
 	j.stdinMu.Lock()
 	defer j.stdinMu.Unlock()
@@ -376,7 +376,7 @@ func (j *Job) CloseStdin() error {
 	j.stdin = nil
 	select {
 	case <-j.done:
-		err = nil // 終了したジョブの入力を閉じるときのエラーは意味がない。
+		err = nil // Errors from closing the input of a finished job mean nothing.
 	default:
 	}
 	return err
@@ -384,13 +384,13 @@ func (j *Job) CloseStdin() error {
 
 func (j *Job) stdinOpen() bool {
 	if !j.stdinMu.TryLock() {
-		return true // 書き込み中
+		return true // a write is in progress
 	}
 	defer j.stdinMu.Unlock()
 	return j.stdin != nil
 }
 
-// Resize は PTY のジョブの端末の大きさを変えます。
+// Resize changes the terminal size of a PTY job.
 func (j *Job) Resize(cols, rows int) error {
 	if j.term == nil {
 		return errors.New("the job does not run in a pseudo terminal (start it with pty)")
@@ -398,7 +398,7 @@ func (j *Job) Resize(cols, rows int) error {
 	return j.term.Resize(cols, rows)
 }
 
-// Signal はジョブにシグナルを送ります。PTY のジョブの interrupt は、端末に Ctrl-C を送ります。
+// Signal sends a signal to the job. For a PTY job, interrupt sends Ctrl-C to the terminal.
 func (j *Job) Signal(name string) error {
 	select {
 	case <-j.done:
@@ -419,7 +419,7 @@ func (j *Job) Signal(name string) error {
 	return err
 }
 
-// Stop はジョブを強制終了し、終了を最大 wait だけ待ちます。
+// Stop kills the job and waits up to wait for it to end.
 func (j *Job) Stop(wait time.Duration) {
 	j.cancel()
 	select {

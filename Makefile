@@ -2,25 +2,25 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X github.com/hondarer/host-shell-mcp/internal/version.Version=$(VERSION)
 GOBUILD := CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)"
 
-# 接続先 (host-shell --mcp) は Linux と Windows。手元 (host-shell bridge) は macOS でも動かす。
+# Targets (host-shell --mcp) are Linux and Windows. The local side (host-shell bridge) also runs on macOS.
 TARGETS := linux-amd64 linux-arm64 windows-amd64 windows-arm64 darwin-amd64 darwin-arm64
 
-# host-shell-connect skill が単独で使えるよう、配布用の実行ファイルを複製する場所
+# Copies of the release executables, so the host-shell-connect skill works on its own
 SKILL_DIR := .agents/skills/host-shell-connect
 SKILL_BIN := $(SKILL_DIR)/bin
 
-# Release に添付するファイルを置く場所
+# Files to attach to a Release
 RELEASE_DIR := dist/release
 
 .PHONY: all build dist skill-bin release test vet clean $(TARGETS)
 
 all: vet test build
 
-# 開発機向けのビルド
+# Build for the development machine
 build:
 	$(GOBUILD) -o dist/host-shell$(if $(filter windows,$(shell go env GOOS)),.exe) ./cmd/host-shell
 
-# 配布用に OS とアーキテクチャごとに 1 ファイルずつ作り、skill にも複製する
+# Build one executable per OS and architecture for distribution, and copy them into the skill
 dist: $(TARGETS)
 	$(MAKE) skill-bin
 
@@ -33,7 +33,7 @@ $(TARGETS):
 	GOOS=$(word 1,$(subst -, ,$@)) GOARCH=$(word 2,$(subst -, ,$@)) \
 		$(GOBUILD) -o dist/host-shell-$@$(if $(findstring windows,$@),.exe) ./cmd/host-shell
 
-# Release に添付するファイルを作る。skill のアーカイブ (bin/ を含む)、実行ファイル、SHA256SUMS
+# Build the files to attach to a Release: the skill archive (with bin/), the executables and SHA256SUMS
 release: dist
 	rm -rf $(RELEASE_DIR)
 	mkdir -p $(RELEASE_DIR)

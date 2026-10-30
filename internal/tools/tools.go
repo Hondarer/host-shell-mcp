@@ -1,4 +1,4 @@
-// Package tools は host-shell が提供する MCP ツールを定義します。
+// Package tools defines the MCP tools host-shell provides.
 package tools
 
 import (
@@ -17,36 +17,36 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
-// Deps はツールの実装が共有する依存です。
+// Deps are the dependencies shared by the tool implementations.
 type Deps struct {
 	Cfg          config.Config
 	Audit        *audit.Logger
 	Jobs         *jobs.Manager
 	DefaultShell string
-	// Policy は利用者が起動時に指定した制限です。nil の場合は制限なしです。
+	// Policy holds the restrictions the user specified at startup. nil means no restriction.
 	Policy *policy.Policy
 
-	// enabled は公開したツールの名前と組です。help と案内の表示に使います。
+	// enabled maps the exposed tool names to their groups. Used for help and the instructions.
 	enabled map[string]string
-	// catalog は、Catalog で一覧を作るときだけ使います。登録はしません。
+	// catalog is used only when Catalog builds the list. Nothing is registered then.
 	catalog map[string]string
 
-	// confirmKey は、利用者の確認の回答を呼び出しの引数に結び付ける署名の鍵です。
+	// confirmKey signs the binding between the user's confirmation answer and the call's arguments.
 	keyOnce    sync.Once
 	confirmKey []byte
 }
 
-// ツールの組です。--tools で、組の単位で公開するかを選べます。
+// Tool groups. --tools selects which groups are exposed.
 const (
-	groupCore   = "core"   // help、sys_info (常に公開)
-	groupFiles  = "files"  // ファイルの読み書きと操作
-	groupSearch = "search" // ファイルと内容の検索
-	groupExec   = "exec"   // コマンドの実行とジョブ
-	groupNet    = "net"    // ネットワーク
-	groupAdmin  = "admin"  // プロセス、サービス、ログ、ディスク、レジストリ
+	groupCore   = "core"   // help, sys_info (always exposed)
+	groupFiles  = "files"  // reading, writing and managing files
+	groupSearch = "search" // searching files and their contents
+	groupExec   = "exec"   // running commands and jobs
+	groupNet    = "net"    // network
+	groupAdmin  = "admin"  // processes, services, logs, disks, registry
 )
 
-// Groups は組の名前と説明です。
+// Groups are the group names and descriptions.
 var Groups = [][2]string{
 	{groupFiles, "fs_* file reading, writing and file operations"},
 	{groupSearch, "search_grep, search_files"},
@@ -55,23 +55,23 @@ var Groups = [][2]string{
 	{groupAdmin, "processes, services, system logs, disks, Windows registry"},
 }
 
-// readOnlyCapable は、--read-only のときも、変更を伴わない使い方に限って公開するツールです。
+// readOnlyCapable are tools exposed under --read-only too, limited to uses that change nothing.
 var readOnlyCapable = map[string]bool{"net_http": true, "net_tcp": true}
 
-// Catalog はすべてのツールの名前と組を返します。OS に固有のツールも含みます。
+// Catalog returns the names and groups of all tools, including OS-specific ones.
 func Catalog() map[string]string {
 	d := &Deps{catalog: map[string]string{}}
 	Register(nil, d)
 	return d.catalog
 }
 
-// Enabled はツールが公開されているかを返します。
+// Enabled reports whether the tool is exposed.
 func (d *Deps) Enabled(name string) bool {
 	_, ok := d.enabled[name]
 	return ok
 }
 
-// groupEnabled は組のツールが 1 つでも公開されているかを返します。
+// groupEnabled reports whether any tool of the group is exposed.
 func (d *Deps) groupEnabled(group string) bool {
 	for _, g := range d.enabled {
 		if g == group {
@@ -81,21 +81,21 @@ func (d *Deps) groupEnabled(group string) bool {
 	return false
 }
 
-// onOS は、OS に固有のツールを登録するかを返します。一覧を作るときはすべてを含めます。
+// onOS reports whether to register an OS-specific tool. Building the catalog includes all of them.
 func (d *Deps) onOS(goos string) bool {
 	return d.catalog != nil || runtime.GOOS == goos
 }
 
-// Register はすべてのツールをサーバーに登録します。
+// Register registers all tools with the server.
 //
-// 説明 (Description) はエージェントが読むものです。何をするか、いつ使うか、何と組み合わせるかを書きます。
+// The descriptions are read by the agent. They say what a tool does, when to use it and what to combine it with.
 func Register(s *mcp.Server, d *Deps) {
 	if d.Policy == nil {
 		d.Policy = policy.Unrestricted()
 	}
 	d.enabled = map[string]string{}
 
-	// 使い方
+	// Usage
 	add(s, d, groupCore, &mcp.Tool{
 		Name:  "help",
 		Title: "Usage guide",
@@ -104,7 +104,7 @@ func Register(s *mcp.Server, d *Deps) {
 		Annotations: readOnly(),
 	}, d.help)
 
-	// コマンド実行
+	// Running commands
 	add(s, d, groupExec, &mcp.Tool{
 		Name:  "exec_run",
 		Title: "Run command",
@@ -116,7 +116,7 @@ func Register(s *mcp.Server, d *Deps) {
 		Annotations: destructive(),
 	}, d.execRun)
 
-	// 長時間の実行
+	// Long-running commands
 	add(s, d, groupExec, &mcp.Tool{
 		Name:  "job_start",
 		Title: "Start background job",
@@ -156,7 +156,7 @@ func Register(s *mcp.Server, d *Deps) {
 		Annotations: readOnly(),
 	}, d.jobList)
 
-	// 特権実行 (Windows 以外)
+	// Running as root (not on Windows)
 	if d.catalog != nil || runtime.GOOS != "windows" {
 		add(s, d, groupExec, &mcp.Tool{
 			Name:  "sudo_run",
@@ -168,7 +168,7 @@ func Register(s *mcp.Server, d *Deps) {
 		}, d.sudoRun)
 	}
 
-	// ファイル操作
+	// File operations
 	add(s, d, groupFiles, &mcp.Tool{
 		Name:        "fs_list",
 		Title:       "List directory",
@@ -238,7 +238,7 @@ func Register(s *mcp.Server, d *Deps) {
 		Annotations: readOnly(),
 	}, d.fsManifest)
 
-	// 検索
+	// Search
 	add(s, d, groupSearch, &mcp.Tool{
 		Name:  "search_grep",
 		Title: "Search file contents",
@@ -258,7 +258,7 @@ func Register(s *mcp.Server, d *Deps) {
 	registerNet(s, d)
 	registerAdmin(s, d)
 
-	// 環境情報
+	// Environment information
 	add(s, d, groupCore, &mcp.Tool{
 		Name:  "sys_info",
 		Title: "Host information",
@@ -272,8 +272,8 @@ func Register(s *mcp.Server, d *Deps) {
 	}
 }
 
-// add は方針の検査、利用者への確認、伏せ字の処理、操作ログの記録を挟んでツールを登録します。
-// 利用者の指定で公開しないツールは登録しません。
+// add registers a tool wrapped with the policy check, user confirmation, redaction and the audit log.
+// Tools the user chose not to expose are not registered.
 func add[In, Out any](s *mcp.Server, d *Deps, group string, t *mcp.Tool, h mcp.ToolHandlerFor[In, Out]) {
 	if d.catalog != nil {
 		d.catalog[t.Name] = group
@@ -300,7 +300,7 @@ func add[In, Out any](s *mcp.Server, d *Deps, group string, t *mcp.Tool, h mcp.T
 		if err == nil && confirm {
 			var ask *mcp.CallToolResult
 			if ask, err = d.confirm(req, t.Name, in); ask != nil {
-				// 利用者への確認を求める。回答を付けたやり直しで、もう一度ここに来る。
+				// Ask the user to confirm. The retry carrying the answer comes back here.
 				d.Audit.Tool(t.Name+" (confirmation requested)", in, time.Since(start), false, nil)
 				return ask, out, nil
 			}
@@ -319,24 +319,24 @@ func add[In, Out any](s *mcp.Server, d *Deps, group string, t *mcp.Tool, h mcp.T
 	})
 }
 
-// readOnly は接続先を変更しないツールの注釈です。
+// readOnly annotates tools that do not change the target.
 func readOnly() *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(false)}
 }
 
-// additive は接続先に追加するだけで、既存の内容を壊さないツールの注釈です。
+// additive annotates tools that only add to the target without destroying existing content.
 func additive(idempotent bool) *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{DestructiveHint: ptr(false), IdempotentHint: idempotent, OpenWorldHint: ptr(false)}
 }
 
-// destructive は接続先を変更しうるツールの注釈です。エージェント側で承認を必須にする目安になります。
+// destructive annotates tools that may change the target. Agents can use it to require approval.
 func destructive() *mcp.ToolAnnotations {
 	return &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(false)}
 }
 
 func ptr[T any](v T) *T { return &v }
 
-// network は接続先の外 (ネットワークの先) に作用しうるツールの注釈です。
+// network annotates tools that may act beyond the target (across the network).
 func network(readOnlyHint bool) *mcp.ToolAnnotations {
 	a := &mcp.ToolAnnotations{ReadOnlyHint: readOnlyHint, OpenWorldHint: ptr(true)}
 	if !readOnlyHint {

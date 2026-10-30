@@ -11,11 +11,11 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// progressInterval は進み具合の通知の最小の間隔です。
+// progressInterval is the minimum interval between progress notifications.
 const progressInterval = time.Second
 
-// progress は、クライアントが進み具合の通知 (progressToken) を求めた要求に notifications/progress を送ります。
-// 求められていない場合は何もしません。nil でも使えます。
+// progress sends notifications/progress for requests where the client asked for progress (progressToken).
+// It does nothing otherwise, and is usable when nil.
 type progress struct {
 	ctx   context.Context
 	ss    *mcp.ServerSession
@@ -37,8 +37,8 @@ func newProgress(ctx context.Context, req *mcp.CallToolRequest) *progress {
 	return &progress{ctx: ctx, ss: req.Session, token: token}
 }
 
-// report は進み具合を送ります。前回から progressInterval 経っていない場合は送りません (force を除く)。
-// value が 0 以下の場合は、呼ばれた回数を進み具合とします。
+// report sends progress. It sends nothing if progressInterval has not passed since the last one (unless force).
+// When value is 0 or less, the number of calls is used as the progress.
 func (p *progress) report(value, total float64, msg string, force bool) {
 	if p == nil {
 		return
@@ -60,7 +60,7 @@ func (p *progress) report(value, total float64, msg string, force bool) {
 	})
 }
 
-// outputProgress は、実行中のコマンドの出力の量と最後の行を、一定の間隔で進み具合として送ります。
+// outputProgress periodically reports the amount of output and the last line of a running command as progress.
 type outputProgress struct {
 	p     *progress
 	start time.Time
@@ -71,7 +71,7 @@ type outputProgress struct {
 	stop  chan struct{}
 }
 
-// watchOutput は p が nil でなければ定期的な通知を始めます。戻り値の tap に出力を渡し、終わったら stop を呼びます。
+// watchOutput starts periodic notifications if p is not nil. Feed output to the returned tap and call stop when done.
 func watchOutput(p *progress) (tap func([]byte), stop func()) {
 	if p == nil {
 		return nil, func() {}
@@ -111,7 +111,7 @@ func (o *outputProgress) loop() {
 	}
 }
 
-// lastLine は出力の最後の空でない行を、表示に適した長さで返します。
+// lastLine returns the last non-empty line of the output, shortened for display.
 func lastLine(b []byte) string {
 	s := strings.ToValidUTF8(string(b), "?")
 	s, _ = stripTerminal(s)

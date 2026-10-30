@@ -82,7 +82,7 @@ func registerAdmin(s *mcp.Server, d *Deps) {
 
 // ---- proc_kill ----
 
-// ProcKillInput は proc_kill の入力です。
+// ProcKillInput is the input of proc_kill.
 type ProcKillInput struct {
 	PID    int    `json:"pid" jsonschema:"process id (see sys_processes)"`
 	Signal string `json:"signal,omitempty" jsonschema:"Linux: terminate (default), kill, interrupt, hangup, quit, stop, continue, usr1, usr2. Windows: kill (default, the only one)"`
@@ -90,7 +90,7 @@ type ProcKillInput struct {
 	Sudo   bool   `json:"sudo,omitempty" jsonschema:"Linux: send the signal as root with sudo -n (for processes of other users)"`
 }
 
-// ProcKillOutput は proc_kill の出力です。
+// ProcKillOutput is the output of proc_kill.
 type ProcKillOutput struct {
 	Signaled []int `json:"signaled" jsonschema:"process ids the signal was sent to"`
 	Exited   bool  `json:"exited" jsonschema:"the process was gone within 3 seconds"`
@@ -128,14 +128,14 @@ func (d *Deps) procKill(ctx context.Context, _ *mcp.CallToolRequest, in ProcKill
 
 // ---- svc_list / svc_control ----
 
-// SvcListInput は svc_list の入力です。
+// SvcListInput is the input of svc_list.
 type SvcListInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"case-insensitive substring of the name or description"`
 	State  string `json:"state,omitempty" jsonschema:"running, stopped, failed or all (default)"`
 	User   bool   `json:"user,omitempty" jsonschema:"Linux: list the user's systemd units (systemctl --user)"`
 }
 
-// Service はサービスの状態です。
+// Service is the state of a service.
 type Service struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
@@ -145,7 +145,7 @@ type Service struct {
 	PID         int    `json:"pid,omitempty"`
 }
 
-// SvcListOutput は svc_list の出力です。
+// SvcListOutput is the output of svc_list.
 type SvcListOutput struct {
 	Services  []Service `json:"services"`
 	Truncated bool      `json:"truncated,omitempty"`
@@ -174,7 +174,7 @@ func (d *Deps) svcList(ctx context.Context, _ *mcp.CallToolRequest, in SvcListIn
 	return nil, out, nil
 }
 
-// SvcControlInput は svc_control の入力です。
+// SvcControlInput is the input of svc_control.
 type SvcControlInput struct {
 	Name    string `json:"name" jsonschema:"service name: systemd unit (nginx or nginx.service) or Windows service name (not the display name)"`
 	Action  string `json:"action,omitempty" jsonschema:"status (default), start, stop, restart, reload (Linux), enable, disable"`
@@ -183,7 +183,7 @@ type SvcControlInput struct {
 	WaitSec int    `json:"wait_sec,omitempty" jsonschema:"Windows: seconds to wait for start/stop to complete (default 30)"`
 }
 
-// SvcControlOutput は svc_control の出力です。
+// SvcControlOutput is the output of svc_control.
 type SvcControlOutput struct {
 	Service    Service           `json:"service"`
 	Properties map[string]string `json:"properties,omitempty" jsonschema:"details such as the executable path, account and main pid"`
@@ -213,7 +213,7 @@ func (d *Deps) svcControl(ctx context.Context, _ *mcp.CallToolRequest, in SvcCon
 
 // ---- log_query ----
 
-// LogQueryInput は log_query の入力です。
+// LogQueryInput is the input of log_query.
 type LogQueryInput struct {
 	Unit     string `json:"unit,omitempty" jsonschema:"Linux: systemd unit (e.g. nginx); Windows: event provider (source) name"`
 	Log      string `json:"log,omitempty" jsonschema:"Windows: event log name: System (default), Application, Security, Setup or a channel such as Microsoft-Windows-PowerShell/Operational. Linux: kernel for kernel messages only"`
@@ -227,7 +227,7 @@ type LogQueryInput struct {
 	Sudo     bool   `json:"sudo,omitempty" jsonschema:"Linux: run journalctl with sudo -n (to read the system journal without journal group membership)"`
 }
 
-// LogEntry はログの 1 件です。
+// LogEntry is one log entry.
 type LogEntry struct {
 	Time     string `json:"time"`
 	Priority string `json:"priority"`
@@ -237,7 +237,7 @@ type LogEntry struct {
 	Message  string `json:"message"`
 }
 
-// LogQueryOutput は log_query の出力です。
+// LogQueryOutput is the output of log_query.
 type LogQueryOutput struct {
 	Entries   []LogEntry `json:"entries"`
 	Truncated bool       `json:"truncated,omitempty" jsonschema:"messages were shortened to fit the output limit"`
@@ -253,7 +253,7 @@ func (d *Deps) logQuery(ctx context.Context, _ *mcp.CallToolRequest, in LogQuery
 	if out.Entries == nil {
 		out.Entries = []LogEntry{}
 	}
-	// 出力の上限を超える場合は、古いものから落とす。
+	// Beyond the output limit, drop the oldest entries.
 	total := 0
 	for i := len(out.Entries) - 1; i >= 0; i-- {
 		total += len(out.Entries[i].Message) + 100
@@ -266,7 +266,7 @@ func (d *Deps) logQuery(ctx context.Context, _ *mcp.CallToolRequest, in LogQuery
 	return nil, out, nil
 }
 
-// parseSince は "30m"、"2h"、"1d" のような経過時間か、時刻を解釈します。
+// parseSince parses an elapsed time such as "30m", "2h" or "1d", or a timestamp.
 func parseSince(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if n, ok := strings.CutSuffix(s, "d"); ok {
@@ -287,12 +287,12 @@ func parseSince(s string) (time.Time, error) {
 
 // ---- sys_disks ----
 
-// SysDisksInput は sys_disks の入力です。
+// SysDisksInput is the input of sys_disks.
 type SysDisksInput struct {
 	All bool `json:"all,omitempty" jsonschema:"Linux: include pseudo file systems (proc, sysfs, cgroup, ...)"`
 }
 
-// Disk はファイル システムの使用量です。
+// Disk is the usage of a file system.
 type Disk struct {
 	Mount       string  `json:"mount"`
 	Device      string  `json:"device,omitempty"`
@@ -305,7 +305,7 @@ type Disk struct {
 	Free        string  `json:"free" jsonschema:"human-readable free space"`
 }
 
-// SysDisksOutput は sys_disks の出力です。
+// SysDisksOutput is the output of sys_disks.
 type SysDisksOutput struct {
 	Disks []Disk `json:"disks"`
 }

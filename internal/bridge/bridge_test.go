@@ -21,7 +21,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/server"
 )
 
-// connectBridge は、メモリ上の通信路で「エージェント - bridge - 接続先の host-shell」をつなぎます。
+// connectBridge connects "agent - bridge - host-shell on the target" over in-memory transports.
 func connectBridge(t *testing.T, remotePolicy policy.Options, opt Options, copts *mcp.ClientOptions) *mcp.ClientSession {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -151,7 +151,7 @@ type transferOut struct {
 func TestTransfer(t *testing.T) {
 	cs := connectBridge(t, policy.Options{}, Options{}, nil)
 	src := t.TempDir()
-	big := make([]byte, 2<<20+12345) // 1 MiB の単位を 3 回に分けて送る大きさ
+	big := make([]byte, 2<<20+12345) // large enough to be sent in three 1 MiB chunks
 	rand.Read(big)
 	files := map[string][]byte{
 		"a.txt":         []byte("hello\n"),
@@ -192,7 +192,7 @@ func TestTransfer(t *testing.T) {
 		}
 	}
 
-	// もう一度送ると、変化のないファイルは送らない。違うファイルは overwrite がなければ送らない。
+	// Sending again skips unchanged files. A different file is not sent without overwrite.
 	os.WriteFile(filepath.Join(src, "a.txt"), []byte("changed\n"), 0o644)
 	out = call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": src, "remote_path": remote, "exclude": []string{".git"}})
 	if out.Unchanged != 3 || out.Failed != 1 {
@@ -210,13 +210,13 @@ func TestTransfer(t *testing.T) {
 		t.Errorf("overwrite: %+v", out)
 	}
 
-	// 1 つのファイルを、既存のディレクトリの中へ送る。
+	// Send a single file into an existing directory.
 	out = call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": filepath.Join(src, "sub", "deep", "b.go"), "remote_path": remote + "/"})
 	if _, err := os.Stat(filepath.Join(remote, "b.go")); err != nil || out.Transferred != 1 {
 		t.Errorf("single file into dir: %+v %v", out, err)
 	}
 
-	// 取り戻す。
+	// Pull it back.
 	back := filepath.Join(t.TempDir(), "back")
 	out = call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": back, "remote_path": remote})
 	if out.Failed != 0 || out.Transferred != 5 {

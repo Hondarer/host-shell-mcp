@@ -7,12 +7,12 @@ import (
 	"strings"
 )
 
-// Console は、コマンドの入出力に使われる接続先の既定の文字コードを返します。
-// Linux ではロケール (LC_ALL、LC_CTYPE、LANG) の文字コードです。
+// Console returns the target's default encoding for command input and output.
+// On Linux, it is the encoding of the locale (LC_ALL, LC_CTYPE, LANG).
 func Console() Encoding { return locale() }
 
-// File は、テキスト ファイルに使われる接続先の既定の文字コードを返します。
-// Linux ではロケールの文字コードです。
+// File returns the target's default encoding for text files.
+// On Linux, it is the encoding of the locale.
 func File() Encoding { return locale() }
 
 func locale() Encoding {
@@ -21,10 +21,10 @@ func locale() Encoding {
 		if v == "" {
 			continue
 		}
-		// 例: ja_JP.UTF-8、ja_JP.eucJP、ja_JP.SJIS@euro
+		// e.g. ja_JP.UTF-8, ja_JP.eucJP, ja_JP.SJIS@euro
 		_, cs, ok := strings.Cut(v, ".")
 		if !ok {
-			return UTF8 // C、POSIX など。ASCII は UTF-8 の部分集合として扱う。
+			return UTF8 // C, POSIX and so on. ASCII is treated as a subset of UTF-8.
 		}
 		cs, _, _ = strings.Cut(cs, "@")
 		if e, err := Lookup(cs); err == nil {

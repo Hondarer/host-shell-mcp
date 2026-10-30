@@ -1,4 +1,4 @@
-// Package config は host-shell の実行時設定を定義します。
+// Package config defines host-shell's runtime settings.
 package config
 
 import (
@@ -11,31 +11,31 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
-// Config は host-shell の実行時設定です。
+// Config holds host-shell's runtime settings.
 type Config struct {
-	// MaxOutputBytes は 1 つの出力 (標準出力、標準エラー、ファイル内容など) の上限です。
-	// 超えた場合は先頭と末尾を残して切り詰めます。
+	// MaxOutputBytes caps a single output (stdout, stderr, file content and so on).
+	// Longer output is truncated, keeping its head and tail.
 	MaxOutputBytes int
 
-	// DefaultTimeout は exec_run などでタイムアウトが省略されたときの値です。
+	// DefaultTimeout is used when exec_run and similar tools omit the timeout.
 	DefaultTimeout time.Duration
 
-	// MaxTimeout はエージェントが指定できるタイムアウトの上限です。
+	// MaxTimeout is the largest timeout the agent may specify.
 	MaxTimeout time.Duration
 
-	// WindowsShell は Windows で shell が省略されたときに使うシェル (cmd または powershell) です。
-	// TODO(未決事項): 既定を cmd と PowerShell のどちらにするか。
+	// WindowsShell is the shell used on Windows when shell is omitted (cmd or powershell).
+	// TODO(open question): whether the default should be cmd or PowerShell.
 	WindowsShell string
 
-	// LogFile は操作ログ (JSON Lines) の出力先です。空文字の場合は記録しません。
-	// TODO(未決事項): 保存先と保持期間 (ローテーション) を決める。
+	// LogFile is where the audit log (JSON Lines) is written. An empty string records nothing.
+	// TODO(open question): decide the location and retention (rotation).
 	LogFile string
 
-	// Policy は利用者が指定した制限です。ゼロ値は制限なしです。
+	// Policy holds the restrictions given by the user. The zero value means no restriction.
 	Policy policy.Options
 }
 
-// Default は既定の設定を返します。
+// Default returns the default settings.
 func Default() Config {
 	return Config{
 		MaxOutputBytes: 64 * 1024,
@@ -46,7 +46,7 @@ func Default() Config {
 	}
 }
 
-// Validate は設定値を検査します。
+// Validate checks the settings.
 func (c Config) Validate() error {
 	if c.MaxOutputBytes < 1024 {
 		return fmt.Errorf("max-output must be at least 1024 bytes: %d", c.MaxOutputBytes)
@@ -62,7 +62,7 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// ClampTimeout はエージェントが指定した秒数を既定値と上限で補正します。
+// ClampTimeout applies the default and the maximum to the seconds the agent specified.
 func (c Config) ClampTimeout(sec int) time.Duration {
 	if sec <= 0 {
 		return c.DefaultTimeout
@@ -74,9 +74,9 @@ func (c Config) ClampTimeout(sec int) time.Duration {
 	return d
 }
 
-// DefaultLogFile は OS ごとの操作ログの既定の保存先を返します。
+// DefaultLogFile returns the default audit log location for the OS.
 //
-//   - Linux: $XDG_STATE_HOME/host-shell/audit.log (既定は ~/.local/state/host-shell/audit.log)
+//   - Linux: $XDG_STATE_HOME/host-shell/audit.log (default ~/.local/state/host-shell/audit.log)
 //   - Windows: %LOCALAPPDATA%\host-shell\audit.log
 func DefaultLogFile() string {
 	if runtime.GOOS == "windows" {

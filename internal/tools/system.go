@@ -16,7 +16,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/version"
 )
 
-// SudoRunInput は sudo_run の入力です。
+// SudoRunInput is the input of sudo_run.
 type SudoRunInput struct {
 	Command    string `json:"command" jsonschema:"shell command line run as sh -c under sudo"`
 	User       string `json:"user,omitempty" jsonschema:"target user (default: root)"`
@@ -26,15 +26,15 @@ type SudoRunInput struct {
 	IOEncoding
 }
 
-// AuditArgs は標準入力の内容をログに残さないようにします。
+// AuditArgs keeps the content of standard input out of the log.
 func (in SudoRunInput) AuditArgs() any {
 	in.Stdin = redactedLen(in.Stdin)
 	return in
 }
 
-// sudoRun は sudo -n (対話なし) でコマンドを実行します。
-// TODO(未決事項): パスワードを標準入力から渡す sudo -S に対応するか。
-// 対応する場合は、パスワードがツールの引数や操作ログに残らない受け渡し方法を設計する。
+// sudoRun runs a command with sudo -n (non-interactive).
+// TODO(open question): whether to support sudo -S, which reads the password from standard input.
+// If so, design a way to pass the password that keeps it out of tool arguments and the audit log.
 func (d *Deps) sudoRun(ctx context.Context, req *mcp.CallToolRequest, in SudoRunInput) (*mcp.CallToolResult, proc.Result, error) {
 	if in.Command == "" {
 		return nil, proc.Result{}, errors.New("command is required")
@@ -60,17 +60,17 @@ func (d *Deps) sudoRun(ctx context.Context, req *mcp.CallToolRequest, in SudoRun
 	return nil, res, err
 }
 
-// PathArgs は作業ディレクトリを、読み取りの対象として方針の検査に渡します。
+// PathArgs passes the working directory to the policy check as a read target.
 func (in SudoRunInput) PathArgs() (read, write []string) {
 	return CommandSpec{Cwd: in.Cwd}.PathArgs()
 }
 
-// CommandArgs は sudo と、sudo が起動するシェルを方針の検査に渡します。
+// CommandArgs passes sudo and the shell sudo starts to the policy check.
 func (in SudoRunInput) CommandArgs(string) (programs []string, text string) {
 	return []string{"sudo", "sh"}, in.Command
 }
 
-// SysInfoOutput は sys_info の出力です。
+// SysInfoOutput is the output of sys_info.
 type SysInfoOutput struct {
 	OS           string   `json:"os"`
 	Arch         string   `json:"arch"`
@@ -119,7 +119,7 @@ func (d *Deps) sysInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.Ca
 	return nil, out, nil
 }
 
-// enabledGroups は公開しているツールの組の名前を返します。
+// enabledGroups returns the names of the groups with exposed tools.
 func (d *Deps) enabledGroups() []string {
 	var out []string
 	for _, g := range Groups {
@@ -130,25 +130,25 @@ func (d *Deps) enabledGroups() []string {
 	return out
 }
 
-// SysProcessesInput は sys_processes の入力です。
+// SysProcessesInput is the input of sys_processes.
 type SysProcessesInput struct {
 	Filter string `json:"filter,omitempty" jsonschema:"case-insensitive substring; only matching lines (plus the header) are returned"`
 }
 
-// SysProcessesOutput は sys_processes の出力です。
+// SysProcessesOutput is the output of sys_processes.
 type SysProcessesOutput struct {
 	Text      string `json:"text"`
 	Truncated bool   `json:"truncated,omitempty"`
 }
 
-// sysProcesses は OS 標準のコマンドでプロセス一覧を取得します。
-// TODO: /proc や Windows API から直接取得し、構造化した一覧を返す。
+// sysProcesses lists processes with the OS's standard commands.
+// TODO: read them directly from /proc or the Windows API and return a structured list.
 func (d *Deps) sysProcesses(ctx context.Context, _ *mcp.CallToolRequest, in SysProcessesInput) (*mcp.CallToolResult, SysProcessesOutput, error) {
 	argv := []string{"ps", "-eo", "pid,ppid,user,stat,etime,args"}
 	if runtime.GOOS == "windows" {
 		argv = []string{"tasklist", "/fo", "csv"}
 	}
-	// フィルターの前に切り詰めないよう、ここでは大きめの上限で取得する。
+	// Fetch with a generous limit here so that nothing is truncated before filtering.
 	res, err := proc.Run(ctx, proc.Spec{Argv: argv}, proc.Options{
 		Output:    textenc.Choice{Auto: true, Enc: textenc.Console()},
 		Timeout:   d.Cfg.DefaultTimeout,

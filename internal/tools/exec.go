@@ -15,7 +15,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// CommandSpec はコマンド実行系のツールに共通の入力です。
+// CommandSpec is the input shared by the command execution tools.
 type CommandSpec struct {
 	Command    string            `json:"command,omitempty" jsonschema:"shell command line, interpreted by the selected shell (pipes, redirects, && work). Exactly one of command or argv is required"`
 	Argv       []string          `json:"argv,omitempty" jsonschema:"program and arguments to run without a shell, e.g. [\"git\", \"log\", \"-n\", \"5\"]. No quoting or globbing is applied"`
@@ -27,13 +27,13 @@ type CommandSpec struct {
 	IOEncoding
 }
 
-// IOEncoding はコマンドの入出力の文字コードの指定です。
+// IOEncoding specifies the encoding of command input and output.
 type IOEncoding struct {
 	OutputEncoding string `json:"output_encoding,omitempty" jsonschema:"encoding of stdout/stderr: auto (default: UTF-8 if valid, otherwise the host console code page, decided per line), utf-8 (no conversion), system, or a charset name such as shift_jis, euc-jp, utf-16le"`
 	StdinEncoding  string `json:"stdin_encoding,omitempty" jsonschema:"encoding to convert stdin into: utf-8 (default), system, or a charset name"`
 }
 
-// resolve は出力の変換方法と、変換済みの標準入力を返します。
+// resolve returns how to convert the output and the converted standard input.
 func (e IOEncoding) resolve(stdin string) (textenc.Choice, string, error) {
 	out, err := textenc.Parse(e.OutputEncoding, textenc.Console, true, textenc.UTF8)
 	if err != nil {
@@ -50,7 +50,7 @@ func (e IOEncoding) resolve(stdin string) (textenc.Choice, string, error) {
 	return out, string(b), nil
 }
 
-// procSpec は利用者が指定した環境変数の制限を加えて、起動の指定を作ります。
+// procSpec builds the start specification with the user's environment restrictions applied.
 func (d *Deps) procSpec(c CommandSpec) proc.Spec {
 	spec := proc.Spec{Command: c.Command, Argv: c.Argv, Shell: c.Shell, Dir: c.Cwd, Env: c.Env}
 	if d.Policy.FiltersEnv() {
@@ -59,7 +59,7 @@ func (d *Deps) procSpec(c CommandSpec) proc.Spec {
 	return spec
 }
 
-// PathArgs は作業ディレクトリを、読み取りの対象として方針の検査に渡します。
+// PathArgs passes the working directory to the policy check as a read target.
 func (c CommandSpec) PathArgs() (read, write []string) {
 	if c.Cwd != "" {
 		read = []string{c.Cwd}
@@ -67,7 +67,7 @@ func (c CommandSpec) PathArgs() (read, write []string) {
 	return read, nil
 }
 
-// CommandArgs は起動するプログラムと、コマンド行の全体を方針の検査に渡します。
+// CommandArgs passes the programs started and the whole command line to the policy check.
 func (c CommandSpec) CommandArgs(defaultShell string) (programs []string, text string) {
 	if len(c.Argv) > 0 {
 		return []string{c.Argv[0]}, strings.Join(c.Argv, " ")
@@ -75,7 +75,7 @@ func (c CommandSpec) CommandArgs(defaultShell string) (programs []string, text s
 	return []string{orDefault(c.Shell, defaultShell)}, c.Command
 }
 
-// AuditArgs は標準入力の内容をログに残さないようにします。
+// AuditArgs keeps the content of standard input out of the log.
 func (c CommandSpec) AuditArgs() any {
 	c.Stdin = redactedLen(c.Stdin)
 	return c
@@ -99,7 +99,7 @@ func (d *Deps) execRun(ctx context.Context, req *mcp.CallToolRequest, in Command
 	return nil, res, err
 }
 
-// JobStartInput は job_start の入力です。
+// JobStartInput is the input of job_start.
 type JobStartInput struct {
 	CommandSpec
 	StdinOpen bool `json:"stdin_open,omitempty" jsonschema:"keep standard input open so that input can be sent later with job_write (for REPLs and programs that prompt). stdin, if given, is sent first"`
@@ -108,14 +108,14 @@ type JobStartInput struct {
 	Rows      int  `json:"rows,omitempty" jsonschema:"pty: terminal height (default 40)"`
 }
 
-// AuditArgs は標準入力の内容をログに残さないようにします。
+// AuditArgs keeps the content of standard input out of the log.
 func (in JobStartInput) AuditArgs() any {
 	in.Stdin = redactedLen(in.Stdin)
 	return in
 }
 
 func (d *Deps) jobStart(_ context.Context, _ *mcp.CallToolRequest, in JobStartInput) (*mcp.CallToolResult, jobs.Status, error) {
-	// ジョブは timeout_sec を省略すると時間制限なしで実行する。
+	// Without timeout_sec, a job runs without a time limit.
 	var timeout time.Duration
 	if in.TimeoutSec > 0 {
 		timeout = time.Duration(in.TimeoutSec) * time.Second
@@ -144,7 +144,7 @@ func (d *Deps) jobStart(_ context.Context, _ *mcp.CallToolRequest, in JobStartIn
 	return nil, j.Status(), nil
 }
 
-// JobWriteInput は job_write の入力です。
+// JobWriteInput is the input of job_write.
 type JobWriteInput struct {
 	ID    string `json:"id" jsonschema:"job id returned by job_start"`
 	Input string `json:"input,omitempty" jsonschema:"text to send to standard input. Include a trailing newline to submit a line, e.g. \"yes\\n\"; it is not added automatically. In a pty job send \\r for Enter if a program expects it, \\u0003 for Ctrl-C, \\u001b for Esc, \\u001b[A for the up arrow"`
@@ -153,13 +153,13 @@ type JobWriteInput struct {
 	Rows  int    `json:"rows,omitempty" jsonschema:"pty: resize the terminal to this height (with cols)"`
 }
 
-// AuditArgs は入力の内容をログに残さないようにします。
+// AuditArgs keeps the input out of the log.
 func (in JobWriteInput) AuditArgs() any {
 	in.Input = redactedLen(in.Input)
 	return in
 }
 
-// JobWriteOutput は job_write の出力です。
+// JobWriteOutput is the output of job_write.
 type JobWriteOutput struct {
 	Status       jobs.Status `json:"status"`
 	BytesWritten int         `json:"bytes_written"`
@@ -198,7 +198,7 @@ func (d *Deps) jobWrite(_ context.Context, _ *mcp.CallToolRequest, in JobWriteIn
 	return nil, JobWriteOutput{Status: j.Status(), BytesWritten: len(data)}, nil
 }
 
-// JobReadInput は job_read の入力です。
+// JobReadInput is the input of job_read.
 type JobReadInput struct {
 	ID       string `json:"id" jsonschema:"job id returned by job_start"`
 	Offset   int64  `json:"offset,omitempty" jsonschema:"byte offset to read from: 0 for the beginning, then next_offset of the previous call. A negative value reads the last -offset bytes"`
@@ -209,7 +209,7 @@ type JobReadInput struct {
 	Raw      bool   `json:"raw,omitempty" jsonschema:"pty jobs: return terminal escape sequences and carriage returns as they are. By default they are removed so the output reads as plain text"`
 }
 
-// JobReadOutput は job_read の出力です。
+// JobReadOutput is the output of job_read.
 type JobReadOutput struct {
 	Status     jobs.Status `json:"status"`
 	Matched    bool        `json:"matched,omitempty" jsonschema:"until matched the output"`
@@ -254,9 +254,9 @@ func (d *Deps) jobRead(ctx context.Context, _ *mcp.CallToolRequest, in JobReadIn
 	return nil, out, nil
 }
 
-// waitForOutput は offset より後の出力が届くか、ジョブが終了するまで待ちます。
-// until を指定した場合は、出力がそれに一致するまで待ち、一致したかを返します。
-// idleMs を指定した場合は、出力が届いた後、その時間だけ新しい出力がなければ戻ります。
+// waitForOutput waits until output after offset arrives or the job ends.
+// With until, it waits until the output matches it and reports whether it matched.
+// With idleMs, it returns once no new output has arrived for that long after some output.
 func waitForOutput(ctx context.Context, j *jobs.Job, offset int64, wait time.Duration, until *regexp.Regexp, idleMs int, strip bool) bool {
 	deadline := time.NewTimer(wait)
 	defer deadline.Stop()
@@ -295,7 +295,7 @@ func waitForOutput(ctx context.Context, j *jobs.Job, offset int64, wait time.Dur
 		case <-deadline.C:
 			return false
 		case <-j.Done():
-			// 終了までに届いた出力で、もう一度だけ判定する。
+			// Check once more against the output that arrived before the end.
 			if until != nil {
 				data, _, _ := j.Read(offset, 1<<20)
 				if strip {
@@ -316,12 +316,12 @@ func max64(a, b int64) int64 {
 	return b
 }
 
-// JobIDInput はジョブの識別子だけを受け取るツールの入力です。
+// JobIDInput is the input of tools that take only a job ID.
 type JobIDInput struct {
 	ID string `json:"id" jsonschema:"job id returned by job_start"`
 }
 
-// JobStopInput は job_stop の入力です。
+// JobStopInput is the input of job_stop.
 type JobStopInput struct {
 	ID      string `json:"id" jsonschema:"job id returned by job_start"`
 	Signal  string `json:"signal,omitempty" jsonschema:"kill (default: kill the whole process tree), or on Linux interrupt, terminate, hangup, quit, stop, continue, usr1, usr2 sent to the job's process group. In a pty job interrupt sends Ctrl-C to the terminal (also on Windows)"`
@@ -349,7 +349,7 @@ func (d *Deps) jobStop(ctx context.Context, _ *mcp.CallToolRequest, in JobStopIn
 	return nil, j.Status(), nil
 }
 
-// JobListOutput は job_list の出力です。
+// JobListOutput is the output of job_list.
 type JobListOutput struct {
 	Jobs []jobs.Status `json:"jobs"`
 }

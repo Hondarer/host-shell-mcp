@@ -16,13 +16,13 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
-// connect はメモリ上の通信路でサーバーとクライアントをつなぎます。
+// connect connects a server and a client over in-memory transports.
 func connect(t *testing.T) *mcp.ClientSession {
 	t.Helper()
 	return connectWith(t, policy.Options{}, nil)
 }
 
-// connectWith は制限とクライアントの設定を指定してつなぎます。
+// connectWith connects with the given restrictions and client options.
 func connectWith(t *testing.T, po policy.Options, copts *mcp.ClientOptions) *mcp.ClientSession {
 	t.Helper()
 	ctx := context.Background()
@@ -55,7 +55,7 @@ func connectWith(t *testing.T, po policy.Options, copts *mcp.ClientOptions) *mcp
 	return cs
 }
 
-// callErr はツールを呼び、エラーになることを確かめてその説明を返します。
+// callErr calls a tool, checks that it fails and returns the error text.
 func callErr(t *testing.T, cs *mcp.ClientSession, name string, args map[string]any) string {
 	t.Helper()
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
@@ -151,7 +151,7 @@ func TestWriteAtOffset(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "b.bin")
 	call[map[string]any](t, cs, "fs_write", map[string]any{"path": path, "content": "hello world"})
 
-	// 途中の範囲だけを置き換え、ファイルは切り詰めない。
+	// Replace only a range in the middle; the file is not truncated.
 	out := call[struct {
 		BytesWritten int   `json:"bytes_written"`
 		Size         int64 `json:"size"`
@@ -163,7 +163,7 @@ func TestWriteAtOffset(t *testing.T) {
 		t.Fatalf("file content = %q", b)
 	}
 
-	// 末尾より後ろの位置に書くと、間は 0 で埋まる。
+	// Writing past the end fills the gap with zeros.
 	call[map[string]any](t, cs, "fs_write", map[string]any{"path": path, "content": "!", "offset": 13})
 	if b, _ := os.ReadFile(path); string(b) != "hello WORLD\x00\x00!" {
 		t.Fatalf("file content = %q", b)
@@ -183,11 +183,11 @@ func TestEncodingConversion(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses sh and locale environment variables")
 	}
-	t.Setenv("LC_ALL", "ja_JP.SJIS") // 接続先の既定の文字コードを Shift_JIS にする
+	t.Setenv("LC_ALL", "ja_JP.SJIS") // make Shift_JIS the target's default encoding
 	cs := connect(t)
 	dir := t.TempDir()
 
-	// コマンドの出力: 行ごとに自動判定する。
+	// Command output: detected per line.
 	run := call[struct {
 		Stdout         string `json:"stdout"`
 		StdoutEncoding string `json:"stdout_encoding"`
@@ -196,14 +196,14 @@ func TestEncodingConversion(t *testing.T) {
 		t.Fatalf("exec_run got %+v", run)
 	}
 
-	// 書き込み: Shift_JIS と CRLF に変換する。
+	// Write: convert to Shift_JIS and CRLF.
 	sjisPath := filepath.Join(dir, "sjis.txt")
 	call[map[string]any](t, cs, "fs_write", map[string]any{"path": sjisPath, "content": "一行目\n日本語\n", "charset": "shift_jis", "newline": "crlf"})
 	if b, _ := os.ReadFile(sjisPath); !strings.HasSuffix(string(b), "\x93\xfa\x96\x7b\x8c\xea\r\n") {
 		t.Fatalf("file content = %x", b)
 	}
 
-	// 読み取り: 既定の文字コードとして自動判定し、改行の種類を返す。
+	// Read: detect with the default encoding and report the newline style.
 	type readOut struct {
 		Content    string `json:"content"`
 		Charset    string `json:"charset"`
@@ -218,7 +218,7 @@ func TestEncodingConversion(t *testing.T) {
 		}
 	}
 
-	// 検索: Shift_JIS のファイルの日本語に一致する。
+	// Search: matches Japanese text in a Shift_JIS file.
 	grep := call[struct {
 		Matches []Match `json:"matches"`
 	}](t, cs, "search_grep", map[string]any{"pattern": "本語", "path": dir})
@@ -226,7 +226,7 @@ func TestEncodingConversion(t *testing.T) {
 		t.Fatalf("search_grep got %+v", grep)
 	}
 
-	// UTF-16 と BOM: BOM で判定し、BOM は内容に含めない。
+	// UTF-16 and BOM: detected by the BOM, which is not included in the content.
 	u16Path := filepath.Join(dir, "u16.txt")
 	call[map[string]any](t, cs, "fs_write", map[string]any{"path": u16Path, "content": "あ\n", "charset": "utf-16le", "bom": true})
 	if b, _ := os.ReadFile(u16Path); string(b) != "\xff\xfe\x42\x30\x0a\x00" {
@@ -236,14 +236,14 @@ func TestEncodingConversion(t *testing.T) {
 		t.Fatalf("fs_read utf-16 got %+v", r)
 	}
 
-	// 範囲の末尾で分断された文字は、次の読み取りに回す。
+	// A character split at the end of the range is left for the next read.
 	u8Path := filepath.Join(dir, "u8.txt")
 	os.WriteFile(u8Path, []byte("日本語"), 0o644)
 	if r := call[readOut](t, cs, "fs_read", map[string]any{"path": u8Path, "length": 4}); r.Content != "日" || r.NextOffset != 3 || r.Charset != "utf-8" {
 		t.Fatalf("fs_read range got %+v", r)
 	}
 
-	// 表せない文字はエラーにする。
+	// Characters that cannot be represented are an error.
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "fs_write",
 		Arguments: map[string]any{"path": filepath.Join(dir, "x.txt"), "content": "😀", "charset": "shift_jis"}})
 	if err != nil {
@@ -254,7 +254,7 @@ func TestEncodingConversion(t *testing.T) {
 	}
 }
 
-// Match は search_grep の一致の 1 件です。
+// Match is one match of search_grep.
 type Match struct {
 	Line    int    `json:"line"`
 	Charset string `json:"charset"`

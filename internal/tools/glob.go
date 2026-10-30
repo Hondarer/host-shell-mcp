@@ -7,23 +7,23 @@ import (
 	"strings"
 )
 
-// glob はファイルの名前やパスとの照合に使うパターンです。
+// glob is a pattern matched against file names and paths.
 //
-// パターンに "/" を含まない場合は基本名と、含む場合は起点からの相対パス ("/" 区切り) と照合します。
-// "**" は 0 個以上のディレクトリに、{a,b} はいずれかの文字列に一致します。
+// A pattern without "/" matches the base name; one with "/" matches the path relative to the start ("/" separated).
+// "**" matches zero or more directories and {a,b} matches any of the alternatives.
 type glob struct {
 	patterns []string
 	byPath   bool
 }
 
-// compileGlob はパターンを検査して glob を作ります。空のパターンはすべてに一致します。
+// compileGlob validates the pattern and builds a glob. An empty pattern matches everything.
 func compileGlob(pattern string) (*glob, error) {
 	if pattern == "" {
 		return nil, nil
 	}
 	p := pattern
 	if runtime.GOOS == "windows" {
-		// Windows のパスの区切りを受け付け、大文字と小文字を区別しない。
+		// Accept Windows path separators and ignore case.
 		p = strings.ToLower(strings.ReplaceAll(p, `\`, "/"))
 	}
 	p = strings.TrimPrefix(p, "./")
@@ -39,7 +39,7 @@ func compileGlob(pattern string) (*glob, error) {
 	return g, nil
 }
 
-// match は相対パス rel ("/" 区切り) と基本名 name が一致するかを返します。
+// match reports whether the relative path rel ("/" separated) and the base name name match.
 func (g *glob) match(rel, name string) bool {
 	if g == nil {
 		return true
@@ -63,7 +63,7 @@ func (g *glob) match(rel, name string) bool {
 	return false
 }
 
-// matchSegments はパスの要素ごとに照合します。"**" は 0 個以上の要素に一致します。
+// matchSegments matches path element by element. "**" matches zero or more elements.
 func matchSegments(pat, segs []string) bool {
 	for len(pat) > 0 {
 		if pat[0] == "**" {
@@ -85,7 +85,7 @@ func matchSegments(pat, segs []string) bool {
 	return len(segs) == 0
 }
 
-// expandBraces は {a,b} を展開します。入れ子には対応しません。
+// expandBraces expands {a,b}. Nesting is not supported.
 func expandBraces(p string) []string {
 	open := strings.IndexByte(p, '{')
 	if open < 0 {

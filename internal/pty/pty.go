@@ -1,7 +1,7 @@
-// Package pty は子プロセスを疑似端末 (Linux の pty、Windows の ConPTY) につないで起動します。
+// Package pty starts child processes attached to a pseudo terminal (pty on Linux, ConPTY on Windows).
 //
-// 端末を前提にするプログラム (パスワードの入力、REPL、全画面の表示、色付きの出力など) を、
-// 標準入出力のパイプではなく端末として動かすために使います。
+// It runs programs that expect a terminal (password prompts, REPLs, full-screen displays,
+// colored output and so on) on a terminal instead of standard I/O pipes.
 package pty
 
 import (
@@ -10,18 +10,18 @@ import (
 	"os/exec"
 )
 
-// errEOF は端末の出力の終わりです。OS ごとの終わり方の違いを io.EOF にそろえます。
+// errEOF is the end of terminal output. It turns the OS-specific ways of ending into io.EOF.
 var errEOF = io.EOF
 
-// 端末の大きさの既定です。
+// Default terminal size.
 const (
 	DefaultCols = 120
 	DefaultRows = 40
 )
 
-// Start は cmd を新しい疑似端末につないで起動します。
-// cmd は proc.Command で作ったものを渡します。標準入出力は設定しません。
-// ctx が終了すると、プロセス ツリーを終了させます。
+// Start starts cmd attached to a new pseudo terminal.
+// Pass a cmd built with proc.Command, without standard input or output set.
+// When ctx ends, the process tree is ended.
 func Start(ctx context.Context, cmd *exec.Cmd, cols, rows int) (*Terminal, error) {
 	if cols <= 0 {
 		cols = DefaultCols

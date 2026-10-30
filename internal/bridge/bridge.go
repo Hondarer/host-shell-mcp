@@ -1,10 +1,10 @@
-// Package bridge は、手元のマシンで動き、ssh の先の host-shell を中継する MCP サーバーです。
+// Package bridge is an MCP server that runs on the local machine and relays to host-shell at the far end of ssh.
 //
-// エージェントには、接続先の host-shell のツールをそのまま見せ、加えて、手元と接続先の間で
-// ファイルやディレクトリを送るツール (transfer_push、transfer_pull) を提供します。
-// 送る内容はエージェントの文脈を通らず、bridge と接続先の間で直接やり取りします。
+// It shows the agent the tools of host-shell on the target as they are, and adds tools that send
+// files and directories between the local machine and the target (transfer_push, transfer_pull).
+// The content does not pass through the agent's context; the bridge exchanges it with the target directly.
 //
-// 進み具合の通知、要求の中止、利用者への確認 (elicitation)、ログの通知も中継します。
+// Progress notifications, cancellation, user confirmation (elicitation) and log notifications are relayed too.
 package bridge
 
 import (
@@ -42,19 +42,19 @@ their contents through the agent's context.
 options:
 `
 
-// Options は bridge の設定です。
+// Options configures the bridge.
 type Options struct {
-	// Command は接続先の host-shell を起動するコマンドです。
+	// Command starts host-shell on the target.
 	Command []string
-	// AllowLocalPaths は、手元で読み書きしてよい場所です。空の場合は制限しません。
+	// AllowLocalPaths are the local locations that may be read and written. Empty means no restriction.
 	AllowLocalPaths []string
-	// AllowLocalReadPaths は、手元で読み取りだけを許す場所です。
+	// AllowLocalReadPaths are the local locations that may only be read.
 	AllowLocalReadPaths []string
-	// NoTransfer は転送のツールを加えないことを示します (中継だけを行う)。
+	// NoTransfer leaves out the transfer tools (relay only).
 	NoTransfer bool
 }
 
-// Main は bridge サブコマンドの引数を解釈して実行します。
+// Main parses the arguments of the bridge subcommand and runs it.
 func Main(args []string) error {
 	fs := flag.NewFlagSet("host-shell bridge", flag.ContinueOnError)
 	fs.Usage = func() {
@@ -85,7 +85,7 @@ func Main(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	cmd := exec.Command(opt.Command[0], opt.Command[1:]...)
-	cmd.Stderr = os.Stderr // ssh のエラーはエージェントのログに出す。
+	cmd.Stderr = os.Stderr // ssh errors go to the agent's log.
 	err := Run(ctx, opt, &mcp.CommandTransport{Command: cmd}, &mcp.StdioTransport{})
 	if ctx.Err() != nil {
 		err = nil
@@ -93,8 +93,8 @@ func Main(args []string) error {
 	return err
 }
 
-// Run は remote (接続先の host-shell) につなぎ、local (エージェント) に対して MCP サーバーとして動きます。
-// どちらかの接続が終わると戻ります。
+// Run connects to remote (host-shell on the target) and serves local (the agent) as an MCP server.
+// It returns when either connection ends.
 func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -104,12 +104,12 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 		return err
 	}
 
-	// エージェントとのセッションは、接続先とのセッションの後にできる。
-	// それまでに接続先から通知や要求が届くことはない (ツールを呼ぶまで何も起きない)。
+	// The agent session is created after the remote session.
+	// Nothing arrives from the target before that (nothing happens until a tool is called).
 	var agent atomic.Pointer[mcp.ServerSession]
 	client := mcp.NewClient(&mcp.Implementation{Name: tools.BridgeClientName, Version: version.Version}, &mcp.ClientOptions{
-		// 接続先が利用者の確認を求めた結果 (input required) は、そのままエージェントに返し、
-		// エージェントが回答を付けてやり直した呼び出しを接続先に中継する。
+		// When the target asks for user confirmation (input required), return that to the agent as is,
+		// and relay the call the agent retries with the answers to the target.
 		MultiRoundTrip: &mcp.MultiRoundTripOptions{Disabled: true},
 		ElicitationHandler: func(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
 			ss := agent.Load()
@@ -193,26 +193,26 @@ func remoteVersion(init *mcp.InitializeResult) string {
 	return version.Version
 }
 
-// relayTools は接続先のツールを、同じ名前と説明でエージェントに見せ、呼び出しを中継します。
+// relayTools shows the target's tools to the agent with the same names and descriptions and relays calls.
 func relayTools(ctx context.Context, cs *mcp.ClientSession, srv *mcp.Server) error {
 	for tool, err := range cs.Tools(ctx, nil) {
 		if err != nil {
 			return fmt.Errorf("list remote tools: %w", err)
 		}
 		srv.AddTool(tool, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			// _meta (進み具合の通知の progressToken を含む) もそのまま渡す。
+			// Pass _meta (including the progressToken for progress notifications) through as well.
 			p := &mcp.CallToolParams{
 				Meta: req.Params.Meta, Name: req.Params.Name, Arguments: req.Params.Arguments,
 				InputResponses: req.Params.InputResponses, RequestState: req.Params.RequestState,
 			}
-			// エージェントが要求を取り消すと ctx が終わり、接続先にも取り消しが伝わる。
+			// When the agent cancels the request, ctx ends and the cancellation reaches the target too.
 			return cs.CallTool(ctx, p)
 		})
 	}
 	return nil
 }
 
-// relayResources は接続先のリソース (help の各 topic) を中継します。
+// relayResources relays the target's resources (the help topics).
 func relayResources(ctx context.Context, cs *mcp.ClientSession, srv *mcp.Server) error {
 	init := cs.InitializeResult()
 	if init == nil || init.Capabilities == nil || init.Capabilities.Resources == nil {
@@ -229,7 +229,7 @@ func relayResources(ctx context.Context, cs *mcp.ClientSession, srv *mcp.Server)
 	return nil
 }
 
-// callRemote は接続先のツールを呼び、構造化された結果を out に読み込みます。
+// callRemote calls a tool on the target and decodes the structured result into out.
 func callRemote(ctx context.Context, cs *mcp.ClientSession, name string, args map[string]any, out any) error {
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
 	if err != nil {

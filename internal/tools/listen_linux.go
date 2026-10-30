@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// listeners は /proc/net から待ち受け中のソケットを読み、/proc/<pid>/fd からプロセスを特定します。
+// listeners reads listening sockets from /proc/net and finds their processes through /proc/<pid>/fd.
 func listeners(context.Context) ([]Listener, string, error) {
 	owners := socketOwners()
 	var out []Listener
@@ -21,14 +21,14 @@ func listeners(context.Context) ([]Listener, string, error) {
 			continue
 		}
 		sc := bufio.NewScanner(f)
-		sc.Scan() // 見出し
+		sc.Scan() // header
 		for sc.Scan() {
 			fields := strings.Fields(sc.Text())
 			if len(fields) < 10 {
 				continue
 			}
 			state := fields[3]
-			// TCP は LISTEN (0A)、UDP は接続していないソケット (07) を待ち受けとみなす。
+			// TCP sockets in LISTEN (0A) and unconnected UDP sockets (07) count as listening.
 			if (strings.HasPrefix(proto, "tcp") && state != "0A") || (strings.HasPrefix(proto, "udp") && state != "07") {
 				continue
 			}
@@ -51,8 +51,8 @@ func listeners(context.Context) ([]Listener, string, error) {
 	return out, note, nil
 }
 
-// parseProcAddr は /proc/net/tcp の "0100007F:1F90" の形のアドレスを読みます。
-// アドレスは 32 ビットごとにホストのバイト順 (リトル エンディアン) です。
+// parseProcAddr reads an address of the form "0100007F:1F90" from /proc/net/tcp.
+// Each 32-bit word of the address is in host byte order (little endian).
 func parseProcAddr(s string) (string, int, bool) {
 	h, p, ok := strings.Cut(s, ":")
 	if !ok {
@@ -77,7 +77,7 @@ type sockOwner struct {
 	name string
 }
 
-// socketOwners はソケットの inode から、それを開いているプロセスへの対応を作ります。
+// socketOwners maps socket inodes to the processes that have them open.
 func socketOwners() map[string]sockOwner {
 	out := map[string]sockOwner{}
 	fds, _ := filepath.Glob("/proc/[0-9]*/fd/*")

@@ -1,5 +1,5 @@
-// Package version はビルド時に埋め込むバージョン情報を保持します。
+// Package version holds version information embedded at build time.
 package version
 
-// Version はリリース ビルドで -ldflags "-X github.com/hondarer/host-shell-mcp/internal/version.Version=..." により上書きします。
+// Version is overridden in release builds with -ldflags "-X github.com/hondarer/host-shell-mcp/internal/version.Version=...".
 var Version = "dev"

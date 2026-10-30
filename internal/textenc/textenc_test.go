@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// sjis は「日本語」の Shift_JIS のバイト列です。
+// sjis is "日本語" in Shift_JIS.
 var sjis = []byte{0x93, 0xfa, 0x96, 0x7b, 0x8c, 0xea}
 
 func mustLookup(t *testing.T, name string) Encoding {
@@ -60,7 +60,7 @@ func TestDecodePrefixKeepsIncompleteChar(t *testing.T) {
 	if s != "日本" || n != 4 {
 		t.Fatalf("DecodePrefix = %q, %d", s, n)
 	}
-	s, n, full := e.DecodePrefix(sjis, 6, true) // 6 バイトには 2 文字まで
+	s, n, full := e.DecodePrefix(sjis, 6, true) // 6 bytes hold at most 2 characters
 	if s != "日本" || n != 4 || !full {
 		t.Fatalf("DecodePrefix(max 6) = %q, %d, %v", s, n, full)
 	}
@@ -70,7 +70,7 @@ func TestWriterAutoPerLine(t *testing.T) {
 	var out bytes.Buffer
 	w := NewWriter(&out, Choice{Auto: true, Enc: mustLookup(t, "shift_jis")})
 	w.Write([]byte("utf-8: 日本語\nsjis: "))
-	w.Write(sjis[:3]) // 文字の途中で分断する
+	w.Write(sjis[:3]) // split in the middle of a character
 	w.Write(append(sjis[3:], '\n'))
 	w.Write([]byte("tail"))
 	w.Close()
@@ -120,7 +120,7 @@ func TestNewline(t *testing.T) {
 
 func TestLooksUTF8(t *testing.T) {
 	b := []byte("日本語")
-	if !LooksUTF8(b[1:8]) { // 先頭と末尾が文字の途中
+	if !LooksUTF8(b[1:8]) { // both ends cut in the middle of a character
 		t.Error("LooksUTF8 rejected a range cut inside characters")
 	}
 	if LooksUTF8(sjis) {
@@ -143,7 +143,7 @@ func TestWriterFlushPrompt(t *testing.T) {
 	if buf.String() != "Password: " {
 		t.Errorf("after flush: %q", buf.String())
 	}
-	// 文字の途中で切れた末尾は残す。
+	// A tail cut in the middle of a character is kept.
 	b, _ := sjis.Encode("日本")
 	w.Write(append([]byte("x"), b[:3]...))
 	w.Flush()

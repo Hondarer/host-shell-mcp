@@ -1,4 +1,4 @@
-// Package server は host-shell の MCP サーバーを組み立てます。
+// Package server assembles host-shell's MCP server.
 package server
 
 import (
@@ -15,8 +15,8 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/version"
 )
 
-// New はツールを登録した MCP サーバーを作ります。
-// 戻り値の close は、セッションの終了後に実行中のジョブを停止するために呼びます。
+// New creates the MCP server with the tools registered.
+// Call the returned close after the session ends to stop running jobs.
 func New(cfg config.Config, al *audit.Logger) (s *mcp.Server, close func(), err error) {
 	pol, err := policy.New(cfg.Policy, tools.Catalog())
 	if err != nil {
@@ -33,7 +33,7 @@ func New(cfg config.Config, al *audit.Logger) (s *mcp.Server, close func(), err 
 		Policy:       pol,
 	}
 	impl := &mcp.Implementation{Name: "host-shell", Title: "host-shell", Version: version.Version}
-	// 案内には公開するツールを反映するため、一度、仮のサーバーに登録して公開するツールを決める。
+	// The instructions reflect the exposed tools, so register once on a temporary server to determine them.
 	tools.Register(mcp.NewServer(impl, nil), d)
 	s = mcp.NewServer(impl, &mcp.ServerOptions{Instructions: tools.Instructions(d)})
 	tools.Register(s, d)

@@ -17,8 +17,8 @@ func ptySpec() proc.Spec {
 	return proc.Spec{Command: `printf "name? "; read n; echo "hello $n"`}
 }
 
-// TestPTYJob は、ジョブとして疑似端末で起動し、改行のないプロンプトを読んで対話できることを確かめます。
-// 出力の文字コードを自動判定する場合も、プロンプトが改行を待たずに読めることを確かめます。
+// TestPTYJob checks that a job started in a pseudo terminal can read a prompt without a newline and interact.
+// It also checks that the prompt is readable without waiting for a newline when the output encoding is detected automatically.
 func TestPTYJob(t *testing.T) {
 	m := NewManager(proc.DefaultShell("powershell"), 1<<20)
 	defer m.StopAll(5 * time.Second)

@@ -11,7 +11,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// listeners は netstat -ano の出力から待ち受け中のソケットを読み、tasklist でプロセスの名前を補います。
+// listeners reads listening sockets from the output of netstat -ano and adds process names from tasklist.
 func listeners(ctx context.Context) ([]Listener, string, error) {
 	opt := proc.Options{Output: textenc.Choice{Auto: true, Enc: textenc.Console()}, Timeout: 30 * time.Second, MaxOutput: 16 << 20}
 	res, err := proc.Run(ctx, proc.Spec{Argv: []string{"netstat", "-ano"}}, opt)
@@ -53,7 +53,7 @@ func listeners(ctx context.Context) ([]Listener, string, error) {
 	return out, "", nil
 }
 
-// processNames は tasklist からプロセスの識別子と名前の対応を作ります。
+// processNames maps process IDs to names from tasklist.
 func processNames(ctx context.Context) map[int]string {
 	opt := proc.Options{Output: textenc.Choice{Auto: true, Enc: textenc.Console()}, Timeout: 30 * time.Second, MaxOutput: 16 << 20}
 	res, err := proc.Run(ctx, proc.Spec{Argv: []string{"tasklist", "/fo", "csv", "/nh"}}, opt)

@@ -1,13 +1,14 @@
-// host-shell は、SSH などの標準入出力で中継して使う、接続先のマシン上で動く MCP サーバーです。
+// host-shell is an MCP server that runs on the target machine, reached through the standard input
+// and output of SSH or a similar relay.
 //
 //	ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp
 //
-// 手元では、bridge サブコマンドで、ssh の先の host-shell を中継しながら、
-// 手元と接続先の間でファイルを送るツールを加えた MCP サーバーとして動きます。
+// Locally, the bridge subcommand relays to host-shell at the far end of ssh and serves it as an
+// MCP server with extra tools that send files between the local machine and the target.
 //
 //	host-shell bridge -- ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp
 //
-// 標準出力は MCP の JSON-RPC 専用です。診断メッセージは標準エラーに、操作の記録はログ ファイルに出力します。
+// Standard output carries MCP JSON-RPC only. Diagnostics go to standard error and the audit record to a log file.
 package main
 
 import (
@@ -70,7 +71,7 @@ func main() {
 	flag.Parse()
 
 	if *showVer {
-		// --version は MCP として起動していないときだけ使うため、標準出力に書いてよい。
+		// --version is used only when not running as MCP, so writing to standard output is fine.
 		fmt.Println("host-shell", version.Version)
 		return
 	}
@@ -128,16 +129,16 @@ func run(cfg config.Config) error {
 	defer closeServer()
 
 	al.Event("server_start", "version", version.Version, "pid", os.Getpid())
-	// 標準入力が閉じられる (SSH が切断される) と Run は戻る。
+	// Run returns when standard input is closed (SSH disconnects).
 	err = s.Run(ctx, &mcp.StdioTransport{})
 	if ctx.Err() != nil {
-		err = nil // シグナルによる停止は正常な終了として扱う。
+		err = nil // Stopping on a signal is a normal exit.
 	}
 	al.Event("server_stop", "error", fmt.Sprint(err))
 	return err
 }
 
-// listFlag は繰り返し指定できるオプションです。
+// listFlag is an option that may be given more than once.
 type listFlag []string
 
 func (l *listFlag) String() string { return strings.Join(*l, ",") }
@@ -146,7 +147,7 @@ func (l *listFlag) Set(v string) error {
 	return nil
 }
 
-// splitList はカンマ区切りの指定を分けます。
+// splitList splits a comma-separated value.
 func splitList(l []string) []string {
 	var out []string
 	for _, v := range l {

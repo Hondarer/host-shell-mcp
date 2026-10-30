@@ -48,7 +48,7 @@ func TestReplaceTracked(t *testing.T) {
 	if text != "a YY b YY c" || len(spans) != 2 || spans[1] != (span{7, 9}) {
 		t.Fatalf("got %q %v", text, spans)
 	}
-	// 前の置換で記録した範囲は、後の置換によるずれに合わせて動く。
+	// Ranges recorded by an earlier replacement move with the shift caused by later replacements.
 	text, spans = replaceTracked(text, "a", "AAA", spans)
 	if text != "AAA YY b YY c" || spans[0] != (span{4, 6}) || spans[2] != (span{0, 3}) {
 		t.Fatalf("got %q %v", text, spans)

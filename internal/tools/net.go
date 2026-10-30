@@ -67,7 +67,7 @@ func registerNet(s *mcp.Server, d *Deps) {
 
 // ---- net_http ----
 
-// NetHTTPInput は net_http の入力です。
+// NetHTTPInput is the input of net_http.
 type NetHTTPInput struct {
 	URL              string            `json:"url" jsonschema:"request URL, e.g. http://localhost:8080/health. With unix_socket the host part is ignored (use http://localhost/path)"`
 	Method           string            `json:"method,omitempty" jsonschema:"HTTP method (default GET)"`
@@ -88,7 +88,7 @@ type NetHTTPInput struct {
 	SaveTo           string            `json:"save_to,omitempty" jsonschema:"write the response body to this remote file (any size) instead of returning it"`
 }
 
-// AuditArgs は本文と認証のヘッダーをログに残さないようにします。
+// AuditArgs keeps the body and authentication headers out of the log.
 func (in NetHTTPInput) AuditArgs() any {
 	in.Body = redactedLen(in.Body)
 	h := map[string]string{}
@@ -103,7 +103,7 @@ func (in NetHTTPInput) AuditArgs() any {
 	return in
 }
 
-// PathArgs は読み書きする接続先のファイルを方針の検査に渡します。
+// PathArgs passes the target files read and written to the policy check.
 func (in NetHTTPInput) PathArgs() (read, write []string) {
 	for _, p := range []string{in.BodyFile, in.CACert, in.ClientCert, in.ClientKey} {
 		if p != "" {
@@ -116,7 +116,7 @@ func (in NetHTTPInput) PathArgs() (read, write []string) {
 	return read, write
 }
 
-// NetHTTPOutput は net_http の出力です。
+// NetHTTPOutput is the output of net_http.
 type NetHTTPOutput struct {
 	Status        int               `json:"status"`
 	StatusText    string            `json:"status_text"`
@@ -134,7 +134,7 @@ type NetHTTPOutput struct {
 	DurationMs    int64             `json:"duration_ms"`
 }
 
-// TLSInfo は TLS の接続と相手の証明書の情報です。
+// TLSInfo describes the TLS connection and the peer's certificate.
 type TLSInfo struct {
 	Version     string   `json:"version"`
 	Subject     string   `json:"subject,omitempty"`
@@ -259,7 +259,7 @@ func (d *Deps) netHTTP(ctx context.Context, req *mcp.CallToolRequest, in NetHTTP
 	return nil, out, nil
 }
 
-// checkURL は URL の宛先が方針で許されるかを調べます。
+// checkURL checks whether the policy allows the URL's destination.
 func (d *Deps) checkURL(u *url.URL, unixSocket string) error {
 	if unixSocket != "" {
 		return d.Policy.CheckUnixSocket(unixSocket)
@@ -327,7 +327,7 @@ func clientTLS(insecure bool, caFile, certFile, keyFile string) (*tls.Config, er
 	return c, nil
 }
 
-// tlsInfo は TLS の接続の情報をまとめます。検証を省いた接続でも、検証した場合の結果を示します。
+// tlsInfo summarizes the TLS connection. Even when verification was skipped, it shows what verification would have found.
 func tlsInfo(cs *tls.ConnectionState, host string, conf *tls.Config) *TLSInfo {
 	info := &TLSInfo{Version: tls.VersionName(cs.Version)}
 	if len(cs.PeerCertificates) == 0 {
@@ -368,7 +368,7 @@ func (d *Deps) readBody(resp *http.Response, in NetHTTPInput, out *NetHTTPOutput
 	if err != nil {
 		return err
 	}
-	// 残りは数えるだけにする。
+	// Only count the rest.
 	rest, _ := io.Copy(io.Discard, resp.Body)
 	out.BodyBytes = int64(len(buf)) + rest
 	out.BodyTruncated = rest > 0
@@ -408,7 +408,7 @@ func (d *Deps) readBody(resp *http.Response, in NetHTTPInput, out *NetHTTPOutput
 	return nil
 }
 
-// textual は本文をテキストとして返すべき種類かを返します。
+// textual reports whether the body should be returned as text.
 func textual(mediaType string) bool {
 	switch {
 	case strings.HasPrefix(mediaType, "text/"):
@@ -457,7 +457,7 @@ func (d *Deps) saveBody(resp *http.Response, path string, pr *progress, out *Net
 
 // ---- net_tcp ----
 
-// NetTCPInput は net_tcp の入力です。
+// NetTCPInput is the input of net_tcp.
 type NetTCPInput struct {
 	Host            string `json:"host,omitempty" jsonschema:"host name or IP address (default localhost)"`
 	Port            int    `json:"port,omitempty" jsonschema:"TCP port (required unless unix_socket)"`
@@ -474,13 +474,13 @@ type NetTCPInput struct {
 	ReceiveEncoding string `json:"receive_encoding,omitempty" jsonschema:"auto (default: text if valid UTF-8, otherwise base64), text or base64"`
 }
 
-// AuditArgs は送る内容をログに残さないようにします。
+// AuditArgs keeps the data sent out of the log.
 func (in NetTCPInput) AuditArgs() any {
 	in.Send = redactedLen(in.Send)
 	return in
 }
 
-// NetTCPOutput は net_tcp の出力です。
+// NetTCPOutput is the output of net_tcp.
 type NetTCPOutput struct {
 	RemoteAddr      string   `json:"remote_addr"`
 	Sent            int      `json:"sent_bytes"`
@@ -591,7 +591,7 @@ func (d *Deps) netTCP(ctx context.Context, _ *mcp.CallToolRequest, in NetTCPInpu
 			if errors.Is(err, io.EOF) {
 				out.ClosedByPeer = true
 			}
-			break // idle の時間切れ、または全体の時間切れ
+			break // idle timeout or overall timeout
 		}
 	}
 	out.Truncated = len(recv) >= max
@@ -618,14 +618,14 @@ func (d *Deps) netTCP(ctx context.Context, _ *mcp.CallToolRequest, in NetTCPInpu
 
 // ---- net_check ----
 
-// NetCheckInput は net_check の入力です。
+// NetCheckInput is the input of net_check.
 type NetCheckInput struct {
 	Targets   []string `json:"targets" jsonschema:"what to check: host:port (DNS and TCP connect), host (DNS only), or a URL (its host and port; https implies tls). IPv6 as [::1]:443"`
 	TLS       bool     `json:"tls,omitempty" jsonschema:"also do a TLS handshake on each port and report the certificate"`
 	TimeoutMs int      `json:"timeout_ms,omitempty" jsonschema:"timeout per target in milliseconds (default 5000)"`
 }
 
-// NetCheckResult は 1 つの宛先の結果です。
+// NetCheckResult is the result for one destination.
 type NetCheckResult struct {
 	Target    string   `json:"target"`
 	Host      string   `json:"host"`
@@ -638,7 +638,7 @@ type NetCheckResult struct {
 	Error     string   `json:"error,omitempty"`
 }
 
-// NetCheckOutput は net_check の出力です。
+// NetCheckOutput is the output of net_check.
 type NetCheckOutput struct {
 	Results []NetCheckResult `json:"results"`
 }
@@ -714,7 +714,7 @@ func (d *Deps) checkTarget(ctx context.Context, target string, useTLS bool, time
 	return r
 }
 
-// parseTarget は net_check の宛先を、ホスト、ポート (なければ 0)、TLS を使うかに分けます。
+// parseTarget splits a net_check destination into host, port (0 if absent) and whether to use TLS.
 func parseTarget(t string) (host string, port int, isTLS bool, err error) {
 	if strings.Contains(t, "://") {
 		u, err := url.Parse(t)
@@ -751,14 +751,14 @@ func parseTarget(t string) (host string, port int, isTLS bool, err error) {
 
 // ---- net_listen ----
 
-// NetListenInput は net_listen の入力です。
+// NetListenInput is the input of net_listen.
 type NetListenInput struct {
 	Port     int    `json:"port,omitempty" jsonschema:"only this port"`
 	Protocol string `json:"protocol,omitempty" jsonschema:"tcp or udp (default both)"`
 	Process  string `json:"process,omitempty" jsonschema:"only sockets of processes whose name contains this (case-insensitive)"`
 }
 
-// Listener は待ち受け中のソケットです。
+// Listener is a listening socket.
 type Listener struct {
 	Protocol string `json:"protocol" jsonschema:"tcp, tcp6, udp or udp6"`
 	Address  string `json:"address"`
@@ -767,7 +767,7 @@ type Listener struct {
 	Process  string `json:"process,omitempty"`
 }
 
-// NetListenOutput は net_listen の出力です。
+// NetListenOutput is the output of net_listen.
 type NetListenOutput struct {
 	Listeners []Listener `json:"listeners"`
 	Note      string     `json:"note,omitempty"`
@@ -799,7 +799,7 @@ func (d *Deps) netListen(ctx context.Context, _ *mcp.CallToolRequest, in NetList
 
 // ---- net_interfaces ----
 
-// Interface はネットワーク インターフェースです。
+// Interface is a network interface.
 type Interface struct {
 	Name      string   `json:"name"`
 	Index     int      `json:"index"`
@@ -809,7 +809,7 @@ type Interface struct {
 	Addresses []string `json:"addresses" jsonschema:"IP addresses with prefix length"`
 }
 
-// NetInterfacesOutput は net_interfaces の出力です。
+// NetInterfacesOutput is the output of net_interfaces.
 type NetInterfacesOutput struct {
 	Interfaces []Interface `json:"interfaces"`
 }

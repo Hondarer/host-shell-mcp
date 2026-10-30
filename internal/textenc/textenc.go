@@ -1,7 +1,7 @@
-// Package textenc は接続先の文字コードと UTF-8 の相互変換を扱います。
+// Package textenc converts between the target's encodings and UTF-8.
 //
-// MCP の通信は常に UTF-8 です。接続先のコマンドの出力やファイルが UTF-8 以外の場合に、
-// ここで UTF-8 へ変換 (読み取り) し、または UTF-8 から変換 (書き込み) します。
+// MCP messages are always UTF-8. When command output or files on the target are not UTF-8,
+// this package converts them to UTF-8 (reading) or from UTF-8 (writing).
 package textenc
 
 import (
@@ -22,30 +22,30 @@ import (
 	"golang.org/x/text/transform"
 )
 
-// Encoding は文字コードと、その正式な名前の組です。
+// Encoding is an encoding together with its canonical name.
 type Encoding struct {
 	Name string
 	enc  encoding.Encoding
 }
 
 var (
-	// UTF8 は UTF-8 です。変換を行いません。
+	// UTF8 is UTF-8. It converts nothing.
 	UTF8    = Encoding{Name: "utf-8", enc: unicode.UTF8}
 	utf16le = Encoding{Name: "utf-16le", enc: unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM)}
 	utf16be = Encoding{Name: "utf-16be", enc: unicode.UTF16(unicode.BigEndian, unicode.IgnoreBOM)}
 )
 
-// IsUTF8 は UTF-8 かどうかを返します。
+// IsUTF8 reports whether the encoding is UTF-8.
 func (e Encoding) IsUTF8() bool { return e.Name == UTF8.Name }
 
-// ASCIICompatible は ASCII の範囲を 1 バイトで表す文字コードかどうかを返します (UTF-16 以外)。
+// ASCIICompatible reports whether the encoding represents the ASCII range in single bytes (anything but UTF-16).
 func (e Encoding) ASCIICompatible() bool { return !strings.HasPrefix(e.Name, "utf-16") }
 
-// NewDecoder は、この文字コードから UTF-8 への変換器を返します。
-// 正しくないバイト列は置換文字 (U+FFFD) に置き換えます。
+// NewDecoder returns a converter from this encoding to UTF-8.
+// Invalid byte sequences become the replacement character (U+FFFD).
 func (e Encoding) NewDecoder() *encoding.Decoder { return e.enc.NewDecoder() }
 
-// Decode は b を UTF-8 の文字列に変換します。
+// Decode converts b to a UTF-8 string.
 func (e Encoding) Decode(b []byte) string {
 	if e.IsUTF8() {
 		return strings.ToValidUTF8(string(b), "\uFFFD")
@@ -57,17 +57,17 @@ func (e Encoding) Decode(b []byte) string {
 	return string(out)
 }
 
-// DecodePrefix は src の先頭から、変換後の大きさが max バイトに収まる範囲を UTF-8 に変換します。
-// atEOF が false の場合、末尾の不完全な文字は変換せずに残します。
-// consumed は変換した src のバイト数、full は max に達して打ち切ったかどうかです。
+// DecodePrefix converts to UTF-8 the longest prefix of src whose converted size fits in max bytes.
+// When atEOF is false, an incomplete character at the end is left unconverted.
+// consumed is the number of src bytes converted; full reports whether it stopped at max.
 func (e Encoding) DecodePrefix(src []byte, max int, atEOF bool) (s string, consumed int, full bool) {
 	dst := make([]byte, max)
 	nDst, nSrc, err := e.enc.NewDecoder().Transform(dst, src, atEOF)
 	return string(dst[:nDst]), nSrc, err == transform.ErrShortDst
 }
 
-// Encode は UTF-8 の文字列 s を、この文字コードのバイト列に変換します。
-// この文字コードで表せない文字がある場合はエラーを返します。
+// Encode converts the UTF-8 string s to bytes in this encoding.
+// It returns an error when s contains characters this encoding cannot represent.
 func (e Encoding) Encode(s string) ([]byte, error) {
 	if e.IsUTF8() {
 		return []byte(s), nil
@@ -84,7 +84,7 @@ func (e Encoding) Encode(s string) ([]byte, error) {
 	return nil, fmt.Errorf("encode to %s: %w", e.Name, err)
 }
 
-// BOM はこの文字コードのバイト順マークを返します。BOM のない文字コードでは nil です。
+// BOM returns the byte order mark of this encoding, or nil for encodings without one.
 func (e Encoding) BOM() []byte {
 	switch e.Name {
 	case UTF8.Name:
@@ -97,7 +97,7 @@ func (e Encoding) BOM() []byte {
 	return nil
 }
 
-// DetectBOM は b の先頭のバイト順マークを調べ、文字コードと BOM の長さを返します。
+// DetectBOM looks for a byte order mark at the start of b and returns the encoding and the BOM length.
 func DetectBOM(b []byte) (Encoding, int, bool) {
 	for _, e := range []Encoding{UTF8, utf16le, utf16be} {
 		if bom := e.BOM(); bytes.HasPrefix(b, bom) {
@@ -107,7 +107,7 @@ func DetectBOM(b []byte) (Encoding, int, bool) {
 	return Encoding{}, 0, false
 }
 
-// special は htmlindex の既定と異なる扱いにする名前です。
+// special lists names handled differently from the htmlindex default.
 var special = map[string]Encoding{
 	"utf-16":   utf16le,
 	"utf-16le": utf16le,
@@ -116,7 +116,7 @@ var special = map[string]Encoding{
 	"utf16be":  utf16be,
 }
 
-// aliases は htmlindex が知らない、よく使われる別名です。
+// aliases are common alternative names htmlindex does not know.
 var aliases = map[string]string{
 	"eucjp":    "euc-jp",
 	"euc_jp":   "euc-jp",
@@ -126,7 +126,7 @@ var aliases = map[string]string{
 	"euc_kr":   "euc-kr",
 }
 
-// codePages は Windows のコード ページ番号と文字コードの対応です。
+// codePages maps Windows code page numbers to encodings.
 var codePages = map[int]encoding.Encoding{
 	437:   charmap.CodePage437,
 	850:   charmap.CodePage850,
@@ -158,7 +158,7 @@ var codePages = map[int]encoding.Encoding{
 	54936: simplifiedchinese.GB18030,
 }
 
-// FromCodePage は Windows のコード ページ番号に対応する文字コードを返します。
+// FromCodePage returns the encoding for a Windows code page number.
 func FromCodePage(cp int) (Encoding, bool) {
 	switch cp {
 	case 65001:
@@ -179,9 +179,9 @@ func FromCodePage(cp int) (Encoding, bool) {
 	return Encoding{Name: name, enc: enc}, true
 }
 
-// Lookup は名前から文字コードを探します。
-// WHATWG の名前と別名 (shift_jis、sjis、euc-jp、gbk、windows-1252 など)、
-// utf-16le、utf-16be、Windows のコード ページ (cp932、932 など) を受け付けます。
+// Lookup finds an encoding by name.
+// It accepts WHATWG names and aliases (shift_jis, sjis, euc-jp, gbk, windows-1252 and so on),
+// utf-16le, utf-16be and Windows code pages (cp932, 932 and so on).
 func Lookup(name string) (Encoding, error) {
 	n := strings.ToLower(strings.TrimSpace(name))
 	if e, ok := special[n]; ok {
@@ -209,16 +209,16 @@ func Lookup(name string) (Encoding, error) {
 	return Encoding{Name: canonical, enc: enc}, nil
 }
 
-// Choice はエージェントが指定した文字コードの解決結果です。
+// Choice is the resolved encoding the agent specified.
 type Choice struct {
-	// Auto は、UTF-8 として正しければそのまま使い、正しくなければ Enc とみなすことを表します。
+	// Auto means: use the bytes as is when they are valid UTF-8, otherwise treat them as Enc.
 	Auto bool
 	Enc  Encoding
 }
 
-// Parse は、ツールの引数で指定された文字コードの名前を解決します。
-// 空文字と "auto" は自動判定、"system" は system が返す接続先の既定の文字コードです。
-// allowAuto が false の場合、空文字は def とし、"auto" はエラーにします。
+// Parse resolves an encoding name given in a tool argument.
+// An empty string and "auto" mean automatic detection; "system" is the target's default encoding returned by system.
+// When allowAuto is false, an empty string means def and "auto" is an error.
 func Parse(name string, system func() Encoding, allowAuto bool, def Encoding) (Choice, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "":
@@ -238,7 +238,7 @@ func Parse(name string, system func() Encoding, allowAuto bool, def Encoding) (C
 	return Choice{Enc: e}, err
 }
 
-// IncompleteTail は、b の末尾にある不完全な UTF-8 の文字のバイト数を返します。
+// IncompleteTail returns the number of bytes of an incomplete UTF-8 character at the end of b.
 func IncompleteTail(b []byte) int {
 	for i := len(b) - 1; i >= 0 && i >= len(b)-utf8.UTFMax; i-- {
 		if !utf8.RuneStart(b[i]) {
@@ -252,8 +252,8 @@ func IncompleteTail(b []byte) int {
 	return 0
 }
 
-// LooksUTF8 は、b が UTF-8 として正しいかどうかを返します。
-// 範囲の境界で分断された先頭と末尾の文字は許容します。
+// LooksUTF8 reports whether b is valid UTF-8.
+// Characters split at the start and end of the range are tolerated.
 func LooksUTF8(b []byte) bool {
 	start := 0
 	for start < len(b) && start < utf8.UTFMax-1 && !utf8.RuneStart(b[start]) {
@@ -262,7 +262,7 @@ func LooksUTF8(b []byte) bool {
 	return utf8.Valid(b[start : len(b)-IncompleteTail(b[start:])])
 }
 
-// Newline は s の改行の種類を返します。lf、crlf、cr、mixed のいずれかで、改行がなければ空文字です。
+// Newline returns the newline style of s: lf, crlf, cr or mixed, or an empty string when s has no newline.
 func Newline(s string) string {
 	crlf := strings.Count(s, "\r\n")
 	lf := strings.Count(s, "\n") - crlf
@@ -284,7 +284,7 @@ func Newline(s string) string {
 	return result
 }
 
-// ConvertNewline は s の改行を mode (keep、lf、crlf) に変換します。
+// ConvertNewline converts the newlines of s according to mode (keep, lf, crlf).
 func ConvertNewline(s, mode string) (string, error) {
 	switch mode {
 	case "", "keep":

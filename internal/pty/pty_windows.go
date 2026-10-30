@@ -18,27 +18,27 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Terminal は疑似端末 (ConPTY) につないだプロセスです。
+// Terminal is a process attached to a pseudo terminal (ConPTY).
 type Terminal struct {
 	hpc     windows.Handle
 	process windows.Handle
 	pid     int
-	in      *os.File // 端末への入力 (こちらが書く側)
-	out     *os.File // 端末の出力 (こちらが読む側)
+	in      *os.File // input to the terminal (we write)
+	out     *os.File // output of the terminal (we read)
 
 	closeOnce sync.Once
 	exited    chan struct{}
-	lastRead  atomic.Int64 // 最後に出力を読んだ時刻 (UnixNano)
+	lastRead  atomic.Int64 // when output was last read (UnixNano)
 }
 
-// 終了の後、出力が落ち着くのを待つ時間です。ConPTY は描画を非同期に行うため、
-// プロセスの終了直後に閉じると、最後の出力が失われることがあります。
+// How long to wait for output to settle after the process ends. ConPTY renders asynchronously,
+// so closing it right after the process ends can lose the last output.
 const (
 	settleIdle = 300 * time.Millisecond
 	settleMax  = 2 * time.Second
 )
 
-// os/exec の Cmd は疑似端末の属性を渡せないため (golang/go#62708)、CreateProcess を直接呼ぶ。
+// os/exec's Cmd cannot pass the pseudo console attribute (golang/go#62708), so call CreateProcess directly.
 func start(ctx context.Context, cmd *exec.Cmd, cols, rows int) (*Terminal, error) {
 	ptyIn, inW, err := os.Pipe()
 	if err != nil {
@@ -53,7 +53,7 @@ func start(ctx context.Context, cmd *exec.Cmd, cols, rows int) (*Terminal, error
 	var hpc windows.Handle
 	err = windows.CreatePseudoConsole(windows.Coord{X: int16(cols), Y: int16(rows)},
 		windows.Handle(ptyIn.Fd()), windows.Handle(ptyOut.Fd()), 0, &hpc)
-	// 端末側の端は ConPTY が複製して持つため、ここで閉じる。
+	// ConPTY duplicates the terminal-side ends, so close them here.
 	ptyIn.Close()
 	ptyOut.Close()
 	if err != nil {
@@ -84,7 +84,7 @@ func (t *Terminal) spawn(cmd *exec.Cmd) error {
 		return err
 	}
 	defer attrs.Delete()
-	// 属性の値は HPCON そのもの (ポインターの指す先ではない) を渡す。
+	// The attribute value is the HPCON itself, not what it points to.
 	hpc := *(*unsafe.Pointer)(unsafe.Pointer(&t.hpc))
 	if err := attrs.Update(windows.PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, hpc, unsafe.Sizeof(t.hpc)); err != nil {
 		return err
@@ -113,8 +113,8 @@ func (t *Terminal) spawn(cmd *exec.Cmd) error {
 	}
 	si := &windows.StartupInfoEx{ProcThreadAttributeList: attrs.List()}
 	si.Cb = uint32(unsafe.Sizeof(*si))
-	// 標準入出力のハンドルを指定しない (NULL) ことを明示する。指定しないと、子プロセスは host-shell 自身の
-	// 標準入出力 (MCP の通信路) を受け継ぎ、標準出力に書いた内容が疑似端末に届かない。
+	// State explicitly that no standard handles are given (NULL). Otherwise the child inherits host-shell's own
+	// standard handles (the MCP channel), and what it writes to standard output never reaches the pseudo console.
 	si.Flags = windows.STARTF_USESTDHANDLES
 	pi := &windows.ProcessInformation{}
 	flags := uint32(windows.EXTENDED_STARTUPINFO_PRESENT | windows.CREATE_UNICODE_ENVIRONMENT)
@@ -127,7 +127,7 @@ func (t *Terminal) spawn(cmd *exec.Cmd) error {
 	return nil
 }
 
-// envBlock は環境変数を CreateProcess に渡す形 (NUL 区切り、最後に NUL を 2 つ) にします。
+// envBlock formats the environment for CreateProcess (NUL separated, ending with two NULs).
 func envBlock(env []string) *uint16 {
 	var b []uint16
 	for _, kv := range env {
@@ -141,10 +141,10 @@ func envBlock(env []string) *uint16 {
 	return &b[0]
 }
 
-// Pid はプロセスの識別子を返します。
+// Pid returns the process ID.
 func (t *Terminal) Pid() int { return t.pid }
 
-// Read は端末の出力を読みます。端末を閉じると io.EOF を返します。
+// Read reads terminal output. It returns io.EOF when the terminal is closed.
 func (t *Terminal) Read(p []byte) (int, error) {
 	n, err := t.out.Read(p)
 	if n > 0 {
@@ -156,15 +156,15 @@ func (t *Terminal) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// Write は端末に入力を送ります。
+// Write sends input to the terminal.
 func (t *Terminal) Write(p []byte) (int, error) { return t.in.Write(p) }
 
-// Resize は端末の大きさを変えます。
+// Resize changes the terminal size.
 func (t *Terminal) Resize(cols, rows int) error {
 	return windows.ResizePseudoConsole(t.hpc, windows.Coord{X: int16(cols), Y: int16(rows)})
 }
 
-// Wait はプロセスの終了を待ち、終了コードを返します。
+// Wait waits for the process to end and returns its exit code.
 func (t *Terminal) Wait() (int, error) {
 	defer close(t.exited)
 	if _, err := windows.WaitForSingleObject(t.process, windows.INFINITE); err != nil {
@@ -174,7 +174,7 @@ func (t *Terminal) Wait() (int, error) {
 	if err := windows.GetExitCodeProcess(t.process, &code); err != nil {
 		return -1, err
 	}
-	// 出力が落ち着いてから ConPTY を閉じる。閉じると、残りの出力を送り終えてから出力のパイプが閉じられる。
+	// Close ConPTY after the output settles. Closing it flushes the remaining output and then closes the output pipe.
 	go func() {
 		deadline := time.Now().Add(settleMax)
 		start := time.Now().UnixNano()
@@ -197,18 +197,18 @@ func (t *Terminal) closeConsole() {
 	})
 }
 
-// Close は端末を閉じます。読み取り中の Read は終わります。
+// Close closes the terminal. A Read in progress returns.
 func (t *Terminal) Close() error {
 	t.closeConsole()
 	windows.CloseHandle(t.process)
 	return t.out.Close()
 }
 
-// kill はプロセス ツリーを終了させます。
+// kill ends the process tree.
 func (t *Terminal) kill() {
 	_ = exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(t.pid)).Run()
 	_ = windows.TerminateProcess(t.process, 1)
 }
 
-// EOF は入力の終わりを伝えるための、端末に送る文字です (Ctrl-Z と Enter)。
+// EOF is the characters sent to the terminal to signal end of input (Ctrl-Z and Enter).
 const EOF = "\x1a\r"

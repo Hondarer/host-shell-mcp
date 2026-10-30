@@ -13,12 +13,12 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// FsMkdirInput は fs_mkdir の入力です。
+// FsMkdirInput is the input of fs_mkdir.
 type FsMkdirInput struct {
 	Path string `json:"path" jsonschema:"directory to create. Missing parent directories are created too; an existing directory is not an error"`
 }
 
-// FsMkdirOutput は fs_mkdir の出力です。
+// FsMkdirOutput is the output of fs_mkdir.
 type FsMkdirOutput struct {
 	Path    string `json:"path"`
 	Created bool   `json:"created" jsonschema:"false if the directory already existed"`
@@ -42,7 +42,7 @@ func (d *Deps) fsMkdir(_ context.Context, _ *mcp.CallToolRequest, in FsMkdirInpu
 	return nil, out, nil
 }
 
-// FsMoveInput は fs_move の入力です。
+// FsMoveInput is the input of fs_move.
 type FsMoveInput struct {
 	Source      string `json:"source" jsonschema:"file or directory to move or rename"`
 	Destination string `json:"destination" jsonschema:"new path (the full target path, not a directory to move into)"`
@@ -50,7 +50,7 @@ type FsMoveInput struct {
 	MakeDirs    bool   `json:"make_dirs,omitempty" jsonschema:"create parent directories of destination if missing"`
 }
 
-// FsMoveOutput は fs_move の出力です。
+// FsMoveOutput is the output of fs_move.
 type FsMoveOutput struct {
 	Source      string `json:"source"`
 	Destination string `json:"destination"`
@@ -73,7 +73,7 @@ func (d *Deps) fsMove(_ context.Context, _ *mcp.CallToolRequest, in FsMoveInput)
 	if !isCrossDevice(err) {
 		return nil, FsMoveOutput{}, err
 	}
-	// ファイル システムをまたぐ場合は、コピーしてから元を削除する。
+	// Across file systems, copy and then remove the source.
 	if _, cerr := copyTree(in.Source, in.Destination, src, true); cerr != nil {
 		if !src.IsDir() {
 			os.Remove(in.Destination)
@@ -87,7 +87,7 @@ func (d *Deps) fsMove(_ context.Context, _ *mcp.CallToolRequest, in FsMoveInput)
 	return nil, out, nil
 }
 
-// FsCopyInput は fs_copy の入力です。
+// FsCopyInput is the input of fs_copy.
 type FsCopyInput struct {
 	Source      string `json:"source" jsonschema:"file or directory to copy"`
 	Destination string `json:"destination" jsonschema:"path of the copy (the full target path, not a directory to copy into)"`
@@ -96,7 +96,7 @@ type FsCopyInput struct {
 	MakeDirs    bool   `json:"make_dirs,omitempty" jsonschema:"create parent directories of destination if missing"`
 }
 
-// FsCopyOutput は fs_copy の出力です。
+// FsCopyOutput is the output of fs_copy.
 type FsCopyOutput struct {
 	Source      string `json:"source"`
 	Destination string `json:"destination"`
@@ -118,7 +118,7 @@ func (d *Deps) fsCopy(_ context.Context, _ *mcp.CallToolRequest, in FsCopyInput)
 		return nil, FsCopyOutput{}, errors.New("destination is inside the source directory")
 	}
 	if dst, err := os.Lstat(in.Destination); err == nil && src.IsDir() && dst.IsDir() {
-		// ディレクトリどうしは、overwrite の場合に中身を統合する。
+		// Directory onto directory merges the contents when overwrite is set.
 		if !in.Overwrite {
 			return nil, FsCopyOutput{}, fmt.Errorf("%s already exists; set overwrite to merge into it", in.Destination)
 		}
@@ -134,14 +134,14 @@ func (d *Deps) fsCopy(_ context.Context, _ *mcp.CallToolRequest, in FsCopyInput)
 	return nil, out, nil
 }
 
-// FsRemoveInput は fs_remove の入力です。
+// FsRemoveInput is the input of fs_remove.
 type FsRemoveInput struct {
 	Path      string `json:"path" jsonschema:"file, symbolic link or directory to delete. A symbolic link is removed, not its target"`
 	Recursive bool   `json:"recursive,omitempty" jsonschema:"required to delete a non-empty directory and everything under it"`
 	MissingOK bool   `json:"missing_ok,omitempty" jsonschema:"do not fail if path does not exist"`
 }
 
-// FsRemoveOutput は fs_remove の出力です。
+// FsRemoveOutput is the output of fs_remove.
 type FsRemoveOutput struct {
 	Path    string `json:"path"`
 	Removed bool   `json:"removed" jsonschema:"false if path did not exist (missing_ok)"`
@@ -180,7 +180,7 @@ func (d *Deps) fsRemove(_ context.Context, _ *mcp.CallToolRequest, in FsRemoveIn
 	return nil, out, nil
 }
 
-// prepareDestination は書き込み先の親ディレクトリと、既存のファイルを確認します。
+// prepareDestination checks the destination's parent directory and any existing file.
 func prepareDestination(dst string, overwrite, makeDirs bool) error {
 	if info, err := os.Lstat(dst); err == nil {
 		switch {
@@ -208,7 +208,7 @@ type copyStats struct {
 	bytes              int64
 }
 
-// copyTree は src を dst にコピーします。ディレクトリは中身ごとコピーし、シンボリック リンクはたどらずに作り直します。
+// copyTree copies src to dst. Directories are copied with their contents; symbolic links are recreated, not followed.
 func copyTree(src, dst string, info fs.FileInfo, overwrite bool) (copyStats, error) {
 	var st copyStats
 	switch {
@@ -242,7 +242,7 @@ func copyTree(src, dst string, info fs.FileInfo, overwrite bool) (copyStats, err
 		case de.Type().IsRegular():
 			return copyFile(path, target, info.Mode().Perm(), overwrite, &st)
 		}
-		return nil // デバイス ファイルなどは飛ばす。
+		return nil // Skip device files and the like.
 	})
 	return st, err
 }
@@ -293,14 +293,14 @@ func copySymlink(src, dst string, overwrite bool, st *copyStats) error {
 	return nil
 }
 
-// isWithin は path が dir と同じか、その下にあるかを返します。
+// isWithin reports whether path is dir or below it.
 func isWithin(path, dir string) bool {
 	p, d := absPath(path), absPath(dir)
 	rel, err := filepath.Rel(d, p)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-// protectedPath は削除してはいけないパス (ファイル システムのルートとホーム ディレクトリ) かを返します。
+// protectedPath reports whether path must not be removed (a file system root or the home directory).
 func protectedPath(abs string) bool {
 	clean := filepath.Clean(abs)
 	if clean == filepath.Dir(clean) || strings.TrimSuffix(clean, string(filepath.Separator)) == filepath.VolumeName(clean) {

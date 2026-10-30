@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Linux と Windows は接続先、macOS は手元 (host-shell bridge) として使う。
+        # Linux and Windows are tested as targets, macOS as the local side (host-shell bridge).
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -30,7 +30,7 @@ jobs:
         run: |
           GOOS=windows go vet ./...
           GOOS=darwin go vet ./...
-      # 結果、飛ばしたテスト、テストのログだけを表示する。bash は pipefail で動くため、失敗は検出される。
+      # Show only results, skipped tests and test logs. bash runs with pipefail, so failures are still detected.
       - name: Test
         run: go test -count=1 -v ./... 2>&1 | grep -E '^(---|ok|FAIL|PASS|panic)|_test\.go'
         shell: bash
@@ -41,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # git describe でバージョンを決めるため
+          fetch-depth: 0 # git describe determines the version
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod

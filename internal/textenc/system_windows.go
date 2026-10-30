@@ -10,12 +10,12 @@ var (
 	getACP   = kernel32.NewProc("GetACP")
 )
 
-// Console は、コマンドの入出力に使われる接続先の既定の文字コードを返します。
-// Windows では OEM コード ページ (日本語の環境では 932) です。
+// Console returns the target's default encoding for command input and output.
+// On Windows, it is the OEM code page (932 on Japanese systems).
 func Console() Encoding { return codePage(getOEMCP) }
 
-// File は、テキスト ファイルに使われる接続先の既定の文字コードを返します。
-// Windows では ANSI コード ページ (日本語の環境では 932) です。
+// File returns the target's default encoding for text files.
+// On Windows, it is the ANSI code page (932 on Japanese systems).
 func File() Encoding { return codePage(getACP) }
 
 func codePage(p *syscall.LazyProc) Encoding {

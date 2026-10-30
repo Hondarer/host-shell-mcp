@@ -45,8 +45,8 @@ func processAlive(pid int) bool {
 
 // ---- svc_list / svc_control ----
 
-// connectSCM は、一覧と状態の取得に必要な権限だけでサービス コントロール マネージャーにつなぎます。
-// mgr.Connect は全権限を要求するため、管理者でない利用者では失敗します。
+// connectSCM connects to the service control manager with only the rights needed to list and query services.
+// mgr.Connect asks for all rights and fails for users who are not administrators.
 func connectSCM() (*mgr.Mgr, error) {
 	h, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT|windows.SC_MANAGER_ENUMERATE_SERVICE)
 	if err != nil {
@@ -261,7 +261,7 @@ func stopService(ctx context.Context, s *mgr.Service, wait time.Duration) error 
 var eventLevels = map[string]int{"critical": 1, "error": 2, "warning": 3, "information": 4, "info": 4, "verbose": 5}
 var eventLevelNames = map[int]string{0: "information", 1: "critical", 2: "error", 3: "warning", 4: "information", 5: "verbose"}
 
-// event は wevtutil の RenderedXml の 1 件です。
+// event is one event of wevtutil's RenderedXml.
 type event struct {
 	System struct {
 		Provider struct {
@@ -338,7 +338,7 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error
 		count = min(in.Lines*20, 20000)
 	}
 	argv := []string{"wevtutil", "qe", orDefault(in.Log, "System"), "/q:" + query, "/c:" + strconv.Itoa(count), "/rd:true", "/f:RenderedXml", "/e:Events"}
-	// 出力の文字コードは環境によって違う (UTF-16、UTF-8、コード ページ) ため、変換せずに受け取って判定する。
+	// The output encoding varies by environment (UTF-16, UTF-8, code page), so take the raw bytes and detect it.
 	res, err := proc.Run(ctx, d.procSpec(CommandSpec{Argv: argv}), proc.Options{
 		Timeout:   d.Cfg.DefaultTimeout,
 		MaxOutput: 64 << 20,
@@ -353,7 +353,7 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error
 	var doc struct {
 		Events []event `xml:"Event"`
 	}
-	// 文字コードは変換済みのため、宣言を除いてから読む。
+	// The text is already converted, so drop the declaration before parsing.
 	body := res.Stdout
 	if i := strings.Index(body, "?>"); strings.HasPrefix(strings.TrimSpace(body), "<?xml") && i >= 0 {
 		body = body[i+2:]
@@ -385,12 +385,12 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error
 			break
 		}
 	}
-	slices.Reverse(out) // 新しいものを最後にする。
+	slices.Reverse(out) // newest last
 	return out, nil
 }
 
-// decodeToolOutput は、Windows の標準のコマンドの出力を UTF-8 にします。
-// UTF-16LE (BOM あり、または ASCII の後ろに NUL が並ぶ)、UTF-8、コンソールのコード ページの順に判定します。
+// decodeToolOutput converts the output of standard Windows commands to UTF-8.
+// It tries UTF-16LE (with a BOM, or ASCII followed by NULs), UTF-8 and then the console code page.
 func decodeToolOutput(s string) string {
 	b := []byte(s)
 	if enc, n, ok := textenc.DetectBOM(b); ok {

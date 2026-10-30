@@ -36,7 +36,7 @@ func TestBufferKeepsHeadAndTail(t *testing.T) {
 
 func TestRingRead(t *testing.T) {
 	r := NewRing(4)
-	r.Write([]byte("abcdefghij")) // 2*max を超えるので先頭が破棄される
+	r.Write([]byte("abcdefghij")) // exceeds 2*max, so the head is dropped
 	data, next, dropped := r.Read(0, 100)
 	if data != "ghij" || next != 10 || dropped != 6 {
 		t.Fatalf("Read(0) = %q, %d, %d", data, next, dropped)
@@ -49,7 +49,7 @@ func TestRingRead(t *testing.T) {
 
 func TestRingReadKeepsCharacters(t *testing.T) {
 	r := NewRing(100)
-	r.Write([]byte("あい")) // 6 バイト
+	r.Write([]byte("あい")) // 6 bytes
 	data, next, _ := r.Read(0, 4)
 	if data != "あ" || next != 3 {
 		t.Fatalf("Read(0, 4) = %q, %d", data, next)

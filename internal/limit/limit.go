@@ -1,6 +1,6 @@
-// Package limit は出力サイズの上限を扱います。
+// Package limit handles output size limits.
 //
-// すべてのツールの出力に上限を設け、超えた場合は先頭と末尾を残して、切り詰めたことを示します。
+// Every tool output is capped; longer output keeps its head and tail and is marked as truncated.
 package limit
 
 import (
@@ -12,8 +12,8 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// Buffer は先頭と末尾だけを保持する io.Writer です。
-// 長大な出力を全部メモリに載せずに、上限内の要約を作るために使います。
+// Buffer is an io.Writer that keeps only the head and the tail.
+// It summarizes long output within the limit without holding all of it in memory.
 type Buffer struct {
 	mu      sync.Mutex
 	headMax int
@@ -23,13 +23,13 @@ type Buffer struct {
 	total   int64
 }
 
-// NewBuffer は合計 max バイトまでを保持する Buffer を作ります。
+// NewBuffer creates a Buffer that keeps up to max bytes in total.
 func NewBuffer(max int) *Buffer {
 	h := max / 2
 	return &Buffer{headMax: h, tailMax: max - h}
 }
 
-// Write は io.Writer を実装します。
+// Write implements io.Writer.
 func (b *Buffer) Write(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -42,7 +42,7 @@ func (b *Buffer) Write(p []byte) (int, error) {
 	}
 	if len(p) > 0 {
 		b.tail = append(b.tail, p...)
-		// 末尾側は上限の 2 倍に達したときにまとめて詰め直す。
+		// The tail is compacted when it reaches twice the limit.
 		if len(b.tail) > 2*b.tailMax {
 			b.tail = append([]byte(nil), b.tail[len(b.tail)-b.tailMax:]...)
 		}
@@ -50,14 +50,14 @@ func (b *Buffer) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-// Total は書き込まれた合計バイト数を返します。
+// Total returns the number of bytes written.
 func (b *Buffer) Total() int64 {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.total
 }
 
-// Truncated は上限を超えて切り詰めたかどうかを返します。
+// Truncated reports whether the output exceeded the limit and was truncated.
 func (b *Buffer) Truncated() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -68,7 +68,7 @@ func (b *Buffer) omitted() int64 {
 	return b.total - int64(len(b.head)) - int64(min(len(b.tail), b.tailMax))
 }
 
-// String は保持している内容を返します。切り詰めた場合は省略したバイト数を間に挟みます。
+// String returns the kept content. When truncated, the number of omitted bytes is inserted between head and tail.
 func (b *Buffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -76,7 +76,7 @@ func (b *Buffer) String() string {
 	if omitted <= 0 {
 		return strings.ToValidUTF8(string(b.head)+string(b.tail), "\uFFFD")
 	}
-	// 切り詰めた境界で分断された文字は、置換文字にせずに取り除く。
+	// Drop characters split at the truncation boundaries instead of turning them into replacement characters.
 	head := b.head[:len(b.head)-textenc.IncompleteTail(b.head)]
 	tail := b.tail[len(b.tail)-b.tailMax:]
 	for i := 0; i < utf8.UTFMax-1 && len(tail) > 0 && !utf8.RuneStart(tail[0]); i++ {
@@ -87,12 +87,12 @@ func (b *Buffer) String() string {
 		strings.ToValidUTF8(string(tail), "\uFFFD")
 }
 
-// Marker は切り詰めた箇所に挿入する文字列です。
+// Marker is inserted where content was omitted.
 func Marker(omitted int64) string {
 	return fmt.Sprintf("\n... [host-shell: %d bytes omitted] ...\n", omitted)
 }
 
-// Text は s を max バイト以内に収めます。
+// Text fits s within max bytes.
 func Text(s string, max int) (string, bool) {
 	if len(s) <= max {
 		return s, false
@@ -102,21 +102,21 @@ func Text(s string, max int) (string, bool) {
 	return b.String(), true
 }
 
-// Ring は末尾の一定量だけを保持し、先頭からの絶対位置で読み出せる io.Writer です。
-// 長時間ジョブの出力を、エージェントが少しずつ取得するために使います。
+// Ring is an io.Writer that keeps only the last part of the output and reads by absolute offset from the start.
+// The agent uses it to fetch the output of long-running jobs bit by bit.
 type Ring struct {
 	mu   sync.Mutex
 	max  int
-	base int64 // buf[0] の絶対位置
+	base int64 // absolute offset of buf[0]
 	buf  []byte
 }
 
-// NewRing は少なくとも max バイトを保持する Ring を作ります。
+// NewRing creates a Ring that keeps at least max bytes.
 func NewRing(max int) *Ring {
 	return &Ring{max: max}
 }
 
-// Write は io.Writer を実装します。
+// Write implements io.Writer.
 func (r *Ring) Write(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -129,15 +129,15 @@ func (r *Ring) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// Total は書き込まれた合計バイト数 (次に書かれる位置) を返します。
+// Total returns the number of bytes written (the offset of the next write).
 func (r *Ring) Total() int64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.base + int64(len(r.buf))
 }
 
-// Read は絶対位置 off から最大 n バイトを返します。
-// off の位置がすでに破棄されていた場合、dropped に読めなかったバイト数を返します。
+// Read returns up to n bytes from absolute offset off.
+// If off has already been dropped, dropped is the number of bytes that could not be read.
 func (r *Ring) Read(off int64, n int) (data string, next int64, dropped int64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -147,7 +147,7 @@ func (r *Ring) Read(off int64, n int) (data string, next int64, dropped int64) {
 	}
 	start := min(int(off-r.base), len(r.buf))
 	end := min(start+n, len(r.buf))
-	// 読み取りの境界で文字を分断しないよう、末尾の不完全な文字は次の読み取りに回す。
+	// Leave an incomplete character at the end for the next read, so reads never split a character.
 	if t := textenc.IncompleteTail(r.buf[start:end]); end-t > start {
 		end -= t
 	}
