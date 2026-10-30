@@ -78,7 +78,7 @@ Table: 提供するツール
 各段で `-T` を指定し、疑似端末を割り当てないでください。詳しい手順は利用ガイドにあります。
 
 エージェントに手順 2 から 3 を任せることもできます。`.agents/skills/host-shell-connect` の skill が、経路の確認、接続先の判定、配置、起動の確認を行い、登録のコマンドを示します。`make dist` を実行すると、skill の `bin/` に実行ファイルが複製されます。  
-GitHub の Release には、`bin/` を含む skill のアーカイブと、各 OS の実行ファイルを添付しています。
+GitHub の Release には、ソースに実行ファイル (`dist/` と skill の `bin/`) を加えたアーカイブ (`host-shell-mcp-<version>-bin.zip`、`.tar.gz`) を添付しています。
 
 ## ドキュメント
 

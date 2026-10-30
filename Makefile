@@ -33,14 +33,20 @@ $(TARGETS):
 	GOOS=$(word 1,$(subst -, ,$@)) GOARCH=$(word 2,$(subst -, ,$@)) \
 		$(GOBUILD) -o dist/host-shell-$@$(if $(findstring windows,$@),.exe) ./cmd/host-shell
 
-# Build the files to attach to a Release: the skill archive (with bin/), the executables and SHA256SUMS
+# Build the files to attach to a Release: the source tree laid out like GitHub's own source archives
+# (top directory host-shell-mcp-<version without a leading v>), plus dist/ and the skill's bin/, as zip and tar.gz.
+ARCHIVE := host-shell-mcp-$(patsubst v%,%,$(VERSION))
+STAGE := $(RELEASE_DIR)/stage
+
 release: dist
 	rm -rf $(RELEASE_DIR)
-	mkdir -p $(RELEASE_DIR)
-	tar -C $(dir $(SKILL_DIR)) -czf $(RELEASE_DIR)/host-shell-connect-$(VERSION).tar.gz $(notdir $(SKILL_DIR))
-	cd $(dir $(SKILL_DIR)) && zip -qr $(CURDIR)/$(RELEASE_DIR)/host-shell-connect-$(VERSION).zip $(notdir $(SKILL_DIR))
-	cp dist/host-shell-*-* $(RELEASE_DIR)/
-	cd $(RELEASE_DIR) && sha256sum * > SHA256SUMS
+	mkdir -p $(STAGE)/$(ARCHIVE)/dist
+	git archive HEAD | tar -x -C $(STAGE)/$(ARCHIVE)
+	cp dist/host-shell-*-* $(STAGE)/$(ARCHIVE)/dist/
+	cp -R $(SKILL_BIN) $(STAGE)/$(ARCHIVE)/$(SKILL_DIR)/
+	tar -C $(STAGE) -czf $(RELEASE_DIR)/$(ARCHIVE)-bin.tar.gz $(ARCHIVE)
+	cd $(STAGE) && zip -qr ../$(ARCHIVE)-bin.zip $(ARCHIVE)
+	rm -rf $(STAGE)
 
 test:
 	go test ./...

@@ -138,19 +138,26 @@ Table: CI のジョブ
 
 ## リリース
 
-GitHub で Release を公開すると、そのタグでビルドし、次のファイルを Release に添付します (`.github/workflows/release.yml`)。  
+GitHub で Release を公開すると、そのタグでビルドし、次の 2 つのファイルを Release に添付します (`.github/workflows/release.yml`)。  
 タグの名前 (例: `v1.0.0`) が、そのままバージョンになります。
 
 | ファイル | 内容 |
 |---|---|
-| `host-shell-connect-<tag>.tar.gz`、`host-shell-connect-<tag>.zip` | `host-shell-connect` skill のフォルダ。`bin/` に 6 種類の実行ファイルと `VERSION` を含む |
-| `host-shell-linux-amd64` など 6 ファイル | 実行ファイル |
-| `SHA256SUMS` | 上のファイルの SHA-256 |
+| `host-shell-mcp-<version>-bin.zip`、`host-shell-mcp-<version>-bin.tar.gz` | GitHub が自動で付けるソースのアーカイブ (Source code) と同じ構成に、ビルドした実行ファイルを加えたもの |
 
 Table: Release に添付するファイル
 
-アーカイブは `host-shell-connect/` を最上位に持つため、`.agents/skills/` の下に展開すれば、リポジトリを clone せずに skill を使えます。  
-手元で同じものを作るには `make release VERSION=v1.0.0` を実行します。
+`<version>` は、タグの名前から先頭の `v` を除いたものです (GitHub のソースのアーカイブと同じ)。  
+アーカイブは `host-shell-mcp-<version>/` を最上位に持ち、その下はタグの時点のリポジトリのファイル (`git archive` と同じ) です。加えて、次を含みます。
+
+| パス | 内容 |
+|---|---|
+| `dist/` | 6 種類の実行ファイル (`make dist` の結果) |
+| `.agents/skills/host-shell-connect/bin/` | 同じ実行ファイルと `VERSION`。展開すれば、そのまま skill を使える |
+
+Table: アーカイブに加えるもの
+
+手元で同じものを作るには `make release VERSION=v1.0.0` を実行します。`dist/release/` にできます。
 
 ## 依存
 

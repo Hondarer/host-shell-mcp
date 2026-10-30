@@ -1,7 +1,7 @@
 name: Release
 
-# When a Release is published, build at its tag and attach the skill archive (with bin/),
-# the executables and SHA256SUMS to the Release.
+# When a Release is published, build at its tag and attach the source archives with dist/ and the
+# skill's bin/ (zip and tar.gz, laid out like GitHub's own source archives) to the Release.
 on:
   release:
     types: [published]

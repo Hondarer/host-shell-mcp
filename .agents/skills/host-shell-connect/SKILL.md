@@ -25,7 +25,7 @@ Table: フォルダの構成
 
 `bin/` は、host-shell-mcp のリポジトリで `make dist` を実行すると作られます (`dist/` と同じものの複製)。  
 `bin/` がない場合や、利用者が新しい版を求めている場合は、リポジトリのルートで `make dist` を実行します (Go 1.26 以降が必要)。  
-リポジトリがない環境では、GitHub の Release の `host-shell-connect-<tag>.zip` (または `.tar.gz`) を使います。`bin/` を含むこの skill のフォルダが入っています。用意は利用者に頼みます。
+リポジトリがない環境では、GitHub の Release の `host-shell-mcp-<version>-bin.zip` (または `.tar.gz`) を使います。展開した `host-shell-mcp-<version>/.agents/skills/host-shell-connect/` が、`bin/` を含むこの skill のフォルダです。用意は利用者に頼みます。
 
 ## スクリプト
 
