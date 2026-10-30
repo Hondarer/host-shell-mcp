@@ -1,13 +1,13 @@
 #!/bin/sh
-# Runs a command on the target. Through jump hosts, nests ssh and builds the quoting for each hop.
+# Executes a command on the target host over SSH, nesting and shell-quoting `ssh -T` across any intermediate jump hosts.
 #
 # Usage: remote.sh ROUTE COMMAND
-#   ROUTE   hops and the target, nearest first, separated by commas (e.g. hop1,target)
-#   COMMAND command line interpreted by the target's shell
-# Standard input is passed to the command on the target. Jump hosts are assumed to have a POSIX sh compatible shell.
+#   ROUTE   comma-separated hop list from nearest jump host to target (e.g. hop1,target)
+#   COMMAND command line passed to the target host's login shell
+# Forwards standard input to the remote command. Intermediate jump hosts must use a POSIX-compatible login shell.
 #
 # Environment:
-#   HOST_SHELL_SSH_OPTS  options passed to ssh at each hop (default: -o BatchMode=yes)
+#   HOST_SHELL_SSH_OPTS  SSH options applied at each hop (default: -o BatchMode=yes)
 set -eu
 
 if [ $# -ne 2 ]; then
@@ -18,7 +18,7 @@ route=$1
 cmd=$2
 opts=${HOST_SHELL_SSH_OPTS:--o BatchMode=yes}
 
-# q wraps its argument in single quotes so that POSIX sh reads it as one argument.
+# q single-quotes its argument for safe evaluation by a POSIX shell.
 q() {
 	printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
 }
@@ -30,7 +30,7 @@ if [ $# -eq 0 ]; then
 	exit 2
 fi
 
-# Build the command line to run on each previous host, from the innermost (the target) outwards.
+# Wrap the command in nested ssh invocations from the target host outward to the first hop.
 s=$cmd
 i=$#
 while [ "$i" -gt 1 ]; do

@@ -12,18 +12,17 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/pty"
 )
 
-// screen keeps the state of a PTY job's terminal: a terminal emulator that is fed the job's output,
-// so that full-screen programs (top, vi, less) can be read as the screen they draw.
+// screen maintains a virtual terminal emulator fed by a PTY job's output so full-screen
+// programs (top, vi, less) can be read as rendered text.
 type screen struct {
-	mu       sync.Mutex // the emulator's own String and CursorPosition are not safe with Write
+	mu       sync.Mutex // serializes Write with String and CursorPosition
 	em       *vt.Emulator
 	stopping atomic.Bool
 	stopped  chan struct{}
 }
 
-// newScreen creates a screen of the terminal size of the job. Answers to queries the program sends
-// to the terminal (cursor position, device attributes) are written back to the terminal, as a real
-// terminal would do.
+// newScreen creates a terminal screen of size cols x rows and forwards terminal query
+// responses (cursor position, device attributes) back to t.
 func newScreen(cols, rows int, t *pty.Terminal) *screen {
 	if cols <= 0 {
 		cols = pty.DefaultCols
@@ -36,8 +35,8 @@ func newScreen(cols, rows int, t *pty.Terminal) *screen {
 	return s
 }
 
-// answer passes the emulator's answers to the terminal until close. The emulator is closed here,
-// in the goroutine that reads it, because its Close and Read are not safe to call concurrently.
+// answer forwards emulator responses to t until stopped, closing em on the reader goroutine
+// because vt.Emulator's Read and Close are not concurrency-safe.
 func (s *screen) answer(t io.Writer) {
 	defer close(s.stopped)
 	buf := make([]byte, 1024)
@@ -83,8 +82,8 @@ func (s *screen) text() (text string, row, col int) {
 	return strings.Join(lines, "\n"), pos.Y, pos.X
 }
 
-// close stops the screen after the job's output has ended. A cursor position query makes the
-// emulator answer, which wakes answer up to close it.
+// close stops the answer loop after job output ends by sending a cursor position query (CSI 6n)
+// that wakes em.Read.
 func (s *screen) close() {
 	s.stopping.Store(true)
 	go s.Write([]byte("\x1b[6n"))

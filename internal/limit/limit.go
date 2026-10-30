@@ -1,6 +1,4 @@
-// Package limit handles output size limits.
-//
-// Every tool output is capped; longer output keeps its head and tail and is marked as truncated.
+// Package limit bounds tool output sizes, keeping the head and tail when truncating.
 package limit
 
 import (
@@ -12,8 +10,8 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// Buffer is an io.Writer that keeps only the head and the tail.
-// It summarizes long output within the limit without holding all of it in memory.
+// Buffer is an io.Writer that retains up to headMax + tailMax bytes, discarding the middle
+// of oversized streams without holding the entire output in memory.
 type Buffer struct {
 	mu      sync.Mutex
 	headMax int
@@ -23,7 +21,7 @@ type Buffer struct {
 	total   int64
 }
 
-// NewBuffer creates a Buffer that keeps up to max bytes in total.
+// NewBuffer creates a Buffer that retains up to max bytes across head and tail.
 func NewBuffer(max int) *Buffer {
 	h := max / 2
 	return &Buffer{headMax: h, tailMax: max - h}
@@ -42,7 +40,6 @@ func (b *Buffer) Write(p []byte) (int, error) {
 	}
 	if len(p) > 0 {
 		b.tail = append(b.tail, p...)
-		// The tail is compacted when it reaches twice the limit.
 		if len(b.tail) > 2*b.tailMax {
 			b.tail = append([]byte(nil), b.tail[len(b.tail)-b.tailMax:]...)
 		}
@@ -68,7 +65,7 @@ func (b *Buffer) omitted() int64 {
 	return b.total - int64(len(b.head)) - int64(min(len(b.tail), b.tailMax))
 }
 
-// String returns the kept content. When truncated, the number of omitted bytes is inserted between head and tail.
+// String returns the buffered content, inserting Marker(omitted) between head and tail when truncated.
 func (b *Buffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -76,7 +73,7 @@ func (b *Buffer) String() string {
 	if omitted <= 0 {
 		return strings.ToValidUTF8(string(b.head)+string(b.tail), "\uFFFD")
 	}
-	// Drop characters split at the truncation boundaries instead of turning them into replacement characters.
+	// Trim UTF-8 runes split at the truncation boundary instead of emitting replacement characters.
 	head := b.head[:len(b.head)-textenc.IncompleteTail(b.head)]
 	tail := b.tail[len(b.tail)-b.tailMax:]
 	for i := 0; i < utf8.UTFMax-1 && len(tail) > 0 && !utf8.RuneStart(tail[0]); i++ {
@@ -87,12 +84,12 @@ func (b *Buffer) String() string {
 		strings.ToValidUTF8(string(tail), "\uFFFD")
 }
 
-// Marker is inserted where content was omitted.
+// Marker returns the truncation notice for omitted bytes.
 func Marker(omitted int64) string {
 	return fmt.Sprintf("\n... [host-shell: %d bytes omitted] ...\n", omitted)
 }
 
-// Text fits s within max bytes.
+// Text truncates s to at most max bytes and reports whether it was truncated.
 func Text(s string, max int) (string, bool) {
 	if len(s) <= max {
 		return s, false
@@ -102,8 +99,8 @@ func Text(s string, max int) (string, bool) {
 	return b.String(), true
 }
 
-// Ring is an io.Writer that keeps only the last part of the output and reads by absolute offset from the start.
-// The agent uses it to fetch the output of long-running jobs bit by bit.
+// Ring is an io.Writer that retains the trailing window of a stream for incremental
+// reads by absolute byte offset.
 type Ring struct {
 	mu   sync.Mutex
 	max  int
@@ -111,7 +108,7 @@ type Ring struct {
 	buf  []byte
 }
 
-// NewRing creates a Ring that keeps at least max bytes.
+// NewRing creates a Ring that retains at least max bytes.
 func NewRing(max int) *Ring {
 	return &Ring{max: max}
 }
@@ -129,15 +126,15 @@ func (r *Ring) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// Total returns the number of bytes written (the offset of the next write).
+// Total returns the total bytes written (the next write offset).
 func (r *Ring) Total() int64 {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.base + int64(len(r.buf))
 }
 
-// Read returns up to n bytes from absolute offset off.
-// If off has already been dropped, dropped is the number of bytes that could not be read.
+// Read returns up to n bytes starting at absolute offset off, the next offset, and
+// the number of bytes already evicted before off.
 func (r *Ring) Read(off int64, n int) (data string, next int64, dropped int64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -147,7 +144,7 @@ func (r *Ring) Read(off int64, n int) (data string, next int64, dropped int64) {
 	}
 	start := min(int(off-r.base), len(r.buf))
 	end := min(start+n, len(r.buf))
-	// Leave an incomplete character at the end for the next read, so reads never split a character.
+	// Hold back any trailing incomplete UTF-8 rune for the next read.
 	if t := textenc.IncompleteTail(r.buf[start:end]); end-t > start {
 		end -= t
 	}

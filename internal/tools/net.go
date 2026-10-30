@@ -30,37 +30,35 @@ func registerNet(s *mcp.Server, d *Deps) {
 	add(s, d, groupNet, &mcp.Tool{
 		Name:  "net_http",
 		Title: "HTTP request",
-		Description: "Send an HTTP(S) request from the remote host and return status, headers and body. Reaches services that are only accessible from that host " +
-			"(localhost:8080, internal APIs, health checks, metrics) without port forwarding. Any method, headers and body (text, base64 or a remote file); " +
-			"unix_socket talks to Docker and other Unix-socket APIs. save_to writes the body to a remote file for downloads of any size. " +
-			"insecure skips TLS verification; client_cert/client_key/ca_cert use files on the remote host.",
+		Description: "Send an HTTP(S) request from the remote host and return status, headers and body (for localhost services, internal APIs, health checks, or metrics without port forwarding). " +
+			"Supports any method, headers, body (text, base64 or body_file), unix_socket (e.g. Docker), save_to for large downloads, and TLS options (insecure, ca_cert, client_cert/client_key).",
 		Annotations: network(false),
 	}, d.netHTTP)
 	add(s, d, groupNet, &mcp.Tool{
 		Name:  "net_tcp",
 		Title: "TCP exchange",
-		Description: "Open a TCP (optionally TLS) or Unix socket connection from the remote host, send data and return what comes back. " +
-			"For non-HTTP protocols: Redis PING, SMTP/FTP banners, memcached stats, raw protocol checks. " +
-			"Reading stops at until (regex), after idle_ms of silence, when the peer closes, or at max_bytes.",
+		Description: "Open a TCP (optionally TLS) or Unix socket connection from the remote host, send optional data, and read the response " +
+			"(for Redis, SMTP/FTP banners, memcached, or raw protocol checks). " +
+			"Stops reading on until (regex), idle_ms of silence, peer close, or max_bytes.",
 		Annotations: network(false),
 	}, d.netTCP)
 	add(s, d, groupNet, &mcp.Tool{
 		Name:  "net_check",
 		Title: "Check reachability",
-		Description: "Check from the remote host whether hosts resolve and ports accept connections, with timings; tls adds the certificate (subject, issuer, expiry, verification). " +
-			"Targets are host:port, host (DNS only) or URLs. Checks run in parallel. Use it to diagnose firewalls, DNS and certificates.",
+		Description: "Check DNS resolution, TCP connectivity, and optional TLS certificates in parallel from the remote host, returning timings and certificate details. " +
+			"Targets accept host:port, host (DNS only) or URLs.",
 		Annotations: network(true),
 	}, d.netCheck)
 	add(s, d, groupNet, &mcp.Tool{
 		Name:        "net_listen",
 		Title:       "Listening ports",
-		Description: "List TCP and UDP ports listening on the remote host with the owning process (pid and name; other users' processes may need root to be shown). Filter by port or process.",
+		Description: "List listening TCP and UDP sockets on the remote host with owning pid and process name (other users' processes may require root). Filter by port, protocol or process.",
 		Annotations: readOnly(),
 	}, d.netListen)
 	add(s, d, groupNet, &mcp.Tool{
 		Name:        "net_interfaces",
 		Title:       "Network interfaces",
-		Description: "List network interfaces of the remote host with IP addresses, MAC address, MTU and flags.",
+		Description: "List network interfaces on the remote host with IP addresses, MAC address, MTU and flags.",
 		Annotations: readOnly(),
 	}, d.netInterfaces)
 }
@@ -69,26 +67,26 @@ func registerNet(s *mcp.Server, d *Deps) {
 
 // NetHTTPInput is the input of net_http.
 type NetHTTPInput struct {
-	URL              string            `json:"url" jsonschema:"request URL, e.g. http://localhost:8080/health. With unix_socket the host part is ignored (use http://localhost/path)"`
+	URL              string            `json:"url" jsonschema:"request URL, e.g. http://localhost:8080/health (host is ignored when unix_socket is set)"`
 	Method           string            `json:"method,omitempty" jsonschema:"HTTP method (default GET)"`
 	Headers          map[string]string `json:"headers,omitempty" jsonschema:"request headers, e.g. {\"Authorization\": \"Bearer ...\", \"Content-Type\": \"application/json\"}"`
 	Body             string            `json:"body,omitempty" jsonschema:"request body"`
-	BodyEncoding     string            `json:"body_encoding,omitempty" jsonschema:"text (default, sent as UTF-8) or base64 for binary bodies"`
-	BodyFile         string            `json:"body_file,omitempty" jsonschema:"send the contents of this remote file as the body (instead of body)"`
-	UnixSocket       string            `json:"unix_socket,omitempty" jsonschema:"connect to this Unix domain socket instead of the URL host, e.g. /var/run/docker.sock"`
-	TimeoutSec       int               `json:"timeout_sec,omitempty" jsonschema:"overall timeout in seconds (default: server default command timeout)"`
-	NoRedirects      bool              `json:"no_redirects,omitempty" jsonschema:"return 3xx responses instead of following redirects"`
-	Insecure         bool              `json:"insecure,omitempty" jsonschema:"skip TLS certificate verification (self-signed certificates)"`
-	CACert           string            `json:"ca_cert,omitempty" jsonschema:"remote path of a PEM file with CA certificates to trust in addition to the system ones"`
-	ClientCert       string            `json:"client_cert,omitempty" jsonschema:"remote path of a PEM client certificate for mutual TLS (with client_key)"`
-	ClientKey        string            `json:"client_key,omitempty" jsonschema:"remote path of the PEM private key for client_cert"`
-	Proxy            string            `json:"proxy,omitempty" jsonschema:"proxy URL, or none to connect directly. Default: the remote host's HTTP_PROXY/HTTPS_PROXY/NO_PROXY environment"`
-	ResponseEncoding string            `json:"response_encoding,omitempty" jsonschema:"auto (default: text for textual content types and valid UTF-8, otherwise base64), text or base64"`
-	MaxBytes         int               `json:"max_bytes,omitempty" jsonschema:"maximum body bytes to return (default and cap: the server output limit). Ignored with save_to"`
-	SaveTo           string            `json:"save_to,omitempty" jsonschema:"write the response body to this remote file (any size) instead of returning it"`
+	BodyEncoding     string            `json:"body_encoding,omitempty" jsonschema:"text (default, UTF-8) or base64"`
+	BodyFile         string            `json:"body_file,omitempty" jsonschema:"remote file path to send as the request body (mutually exclusive with body)"`
+	UnixSocket       string            `json:"unix_socket,omitempty" jsonschema:"Unix domain socket path to connect to instead of the URL host, e.g. /var/run/docker.sock"`
+	TimeoutSec       int               `json:"timeout_sec,omitempty" jsonschema:"overall timeout in seconds (default: server command timeout)"`
+	NoRedirects      bool              `json:"no_redirects,omitempty" jsonschema:"return 3xx responses without following redirects"`
+	Insecure         bool              `json:"insecure,omitempty" jsonschema:"skip TLS certificate verification"`
+	CACert           string            `json:"ca_cert,omitempty" jsonschema:"remote PEM file with additional trusted CA certificates"`
+	ClientCert       string            `json:"client_cert,omitempty" jsonschema:"remote PEM client certificate for mTLS (requires client_key)"`
+	ClientKey        string            `json:"client_key,omitempty" jsonschema:"remote PEM private key for client_cert"`
+	Proxy            string            `json:"proxy,omitempty" jsonschema:"proxy URL, or none for direct connection (default: HTTP_PROXY/HTTPS_PROXY/NO_PROXY)"`
+	ResponseEncoding string            `json:"response_encoding,omitempty" jsonschema:"auto (default: text for textual media types or valid UTF-8, else base64), text or base64"`
+	MaxBytes         int               `json:"max_bytes,omitempty" jsonschema:"max response body bytes to return (default and cap: server output limit; ignored with save_to)"`
+	SaveTo           string            `json:"save_to,omitempty" jsonschema:"save response body to this remote file path instead of returning it"`
 }
 
-// AuditArgs keeps the body and authentication headers out of the log.
+// AuditArgs redacts the body and sensitive headers for audit logging.
 func (in NetHTTPInput) AuditArgs() any {
 	in.Body = redactedLen(in.Body)
 	h := map[string]string{}
@@ -460,21 +458,21 @@ func (d *Deps) saveBody(resp *http.Response, path string, pr *progress, out *Net
 // NetTCPInput is the input of net_tcp.
 type NetTCPInput struct {
 	Host            string `json:"host,omitempty" jsonschema:"host name or IP address (default localhost)"`
-	Port            int    `json:"port,omitempty" jsonschema:"TCP port (required unless unix_socket)"`
-	UnixSocket      string `json:"unix_socket,omitempty" jsonschema:"connect to this Unix domain socket instead of host:port"`
+	Port            int    `json:"port,omitempty" jsonschema:"TCP port (required unless unix_socket is set)"`
+	UnixSocket      string `json:"unix_socket,omitempty" jsonschema:"Unix domain socket path to connect to instead of host:port"`
 	TLS             bool   `json:"tls,omitempty" jsonschema:"use TLS"`
 	Insecure        bool   `json:"insecure,omitempty" jsonschema:"with tls: skip certificate verification"`
-	Send            string `json:"send,omitempty" jsonschema:"data to send after connecting, e.g. \"PING\\r\\n\" (escape sequences are JSON escapes)"`
+	Send            string `json:"send,omitempty" jsonschema:"data to send after connecting, e.g. \"PING\\r\\n\""`
 	SendEncoding    string `json:"send_encoding,omitempty" jsonschema:"text (default) or base64"`
-	CloseWrite      bool   `json:"close_write,omitempty" jsonschema:"half-close the connection after sending (tells the peer no more data comes)"`
-	Until           string `json:"until,omitempty" jsonschema:"stop reading once the received text matches this regular expression"`
-	IdleMs          int    `json:"idle_ms,omitempty" jsonschema:"stop reading after this many milliseconds without data (default 1000)"`
+	CloseWrite      bool   `json:"close_write,omitempty" jsonschema:"half-close the write side after sending"`
+	Until           string `json:"until,omitempty" jsonschema:"stop reading once received data matches this regex"`
+	IdleMs          int    `json:"idle_ms,omitempty" jsonschema:"stop reading after this many ms of silence (default 1000)"`
 	TimeoutSec      int    `json:"timeout_sec,omitempty" jsonschema:"overall timeout in seconds (default 10)"`
-	MaxBytes        int    `json:"max_bytes,omitempty" jsonschema:"maximum bytes to receive (default and cap: the server output limit)"`
-	ReceiveEncoding string `json:"receive_encoding,omitempty" jsonschema:"auto (default: text if valid UTF-8, otherwise base64), text or base64"`
+	MaxBytes        int    `json:"max_bytes,omitempty" jsonschema:"max bytes to receive (default and cap: server output limit)"`
+	ReceiveEncoding string `json:"receive_encoding,omitempty" jsonschema:"auto (default: text if valid UTF-8, else base64), text or base64"`
 }
 
-// AuditArgs keeps the data sent out of the log.
+// AuditArgs redacts Send for audit logging.
 func (in NetTCPInput) AuditArgs() any {
 	in.Send = redactedLen(in.Send)
 	return in
@@ -620,9 +618,9 @@ func (d *Deps) netTCP(ctx context.Context, _ *mcp.CallToolRequest, in NetTCPInpu
 
 // NetCheckInput is the input of net_check.
 type NetCheckInput struct {
-	Targets   []string `json:"targets" jsonschema:"what to check: host:port (DNS and TCP connect), host (DNS only), or a URL (its host and port; https implies tls). IPv6 as [::1]:443"`
-	TLS       bool     `json:"tls,omitempty" jsonschema:"also do a TLS handshake on each port and report the certificate"`
-	TimeoutMs int      `json:"timeout_ms,omitempty" jsonschema:"timeout per target in milliseconds (default 5000)"`
+	Targets   []string `json:"targets" jsonschema:"targets to check: host:port (DNS + TCP), host (DNS only), or URL (https implies tls); IPv6 as [::1]:443"`
+	TLS       bool     `json:"tls,omitempty" jsonschema:"perform a TLS handshake on each port and report certificate details"`
+	TimeoutMs int      `json:"timeout_ms,omitempty" jsonschema:"per-target timeout in ms (default 5000)"`
 }
 
 // NetCheckResult is the result for one destination.
@@ -753,9 +751,9 @@ func parseTarget(t string) (host string, port int, isTLS bool, err error) {
 
 // NetListenInput is the input of net_listen.
 type NetListenInput struct {
-	Port     int    `json:"port,omitempty" jsonschema:"only this port"`
+	Port     int    `json:"port,omitempty" jsonschema:"filter by port"`
 	Protocol string `json:"protocol,omitempty" jsonschema:"tcp or udp (default both)"`
-	Process  string `json:"process,omitempty" jsonschema:"only sockets of processes whose name contains this (case-insensitive)"`
+	Process  string `json:"process,omitempty" jsonschema:"case-insensitive process name substring"`
 }
 
 // Listener is a listening socket.

@@ -2,42 +2,30 @@
 
 ## Glob syntax (search_files pattern, search_grep include, fs_manifest include)
 
-- Without a slash, the pattern matches the **base name**: `*.go`, `*.{yml,yaml}`, `Makefile`.
-- With a slash, it matches the **path relative to `path`**: `src/**/*.ts`, `**/test/*.py`, `cmd/*/main.go`.
-- `*` and `?` stay within one path element, `**` matches any number of directories (including none),
-  `[abc]` is a character class, `{a,b}` is an alternative.
-- On Windows, matching is case-insensitive and `\` is accepted as a separator.
-- `exclude_dirs` names directories to skip anywhere in the tree. The default is `.git`, `.hg`, `.svn`.
-  A list you pass replaces the default, so include those too, e.g. `[".git", "node_modules", "dist"]`.
-- `search_files` and `search_grep` skip what git ignores (`.gitignore` files of the searched tree and,
-  inside a repository, of its parents, plus `.git/info/exclude`). Pass `gitignore: false` to search
-  ignored files too (build output, `node_modules`, logs).
+- Patterns without `/` match the **base name**: `*.go`, `*.{yml,yaml}`, `Makefile`.
+- Patterns with `/` match the **path relative to `path`**: `src/**/*.ts`, `**/test/*.py`, `cmd/*/main.go`.
+- `*` and `?` match within a single path segment, `**` matches zero or more directories, `[abc]` matches a character class, and `{a,b}` matches alternatives.
+- On Windows, matching is case-insensitive and accepts `\` as a path separator.
+- `exclude_dirs` skips matching directory names anywhere in the tree (default: `[".git", ".hg", ".svn"]`). Passing `exclude_dirs` replaces the default list; include `.git` if it should remain excluded (e.g. `[".git", "node_modules", "dist"]`).
+- `search_files` and `search_grep` honor `.gitignore` files in the searched tree, parent repositories, and `.git/info/exclude`. Pass `gitignore: false` to include ignored files (build outputs, `node_modules`, logs).
 
 ## search_files
 
-Recursive file and directory search by glob. `type` limits to `file` or `dir`.
-`sort: "mtime"` returns the most recently modified first (good for "which logs changed").
+Recursively finds files and directories matching a glob. `type` filters by `file` or `dir`. `sort: "mtime"` orders results newest first.
 
 ## search_grep
 
-Regular expressions use Go RE2 syntax: no lookahead/lookbehind and no backreferences.
-Set `literal: true` to search for a plain string without escaping. `ignore_case` for case-insensitive.
+Patterns use Go RE2 regular expression syntax (no lookahead, lookbehind, or backreferences). Set `literal: true` for exact substring matching without escaping, and `ignore_case: true` for case-insensitive matching.
 
 | output_mode | Returns |
 |---|---|
-| `content` (default) | `matches`: path, line number, line text; with `context` (or `before` / `after`) also surrounding lines |
-| `files` | `files`: only the paths of files that contain a match (fast; good first step) |
-| `count` | `files`: path and number of matching lines |
+| `content` (default) | `matches`: path, line number, and line text, plus surrounding lines when `context`, `before`, or `after` is set |
+| `files` | `files`: paths of matching files only (fastest for initial discovery) |
+| `count` | `files`: path and matching line count per file |
 
-- `max_matches` (default 200) caps lines in content mode and files in the other modes; `truncated`
-  tells you the cap was hit.
-- Binary files (NUL bytes) and files larger than `max_file_bytes` (default 10 MiB) are skipped.
-- Lines are decoded per line (see topic `encoding`), so Japanese patterns match Shift_JIS or
-  EUC-JP files; `charset` on a match says it was converted.
-- Matching is per line. To match across lines (a function with its body, a block), set
-  `multiline: true`: the pattern runs on the whole file, `.` also matches a newline, `^`/`$` match at
-  line boundaries, and each match gives `line`, `end_line` and the matched text. Files over 32 MiB
-  are skipped (`skipped_large`).
+- `max_matches` (default 200) caps matching lines in `content` mode and matching files in `files` or `count` mode; `truncated: true` indicates the cap was reached.
+- Binary files (containing NUL bytes) and files larger than `max_file_bytes` (default 10 MiB) are skipped.
+- Lines are decoded individually (see topic `encoding`), allowing UTF-8 patterns to match Shift_JIS or EUC-JP files; `charset` on a match reports the source encoding when converted.
+- By default, patterns match within a single line. With `multiline: true`, the pattern runs against the entire file, `.` matches newlines, `^` and `$` match line boundaries, and each match returns `line`, `end_line`, and the matched text. `multiline: true` skips files over 32 MiB (`skipped_large`).
 
-Typical sequence: `output_mode: "files"` to find candidates, then `content` with `context: 3` in
-the interesting file, then `fs_read` with `line_start` for the full picture.
+Recommended workflow: run `output_mode: "files"` to locate candidate files, then `output_mode: "content"` with `context: 3` on relevant files, then `fs_read` with `line_start` for surrounding code.

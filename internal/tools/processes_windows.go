@@ -26,9 +26,8 @@ type processMemoryCounters struct {
 // processCommandLineInformation is the ProcessCommandLineInformation class of NtQueryInformationProcess.
 const processCommandLineInformation = 60
 
-// listProcesses lists processes with a Toolhelp snapshot. The command line, user, start time and
-// memory need access to the process, which is denied for some processes of other users; those
-// fields stay empty then.
+// listProcesses enumerates processes via a Toolhelp snapshot, populating command line, user,
+// start time, and working set when PROCESS_QUERY_LIMITED_INFORMATION access is granted.
 func listProcesses() ([]Process, error) {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {

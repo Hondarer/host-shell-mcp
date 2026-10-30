@@ -7,10 +7,9 @@ import (
 	"strings"
 )
 
-// glob is a pattern matched against file names and paths.
-//
-// A pattern without "/" matches the base name; one with "/" matches the path relative to the start ("/" separated).
-// "**" matches zero or more directories and {a,b} matches any of the alternatives.
+// glob matches file names or slash-separated relative paths.
+// Patterns without "/" match the base name; patterns with "/" match the relative path.
+// "**" matches zero or more directories and "{a,b}" expands alternatives.
 type glob struct {
 	patterns []string
 	byPath   bool

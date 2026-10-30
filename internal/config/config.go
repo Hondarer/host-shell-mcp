@@ -13,28 +13,26 @@ import (
 
 // Config holds host-shell's runtime settings.
 type Config struct {
-	// MaxOutputBytes caps a single output (stdout, stderr, file content and so on).
-	// Longer output is truncated, keeping its head and tail.
+	// MaxOutputBytes caps individual output streams (stdout, stderr, file content, etc.);
+	// longer output is middle-truncated, keeping its head and tail.
 	MaxOutputBytes int
 
-	// DefaultTimeout is used when exec_run and similar tools omit the timeout.
+	// DefaultTimeout is used when command execution tools omit a timeout.
 	DefaultTimeout time.Duration
 
-	// MaxTimeout is the largest timeout the agent may specify.
+	// MaxTimeout caps client-requested timeouts.
 	MaxTimeout time.Duration
 
-	// WindowsShell is the shell used on Windows when shell is omitted (cmd, powershell or pwsh).
-	// The default is powershell: scripts are passed with -EncodedCommand, so quoting by cmd and SSH
-	// cannot change them, and their output is UTF-8. cmd stays available with --windows-shell cmd
-	// for the whole server, or with shell "cmd" for a single call.
+	// WindowsShell is the default Windows shell (cmd, powershell, or pwsh).
+	// It defaults to powershell, which produces UTF-8 output and accepts -EncodedCommand scripts
+	// immune to cmd and SSH quoting; cmd remains available via --windows-shell or per-call shell="cmd".
 	WindowsShell string
 
-	// LogFile names the audit log (JSON Lines). Records go to one file per day with the date before
-	// the extension (audit-2026-10-31.log), and five earlier days are kept (see package audit).
-	// An empty string records nothing.
+	// LogFile is the base path for daily JSON Lines audit logs (e.g., audit-2026-10-31.log; see package audit).
+	// An empty string disables audit logging.
 	LogFile string
 
-	// Policy holds the restrictions given by the user. The zero value means no restriction.
+	// Policy configures access and output restrictions; the zero value imposes none.
 	Policy policy.Options
 }
 
@@ -65,7 +63,7 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// ClampTimeout applies the default and the maximum to the seconds the agent specified.
+// ClampTimeout resolves a client-requested timeout in seconds against DefaultTimeout and MaxTimeout.
 func (c Config) ClampTimeout(sec int) time.Duration {
 	if sec <= 0 {
 		return c.DefaultTimeout
@@ -77,7 +75,7 @@ func (c Config) ClampTimeout(sec int) time.Duration {
 	return d
 }
 
-// DefaultLogFile returns the default audit log location for the OS.
+// DefaultLogFile returns the OS-specific default audit log path:
 //
 //   - Linux: $XDG_STATE_HOME/host-shell/audit.log (default ~/.local/state/host-shell/audit.log)
 //   - Windows: %LOCALAPPDATA%\host-shell\audit.log

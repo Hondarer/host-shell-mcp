@@ -2,16 +2,14 @@ package proc
 
 import "syscall"
 
-// SetParentDeathSignal makes the child get SIGKILL when host-shell exits, however it exits
-// (including SIGKILL), so commands do not outlive a host-shell that was killed. Only the direct
-// child gets the signal; grandchildren that keep running are reparented and may remain.
+// SetParentDeathSignal configures attr to send SIGKILL to the direct child when host-shell exits
+// (including on SIGKILL); reparented grandchildren may survive.
 //
-// The kernel ties the signal to the OS thread that started the child, not to the process.
-// host-shell never locks goroutines to OS threads (runtime.LockOSThread), so the Go runtime keeps
-// its threads alive and the signal is sent only when the whole process exits.
+// Linux binds Pdeathsig to the creating OS thread rather than the process. Because host-shell
+// never calls runtime.LockOSThread, the Go runtime keeps its OS threads alive until process exit.
 func SetParentDeathSignal(attr *syscall.SysProcAttr) {
 	attr.Pdeathsig = syscall.SIGKILL
 }
 
-// KillChildrenOnExit does nothing on Linux: SetParentDeathSignal handles each child.
+// KillChildrenOnExit is a no-op on Linux; SetParentDeathSignal configures each child instead.
 func KillChildrenOnExit() error { return nil }

@@ -5,17 +5,15 @@ import (
 	"unicode/utf8"
 )
 
-// stripTerminal turns output meant for a terminal into plain text the agent can read.
+// stripTerminal converts terminal output into plain text:
+//   - Strips ANSI escape sequences (colors, cursor movement, window titles).
+//   - Normalizes CRLF to LF and resolves bare CR and backspace by overwriting characters in the current line.
+//   - Strips control characters except tab and newline.
 //
-//   - Removes escape sequences (colors, cursor movement, window titles and so on).
-//   - Turns CR LF into LF; for a CR in the middle of a line (overwritten progress), keeps only what was written last.
-//   - A backspace deletes the previous character. Control characters other than tab and newline are removed.
-//
-// When the text ends with an incomplete escape sequence, its length is returned in pending.
-// Starting the next read at that position avoids splitting the sequence.
+// If s ends with an incomplete escape sequence, pending returns its byte length so the next read can resume there.
 func stripTerminal(s string) (out string, pending int) {
 	var sb strings.Builder
-	line := []rune{} // the current line, built per line to handle CR and backspace
+	line := []rune{} // current line buffer for CR and backspace handling
 	col := 0
 	flush := func() {
 		sb.WriteString(string(line))
@@ -67,20 +65,20 @@ func stripTerminal(s string) (out string, pending int) {
 	return sb.String(), 0
 }
 
-// escapeLen returns the length of the escape sequence at the start of s, or 0 when it is incomplete.
+// escapeLen returns the length of the escape sequence at s[0:], or 0 if incomplete.
 func escapeLen(s string) int {
 	if len(s) < 2 {
 		return 0
 	}
 	switch s[1] {
-	case '[': // CSI: parameters and intermediate bytes, ending with 0x40-0x7e.
+	case '[': // CSI: parameter/intermediate bytes terminated by 0x40-0x7e.
 		for i := 2; i < len(s); i++ {
 			if s[i] >= 0x40 && s[i] <= 0x7e {
 				return i + 1
 			}
 		}
 		return 0
-	case ']', 'P', 'X', '^', '_': // OSC, DCS and so on: end with BEL or ESC \.
+	case ']', 'P', 'X', '^', '_': // OSC, DCS, etc.: terminated by BEL or ST (ESC \).
 		for i := 2; i < len(s); i++ {
 			if s[i] == 0x07 {
 				return i + 1
@@ -90,12 +88,12 @@ func escapeLen(s string) int {
 			}
 		}
 		return 0
-	case '(', ')', '*', '+', '#', '%': // character set selection and so on: ESC and two characters.
+	case '(', ')', '*', '+', '#', '%': // 3-byte sequences (charset selection, etc.).
 		if len(s) < 3 {
 			return 0
 		}
 		return 3
-	default: // ESC and one character (ESC =, ESC > and so on).
+	default: // 2-byte ESC sequences (ESC =, ESC >, etc.).
 		return 2
 	}
 }

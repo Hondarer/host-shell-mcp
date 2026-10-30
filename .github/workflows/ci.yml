@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Linux and Windows are tested as targets, macOS as the local side (host-shell bridge).
+        # Linux and Windows test remote target and bridge modes; macOS tests local bridge mode.
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
@@ -30,11 +30,11 @@ jobs:
         run: |
           GOOS=windows go vet ./...
           GOOS=darwin go vet ./...
-      # Show only results, skipped tests and test logs. bash runs with pipefail, so failures are still detected.
+      # Filter output to test summaries, skipped tests, and log lines; bash pipefail preserves go test exit status.
       - name: Test
         run: go test -count=1 -v ./... 2>&1 | grep -E '^(---|ok|FAIL|PASS|panic)|_test\.go'
         shell: bash
-      # sudo_run with a password needs a user whose sudo asks for one; the runner user's does not.
+      # Testing sudo_run password handling requires an account without NOPASSWD sudo (unlike the default runner user).
       - name: Test sudo with a password
         if: runner.os == 'Linux'
         run: |

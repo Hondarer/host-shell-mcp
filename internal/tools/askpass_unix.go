@@ -11,22 +11,20 @@ import (
 	"time"
 )
 
-// askpassEnv names the named pipe that holds the password for sudo -A (see withAskpass).
+// askpassEnv holds the FIFO path used by sudo -A (see withAskpass).
 const askpassEnv = "HOST_SHELL_ASKPASS"
 
-// passwordTries is how many copies of the password are queued: sudo asks up to three times.
+// passwordTries is the number of password lines queued for sudo (up to 3 prompts).
 const passwordTries = 3
 
-// Askpass runs host-shell as the askpass helper of sudo -A when sudo started it for sudo_run:
-// it reads one line from the named pipe in HOST_SHELL_ASKPASS and prints it for sudo.
-// It reports whether it ran; the caller then exits with the returned code.
+// Askpass runs host-shell as the sudo -A askpass helper when invoked by sudo_run,
+// reading one line from the HOST_SHELL_ASKPASS FIFO and writing it to stdout.
+// If ran is true, the caller must exit with code.
 //
-// sudo closes every descriptor above stderr before it starts the helper, so an inherited pipe
-// cannot carry the password, and an environment variable would expose it to other processes.
-// The named pipe lives in a directory only the user can open, and holds the password only until
-// the command ends. sudo starts the helper with the prompt as its single argument; requiring that
-// keeps a host-shell started by the command itself (when sudo keeps the environment) from acting
-// as the helper.
+// Because sudo closes descriptors above stderr before invoking the helper and env vars are visible
+// to other processes, the password is buffered in a 0600 FIFO inside a 0700 directory for the duration
+// of the command. Requiring a single non-flag argument (the prompt passed by sudo) prevents a nested
+// host-shell process from acting as the helper when sudo preserves the environment.
 func Askpass() (ran bool, code int) {
 	path := os.Getenv(askpassEnv)
 	if path == "" || len(os.Args) != 2 || strings.HasPrefix(os.Args[1], "-") {
@@ -38,12 +36,12 @@ func Askpass() (ran bool, code int) {
 		return true, 1
 	}
 	defer f.Close()
-	// If sudo asks more often than passwords were queued, fail instead of waiting forever.
+	// Time out if sudo prompts more times than passwords were queued.
 	f.SetReadDeadline(time.Now().Add(5 * time.Second))
 	var line []byte
 	b := make([]byte, 1)
 	for {
-		// One byte at a time, so the next copy stays in the pipe for the next prompt.
+		// Read one byte at a time so subsequent copies remain in the pipe for retries.
 		if _, err := f.Read(b); err != nil {
 			fmt.Fprintln(os.Stderr, "host-shell askpass:", err)
 			return true, 1
@@ -57,8 +55,7 @@ func Askpass() (ran bool, code int) {
 	return true, 0
 }
 
-// withAskpass prepares the named pipe for sudo -A and returns the environment for sudo.
-// cleanup removes the pipe and its directory; call it after the command ends.
+// withAskpass creates the sudo -A FIFO and returns the sudo environment and a cleanup function.
 func withAskpass(password string) (env map[string]string, cleanup func(), err error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -73,8 +70,7 @@ func withAskpass(password string) (env map[string]string, cleanup func(), err er
 		os.RemoveAll(dir)
 		return nil, nil, err
 	}
-	// Opening for reading and writing does not wait for a reader. The copies stay in the pipe's
-	// buffer until the helper reads them, or are dropped with the pipe.
+	// Open O_RDWR so opening does not block waiting for a reader and buffered bytes stay until read or closed.
 	f, err := os.OpenFile(fifo, os.O_RDWR, 0)
 	if err != nil {
 		os.RemoveAll(dir)

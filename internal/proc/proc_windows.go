@@ -27,8 +27,8 @@ func shellCommand(ctx context.Context, sh, line string, interactive bool) (*exec
 			comspec = "cmd.exe"
 		}
 		cmd := exec.CommandContext(ctx, comspec)
-		// cmd has its own quoting rules, so pass the command line as is instead of using Go's argument escaping.
-		// Internal commands of cmd write in the OEM code page; the tools convert that to UTF-8 (textenc, output_encoding auto).
+		// Pass the raw command line via SysProcAttr.CmdLine so cmd.exe's own quoting rules apply.
+		// Built-in cmd commands write in the OEM code page, which textenc converts to UTF-8.
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			CmdLine: fmt.Sprintf(`"%s" /d /s /c "%s"`, comspec, line),
 		}
@@ -42,11 +42,9 @@ func shellCommand(ctx context.Context, sh, line string, interactive bool) (*exec
 	}
 }
 
-// KillChildrenOnExit puts host-shell into a new Job Object that ends every process in it when its
-// last handle closes (JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE). Processes host-shell starts, and their
-// descendants, join the job automatically, so they all end when host-shell exits in any way,
-// including being killed. The handle is not inheritable and is never closed: closing it is what
-// exiting does. Breaking away from the job is not allowed.
+// KillChildrenOnExit assigns host-shell to a Job Object with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE so
+// all child processes and their descendants terminate when host-shell exits or is killed.
+// The uninheritable job handle is intentionally kept open for the lifetime of the process.
 func KillChildrenOnExit() error {
 	job, err := windows.CreateJobObject(nil, nil)
 	if err != nil {
@@ -67,9 +65,7 @@ func KillChildrenOnExit() error {
 	return nil
 }
 
-// setupProcess starts the process without a console window,
-// and timeouts and stops end the whole process tree with taskkill /T.
-// When host-shell exits, the Job Object of KillChildrenOnExit ends the processes.
+// setupProcess hides the console window and kills the entire process tree via taskkill /T on cancellation.
 func setupProcess(cmd *exec.Cmd) {
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
@@ -81,11 +77,10 @@ func setupProcess(cmd *exec.Cmd) {
 	}
 }
 
-// SignalNames are the names Signal accepts. On Windows, only killing the process.
+// SignalNames lists the signal names accepted by Signal on Windows.
 const SignalNames = "kill"
 
-// Signal ends a process. Windows has no signals, so only kill is supported.
-// With group, descendant processes are ended too.
+// Signal terminates pid (and its descendants when group is true) via taskkill; only "kill" is supported on Windows.
 func Signal(pid int, name string, group bool) error {
 	if name != "kill" {
 		return fmt.Errorf("signal %q is not supported on Windows (only kill)", name)

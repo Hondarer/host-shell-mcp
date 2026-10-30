@@ -77,38 +77,38 @@ func walkFiles(ctx context.Context, root string, excludeDirs []string, useGitign
 
 // SearchGrepInput is the input of search_grep.
 type SearchGrepInput struct {
-	Pattern      string   `json:"pattern" jsonschema:"regular expression (Go RE2 syntax: no lookaround or backreferences). Set literal to search for a plain string"`
-	Path         string   `json:"path,omitempty" jsonschema:"root directory or a single file (default: current directory)"`
-	Include      string   `json:"include,omitempty" jsonschema:"glob for files to search. Without a slash it matches the base name (*.go, *.{c,h}); with a slash it matches the path relative to path (src/**/*.ts)"`
-	ExcludeDirs  []string `json:"exclude_dirs,omitempty" jsonschema:"directory names to skip (default: .git .hg .svn). Passing a list replaces the default"`
+	Pattern      string   `json:"pattern" jsonschema:"Go RE2 regular expression (no lookaround or backreferences), or plain string when literal is set"`
+	Path         string   `json:"path,omitempty" jsonschema:"root directory or file path (default: current directory)"`
+	Include      string   `json:"include,omitempty" jsonschema:"file glob: matches base name without '/' (*.go, *.{c,h}) or relative path with '/' (src/**/*.ts)"`
+	ExcludeDirs  []string `json:"exclude_dirs,omitempty" jsonschema:"directory names to skip (default: .git, .hg, .svn; replaces default when set)"`
 	IgnoreCase   bool     `json:"ignore_case,omitempty" jsonschema:"case-insensitive match"`
-	Literal      bool     `json:"literal,omitempty" jsonschema:"treat pattern as a plain string, not a regular expression"`
-	OutputMode   string   `json:"output_mode,omitempty" jsonschema:"content (default: matching lines), files (only paths of matching files) or count (number of matching lines per file)"`
-	Context      int      `json:"context,omitempty" jsonschema:"content mode: lines of context to return before and after each match (like grep -C)"`
-	Before       int      `json:"before,omitempty" jsonschema:"content mode: lines of context before each match (overrides context, like grep -B)"`
-	After        int      `json:"after,omitempty" jsonschema:"content mode: lines of context after each match (overrides context, like grep -A)"`
-	MaxMatches   int      `json:"max_matches,omitempty" jsonschema:"maximum matching lines (content mode) or files (files and count modes) to return (default 200)"`
-	MaxFileBytes int64    `json:"max_file_bytes,omitempty" jsonschema:"skip files larger than this (default 10 MiB)"`
-	Charset      string   `json:"charset,omitempty" jsonschema:"encoding of the files: auto (default: BOM, then UTF-8 if valid, otherwise the host file code page, decided per line), utf-8, system, or a charset name such as shift_jis, euc-jp, utf-16le"`
-	Gitignore    *bool    `json:"gitignore,omitempty" jsonschema:"skip files and directories git ignores (.gitignore of the searched directories and, inside a repository, of its parents, and .git/info/exclude). Default true; false searches them too"`
-	Multiline    bool     `json:"multiline,omitempty" jsonschema:"match the pattern against the whole file instead of each line: . also matches a newline, ^ and $ match at line starts and ends. A match reports its first line (line), last line (end_line) and the matched text. Files over 32 MiB are skipped"`
+	Literal      bool     `json:"literal,omitempty" jsonschema:"match pattern as a literal string"`
+	OutputMode   string   `json:"output_mode,omitempty" jsonschema:"content (default: matching lines), files (matching file paths) or count (match count per file)"`
+	Context      int      `json:"context,omitempty" jsonschema:"content mode: context lines before and after each match (grep -C)"`
+	Before       int      `json:"before,omitempty" jsonschema:"content mode: context lines before each match (overrides context, grep -B)"`
+	After        int      `json:"after,omitempty" jsonschema:"content mode: context lines after each match (overrides context, grep -A)"`
+	MaxMatches   int      `json:"max_matches,omitempty" jsonschema:"max matching lines (content) or files (files/count) to return (default 200)"`
+	MaxFileBytes int64    `json:"max_file_bytes,omitempty" jsonschema:"skip files larger than this in bytes (default 10 MiB)"`
+	Charset      string   `json:"charset,omitempty" jsonschema:"file encoding: auto (default: BOM, then per-line UTF-8 if valid, else host file code page), utf-8, system, or a charset name (shift_jis, euc-jp, utf-16le, ...)"`
+	Gitignore    *bool    `json:"gitignore,omitempty" jsonschema:"respect .gitignore and .git/info/exclude (default true)"`
+	Multiline    bool     `json:"multiline,omitempty" jsonschema:"match across lines (. matches \\n, ^/$ match line boundaries); reports line, end_line and matched text (skips files > 32 MiB)"`
 }
 
 // Match is one matching line.
 type Match struct {
 	Path    string   `json:"path"`
 	Line    int      `json:"line" jsonschema:"1-based line number"`
-	EndLine int      `json:"end_line,omitempty" jsonschema:"multiline: line number where the match ends"`
-	Text    string   `json:"text" jsonschema:"the matching line without its line ending (multiline: the matched text), cut at 500 bytes"`
-	Before  []string `json:"before,omitempty" jsonschema:"context lines before the match, oldest first"`
-	After   []string `json:"after,omitempty" jsonschema:"context lines after the match"`
-	Charset string   `json:"charset,omitempty" jsonschema:"set when the line was converted to UTF-8 from this encoding"`
+	EndLine int      `json:"end_line,omitempty" jsonschema:"multiline: 1-based end line number"`
+	Text    string   `json:"text" jsonschema:"matching line without line ending (or matched text in multiline mode), truncated at 500 bytes"`
+	Before  []string `json:"before,omitempty" jsonschema:"leading context lines"`
+	After   []string `json:"after,omitempty" jsonschema:"trailing context lines"`
+	Charset string   `json:"charset,omitempty" jsonschema:"source encoding when decoded to UTF-8"`
 }
 
 // FileMatches is the number of matches in one file.
 type FileMatches struct {
 	Path  string `json:"path"`
-	Count int    `json:"count,omitempty" jsonschema:"count mode: number of matching lines"`
+	Count int    `json:"count,omitempty" jsonschema:"count mode: matching lines"`
 }
 
 // SearchGrepOutput is the output of search_grep.
@@ -117,9 +117,9 @@ type SearchGrepOutput struct {
 	Files        []FileMatches `json:"files,omitempty" jsonschema:"files and count modes: matching files"`
 	FilesScanned int           `json:"files_scanned"`
 	FilesMatched int           `json:"files_matched"`
-	Skipped      int           `json:"skipped,omitempty" jsonschema:"entries skipped because they could not be read"`
-	SkippedLarge int           `json:"skipped_large,omitempty" jsonschema:"files skipped because they are larger than max_file_bytes (or 32 MiB with multiline)"`
-	Truncated    bool          `json:"truncated,omitempty" jsonschema:"max_matches was reached; narrow the search or raise the limit"`
+	Skipped      int           `json:"skipped,omitempty" jsonschema:"unreadable entries skipped"`
+	SkippedLarge int           `json:"skipped_large,omitempty" jsonschema:"files skipped due to max_file_bytes (or 32 MiB in multiline mode)"`
+	Truncated    bool          `json:"truncated,omitempty" jsonschema:"stopped at max_matches"`
 }
 
 const maxMatchLineBytes = 500
@@ -429,20 +429,20 @@ func clipLine(line []byte) string {
 
 // SearchFilesInput is the input of search_files.
 type SearchFilesInput struct {
-	Pattern     string   `json:"pattern,omitempty" jsonschema:"glob. Without a slash it matches the base name (*.log, *.{yml,yaml}); with a slash it matches the path relative to path (**/test/*.py, src/*/main.go). Default: all"`
+	Pattern     string   `json:"pattern,omitempty" jsonschema:"glob: matches base name without '/' (*.log, *.{yml,yaml}) or relative path with '/' (**/test/*.py, src/*/main.go); default matches all"`
 	Path        string   `json:"path,omitempty" jsonschema:"root directory (default: current directory)"`
 	Type        string   `json:"type,omitempty" jsonschema:"file, dir or empty for both"`
-	ExcludeDirs []string `json:"exclude_dirs,omitempty" jsonschema:"directory names to skip (default: .git .hg .svn). Passing a list replaces the default"`
-	Gitignore   *bool    `json:"gitignore,omitempty" jsonschema:"skip files and directories git ignores, as in search_grep. Default true"`
-	Sort        string   `json:"sort,omitempty" jsonschema:"path (default: walk order) or mtime (most recently modified first)"`
-	MaxResults  int      `json:"max_results,omitempty" jsonschema:"maximum paths to return (default 1000)"`
+	ExcludeDirs []string `json:"exclude_dirs,omitempty" jsonschema:"directory names to skip (default: .git, .hg, .svn; replaces default when set)"`
+	Gitignore   *bool    `json:"gitignore,omitempty" jsonschema:"respect .gitignore and .git/info/exclude (default true)"`
+	Sort        string   `json:"sort,omitempty" jsonschema:"path (default: walk order) or mtime (newest first)"`
+	MaxResults  int      `json:"max_results,omitempty" jsonschema:"max paths to return (default 1000)"`
 }
 
 // SearchFilesOutput is the output of search_files.
 type SearchFilesOutput struct {
 	Paths     []string `json:"paths"`
-	Skipped   int      `json:"skipped,omitempty" jsonschema:"entries skipped because they could not be read"`
-	Truncated bool     `json:"truncated,omitempty" jsonschema:"max_results was reached"`
+	Skipped   int      `json:"skipped,omitempty" jsonschema:"unreadable entries skipped"`
+	Truncated bool     `json:"truncated,omitempty" jsonschema:"stopped at max_results"`
 }
 
 // maxSortCandidates caps the candidates collected when sorting by modification time.
@@ -523,9 +523,9 @@ func (d *Deps) searchFiles(ctx context.Context, _ *mcp.CallToolRequest, in Searc
 // FsManifestInput is the input of fs_manifest.
 type FsManifestInput struct {
 	Path        string   `json:"path,omitempty" jsonschema:"root directory (default: current directory)"`
-	Include     string   `json:"include,omitempty" jsonschema:"glob for files to list (same syntax as search_files pattern), e.g. *.c or src/**/*.h"`
-	ExcludeDirs []string `json:"exclude_dirs,omitempty" jsonschema:"directory names to skip (default: .git .hg .svn). Passing a list replaces the default"`
-	MaxFiles    int      `json:"max_files,omitempty" jsonschema:"maximum files to return (default 2000)"`
+	Include     string   `json:"include,omitempty" jsonschema:"file glob (same syntax as search_files pattern), e.g. *.c or src/**/*.h"`
+	ExcludeDirs []string `json:"exclude_dirs,omitempty" jsonschema:"directory names to skip (default: .git, .hg, .svn; replaces default when set)"`
+	MaxFiles    int      `json:"max_files,omitempty" jsonschema:"max files to return (default 2000)"`
 }
 
 // ManifestEntry is the path and hash of one file.

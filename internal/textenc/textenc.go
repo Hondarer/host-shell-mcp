@@ -1,7 +1,4 @@
-// Package textenc converts between the target's encodings and UTF-8.
-//
-// MCP messages are always UTF-8. When command output or files on the target are not UTF-8,
-// this package converts them to UTF-8 (reading) or from UTF-8 (writing).
+// Package textenc converts between target character encodings and UTF-8 for MCP I/O.
 package textenc
 
 import (
@@ -22,14 +19,14 @@ import (
 	"golang.org/x/text/transform"
 )
 
-// Encoding is an encoding together with its canonical name.
+// Encoding pairs a character encoding with its canonical name.
 type Encoding struct {
 	Name string
 	enc  encoding.Encoding
 }
 
 var (
-	// UTF8 is UTF-8. It converts nothing.
+	// UTF8 is the no-op UTF-8 encoding.
 	UTF8    = Encoding{Name: "utf-8", enc: unicode.UTF8}
 	utf16le = Encoding{Name: "utf-16le", enc: unicode.UTF16(unicode.LittleEndian, unicode.IgnoreBOM)}
 	utf16be = Encoding{Name: "utf-16be", enc: unicode.UTF16(unicode.BigEndian, unicode.IgnoreBOM)}
@@ -38,11 +35,10 @@ var (
 // IsUTF8 reports whether the encoding is UTF-8.
 func (e Encoding) IsUTF8() bool { return e.Name == UTF8.Name }
 
-// ASCIICompatible reports whether the encoding represents the ASCII range in single bytes (anything but UTF-16).
+// ASCIICompatible reports whether ASCII bytes represent themselves (true for all supported encodings except UTF-16).
 func (e Encoding) ASCIICompatible() bool { return !strings.HasPrefix(e.Name, "utf-16") }
 
-// NewDecoder returns a converter from this encoding to UTF-8.
-// Invalid byte sequences become the replacement character (U+FFFD).
+// NewDecoder returns a decoder to UTF-8 that replaces invalid byte sequences with U+FFFD.
 func (e Encoding) NewDecoder() *encoding.Decoder { return e.enc.NewDecoder() }
 
 // Decode converts b to a UTF-8 string.
@@ -57,17 +53,16 @@ func (e Encoding) Decode(b []byte) string {
 	return string(out)
 }
 
-// DecodePrefix converts to UTF-8 the longest prefix of src whose converted size fits in max bytes.
-// When atEOF is false, an incomplete character at the end is left unconverted.
-// consumed is the number of src bytes converted; full reports whether it stopped at max.
+// DecodePrefix decodes the longest prefix of src that fits within max UTF-8 bytes,
+// leaving any trailing incomplete rune unconverted when atEOF is false.
+// full reports whether conversion stopped because dst reached max bytes.
 func (e Encoding) DecodePrefix(src []byte, max int, atEOF bool) (s string, consumed int, full bool) {
 	dst := make([]byte, max)
 	nDst, nSrc, err := e.enc.NewDecoder().Transform(dst, src, atEOF)
 	return string(dst[:nDst]), nSrc, err == transform.ErrShortDst
 }
 
-// Encode converts the UTF-8 string s to bytes in this encoding.
-// It returns an error when s contains characters this encoding cannot represent.
+// Encode converts the UTF-8 string s to e, returning an error if s contains unrepresentable runes.
 func (e Encoding) Encode(s string) ([]byte, error) {
 	if e.IsUTF8() {
 		return []byte(s), nil
@@ -84,7 +79,7 @@ func (e Encoding) Encode(s string) ([]byte, error) {
 	return nil, fmt.Errorf("encode to %s: %w", e.Name, err)
 }
 
-// BOM returns the byte order mark of this encoding, or nil for encodings without one.
+// BOM returns the byte order mark for e, or nil if e has none.
 func (e Encoding) BOM() []byte {
 	switch e.Name {
 	case UTF8.Name:
@@ -97,7 +92,7 @@ func (e Encoding) BOM() []byte {
 	return nil
 }
 
-// DetectBOM looks for a byte order mark at the start of b and returns the encoding and the BOM length.
+// DetectBOM checks for a UTF-8 or UTF-16 BOM at the start of b and returns the encoding and BOM length.
 func DetectBOM(b []byte) (Encoding, int, bool) {
 	for _, e := range []Encoding{UTF8, utf16le, utf16be} {
 		if bom := e.BOM(); bytes.HasPrefix(b, bom) {
@@ -107,19 +102,18 @@ func DetectBOM(b []byte) (Encoding, int, bool) {
 	return Encoding{}, 0, false
 }
 
-// detectUTF16Bytes is how much of the start of the data DetectUTF16 examines.
+// detectUTF16Bytes is the maximum prefix length inspected by DetectUTF16.
 const detectUTF16Bytes = 4096
 
-// DetectUTF16 reports whether b, which has no BOM, looks like UTF-16 text, and returns its byte order.
+// DetectUTF16 reports whether BOM-less data b appears to be UTF-16 text and returns its byte order.
 //
-// UTF-16 text has a zero byte in every ASCII character (including line breaks) on one side of the
-// code unit, and almost never contains U+0000. Binary data instead has many all-zero units, or few
-// zero bytes on either side. Measured on samples (2026-10): UTF-16 English source has zero bytes in
-// 100% of the units, Japanese prose in 64%, lines made only of kanji in 7% (the line breaks);
-// executables and databases have 30-87% all-zero units; zip, gzip, PNG, JPEG and PDF have at most
-// 2% zero bytes on each side. The thresholds below sit between these: at most 1% U+0000, at least
-// 5% zero bytes on one side and at most 2% (plus one unit, for short text) on the other, and no
-// broken surrogate pairs.
+// UTF-16 text has a zero byte in one half of every ASCII code unit (including line breaks) and
+// rarely contains U+0000, whereas binary data has either many all-zero units or few zero bytes
+// on either side. Across 2026-10 samples, UTF-16 English source has zero bytes in 100% of units,
+// Japanese prose in 64%, and kanji-only lines in 7% (line breaks); executables/databases have
+// 30-87% all-zero units; and zip/gzip/PNG/JPEG/PDF have <=2% zero bytes per side. DetectUTF16
+// requires <=1% U+0000 units, >=5% zero bytes on one side, <=2% (+1 unit for short text) on the
+// other, and valid surrogate pairing.
 func DetectUTF16(b []byte) (Encoding, bool) {
 	if len(b) > detectUTF16Bytes {
 		b = b[:detectUTF16Bytes]
@@ -128,7 +122,7 @@ func DetectUTF16(b []byte) (Encoding, bool) {
 	if n < 2 {
 		return Encoding{}, false
 	}
-	var first, second, both int // units whose first byte only, second byte only, or both bytes are zero
+	var first, second, both int // units with zero in first byte only, second byte only, or both
 	for i := 0; i < n; i++ {
 		switch x, y := b[2*i], b[2*i+1]; {
 		case x == 0 && y == 0:
@@ -152,8 +146,7 @@ func DetectUTF16(b []byte) (Encoding, bool) {
 	return e, true
 }
 
-// validUTF16 reports whether the code units in b pair their surrogates correctly.
-// A high surrogate in the last unit is allowed, since b may end in the middle of a pair.
+// validUTF16 reports whether b contains no unpaired surrogates (allowing a trailing high surrogate at the end of b).
 func validUTF16(b []byte, little bool) bool {
 	n := len(b) / 2
 	for i := 0; i < n; i++ {
@@ -181,8 +174,7 @@ func validUTF16(b []byte, little bool) bool {
 	return true
 }
 
-// DetectUnicode detects a byte order mark, or else UTF-16 without one (DetectUTF16), at the start of b.
-// It returns the encoding and the length of the BOM (0 when there is none).
+// DetectUnicode detects a BOM or BOM-less UTF-16 at the start of b, returning the encoding and BOM length.
 func DetectUnicode(b []byte) (Encoding, int, bool) {
 	if e, n, ok := DetectBOM(b); ok {
 		return e, n, true
@@ -265,9 +257,8 @@ func FromCodePage(cp int) (Encoding, bool) {
 	return Encoding{Name: name, enc: enc}, true
 }
 
-// Lookup finds an encoding by name.
-// It accepts WHATWG names and aliases (shift_jis, sjis, euc-jp, gbk, windows-1252 and so on),
-// utf-16le, utf-16be and Windows code pages (cp932, 932 and so on).
+// Lookup resolves an encoding by WHATWG name/alias (shift_jis, sjis, euc-jp, gbk, windows-1252, etc.),
+// utf-16le/utf-16be, or Windows code page (cp932, 932, etc.).
 func Lookup(name string) (Encoding, error) {
 	n := strings.ToLower(strings.TrimSpace(name))
 	if e, ok := special[n]; ok {
@@ -295,16 +286,15 @@ func Lookup(name string) (Encoding, error) {
 	return Encoding{Name: canonical, enc: enc}, nil
 }
 
-// Choice is the resolved encoding the agent specified.
+// Choice represents a resolved encoding option.
 type Choice struct {
-	// Auto means: use the bytes as is when they are valid UTF-8, otherwise treat them as Enc.
+	// Auto passes valid UTF-8 through as-is and decodes non-UTF-8 bytes using Enc.
 	Auto bool
 	Enc  Encoding
 }
 
-// Parse resolves an encoding name given in a tool argument.
-// An empty string and "auto" mean automatic detection; "system" is the target's default encoding returned by system.
-// When allowAuto is false, an empty string means def and "auto" is an error.
+// Parse resolves a tool's encoding argument: "" and "auto" select automatic detection (or def when
+// allowAuto is false, where "auto" is rejected), and "system" selects system().
 func Parse(name string, system func() Encoding, allowAuto bool, def Encoding) (Choice, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "":
@@ -324,7 +314,7 @@ func Parse(name string, system func() Encoding, allowAuto bool, def Encoding) (C
 	return Choice{Enc: e}, err
 }
 
-// IncompleteTail returns the number of bytes of an incomplete UTF-8 character at the end of b.
+// IncompleteTail returns the length in bytes of any trailing incomplete UTF-8 rune in b.
 func IncompleteTail(b []byte) int {
 	for i := len(b) - 1; i >= 0 && i >= len(b)-utf8.UTFMax; i-- {
 		if !utf8.RuneStart(b[i]) {
@@ -338,8 +328,7 @@ func IncompleteTail(b []byte) int {
 	return 0
 }
 
-// LooksUTF8 reports whether b is valid UTF-8.
-// Characters split at the start and end of the range are tolerated.
+// LooksUTF8 reports whether b is valid UTF-8, ignoring split runes at the start and end of b.
 func LooksUTF8(b []byte) bool {
 	start := 0
 	for start < len(b) && start < utf8.UTFMax-1 && !utf8.RuneStart(b[start]) {
@@ -348,7 +337,7 @@ func LooksUTF8(b []byte) bool {
 	return utf8.Valid(b[start : len(b)-IncompleteTail(b[start:])])
 }
 
-// Newline returns the newline style of s: lf, crlf, cr or mixed, or an empty string when s has no newline.
+// Newline returns the newline style of s ("lf", "crlf", "cr", "mixed", or "" if s has no line breaks).
 func Newline(s string) string {
 	crlf := strings.Count(s, "\r\n")
 	lf := strings.Count(s, "\n") - crlf

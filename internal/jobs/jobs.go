@@ -1,7 +1,4 @@
-// Package jobs manages long-running commands.
-//
-// Starting a job returns an ID; output, input, status and stopping are handled afterwards.
-// Standard input and output are connected either to pipes or to a pseudo terminal (PTY).
+// Package jobs manages long-running background commands attached to pipes or a pseudo-terminal (PTY).
 package jobs
 
 import (
@@ -21,13 +18,13 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// maxFinished is how many finished jobs are kept. Older ones are dropped beyond that.
+// maxFinished is the maximum number of completed jobs retained before older ones are pruned.
 const maxFinished = 50
 
-// drainWait is how long to wait for the remaining output after the process exits.
+// drainWait is the maximum time to wait for remaining output after a process exits.
 const drainWait = 2 * time.Second
 
-// Manager holds the jobs.
+// Manager tracks active and recently completed jobs.
 type Manager struct {
 	mu           sync.Mutex
 	jobs         map[string]*Job
@@ -36,12 +33,12 @@ type Manager struct {
 	bufferBytes  int
 }
 
-// NewManager creates a Manager. bufferBytes is the amount of output kept per job.
+// NewManager creates a Manager that retains up to bufferBytes of output per job.
 func NewManager(defaultShell string, bufferBytes int) *Manager {
 	return &Manager{jobs: map[string]*Job{}, defaultShell: defaultShell, bufferBytes: bufferBytes}
 }
 
-// Job is one long-running command. Standard output and standard error are merged into one stream.
+// Job represents a background command with merged stdout and stderr.
 type Job struct {
 	id      string
 	label   string
@@ -54,7 +51,6 @@ type Job struct {
 	term    *pty.Terminal // PTY jobs only
 	screen  *screen       // PTY jobs only
 
-	// stdin is where input is written. stdinMu serializes writes.
 	stdinMu  sync.Mutex
 	stdin    io.WriteCloser
 	stdinEnc textenc.Encoding
@@ -66,7 +62,7 @@ type Job struct {
 	signaled string
 }
 
-// Status is the state of a job.
+// Status reports the state of a job.
 type Status struct {
 	ID        string `json:"id"`
 	Command   string `json:"command"`
@@ -83,26 +79,26 @@ type Status struct {
 	Output    int64  `json:"output_bytes" jsonschema:"total bytes of output produced so far"`
 }
 
-// StartOptions specifies how to start a job.
+// StartOptions configures a new job.
 type StartOptions struct {
-	// Stdin is the bytes first passed to standard input (already encoded).
+	// Stdin is initial standard input (already encoded).
 	Stdin string
-	// KeepStdin keeps standard input open so that Write can send more later. A PTY is always open.
+	// KeepStdin keeps stdin open for subsequent Write calls (always true for PTY jobs).
 	KeepStdin bool
-	// StdinEncoding is the encoding of strings sent with Write.
+	// StdinEncoding is the encoding used by Write.
 	StdinEncoding textenc.Encoding
-	// Output is the encoding of the output. Output is converted to UTF-8 before it is kept.
+	// Output is the output encoding converted to UTF-8 before buffering.
 	Output textenc.Choice
-	// Timeout is the time limit. 0 runs without a time limit.
+	// Timeout is the execution time limit (0 means no limit).
 	Timeout time.Duration
-	// PTY starts the job attached to a pseudo terminal. Cols and Rows are the terminal size.
+	// PTY attaches the job to a pseudo-terminal of size Cols x Rows.
 	PTY        bool
 	Cols, Rows int
 }
 
 // Start starts a job.
 func (m *Manager) Start(spec proc.Spec, opt StartOptions) (*Job, error) {
-	// A job outlives the tool call, so it uses its own ctx instead of the call's.
+	// Use a background context so the job outlives the initiating tool call.
 	var (
 		ctx    context.Context
 		cancel context.CancelFunc
@@ -209,8 +205,8 @@ func (j *Job) startPTY(ctx context.Context, cmd *exec.Cmd, opt StartOptions) (fu
 	}()
 	return func() (int, error) {
 		code, err := t.Wait()
-		// Cap the wait for the remaining output in case a grandchild keeps the terminal open.
-		// On Windows, also allow for waiting until the output settles before the terminal is closed.
+		// Bound the drain wait in case a grandchild holds the terminal open,
+		// while giving Windows ConPTY time to flush remaining output before closing.
 		select {
 		case <-copied:
 		case <-time.After(drainWait + time.Second):
@@ -223,7 +219,7 @@ func (j *Job) startPTY(ctx context.Context, cmd *exec.Cmd, opt StartOptions) (fu
 	}, nil
 }
 
-// ptyInput is the input to the terminal. Closing it sends end of input to the terminal (Ctrl-D, Ctrl-Z on Windows).
+// ptyInput writes to a PTY and sends the terminal EOF sequence (Ctrl-D, or Ctrl-Z on Windows) on Close.
 type ptyInput struct{ t *pty.Terminal }
 
 func (p ptyInput) Write(b []byte) (int, error) { return p.t.Write(b) }
@@ -278,8 +274,7 @@ func (m *Manager) List() []Status {
 	return out
 }
 
-// StopAll stops all running jobs. It is called when host-shell exits.
-// host-shell exits when SSH disconnects, so jobs stop then as well.
+// StopAll terminates all running jobs (called on server exit or SSH disconnect).
 func (m *Manager) StopAll(wait time.Duration) {
 	m.mu.Lock()
 	all := make([]*Job, 0, len(m.jobs))
@@ -295,15 +290,15 @@ func (m *Manager) StopAll(wait time.Duration) {
 // ID returns the job ID.
 func (j *Job) ID() string { return j.id }
 
-// PTY reports whether the job runs in a pseudo terminal.
+// PTY reports whether the job runs in a pseudo-terminal.
 func (j *Job) PTY() bool { return j.term != nil }
 
-// Done returns a channel that is closed when the job ends.
+// Done returns a channel that closes when the job ends.
 func (j *Job) Done() <-chan struct{} { return j.done }
 
 // Status returns the state of the job.
 func (j *Job) Status() Status {
-	// Count a prompt without a newline as output too, so it can be read.
+	// Flush any partial line (such as a prompt without a newline) before reporting output size.
 	j.conv.Flush()
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -339,11 +334,11 @@ func (j *Job) Read(offset int64, n int) (data string, next, dropped int64) {
 // StdinEncoding returns the encoding of strings sent with Write.
 func (j *Job) StdinEncoding() textenc.Encoding { return j.stdinEnc }
 
-// ErrStdinClosed reports a write to a job whose standard input is not open.
+// ErrStdinClosed reports a write to a job whose standard input is closed.
 var ErrStdinClosed = errors.New("stdin is not open (start the job with stdin_open or pty, and do not close it before writing)")
 
-// Write writes bytes (already encoded) to standard input.
-// If the child does not read them within wait, it returns an error and the write continues in the background.
+// Write sends pre-encoded bytes to stdin. If the process does not consume them within wait,
+// Write returns an error while the write continues in the background.
 func (j *Job) Write(data string, wait time.Duration) error {
 	if !j.stdinOpen() {
 		return ErrStdinClosed
@@ -368,7 +363,7 @@ func (j *Job) write(data string) error {
 	return err
 }
 
-// CloseStdin closes standard input, telling the child the input has ended (EOF).
+// CloseStdin closes stdin to signal EOF to the child process.
 func (j *Job) CloseStdin() error {
 	j.stdinMu.Lock()
 	defer j.stdinMu.Unlock()
@@ -379,7 +374,7 @@ func (j *Job) CloseStdin() error {
 	j.stdin = nil
 	select {
 	case <-j.done:
-		err = nil // Errors from closing the input of a finished job mean nothing.
+		err = nil // ignore close errors once the job has exited
 	default:
 	}
 	return err
@@ -387,13 +382,13 @@ func (j *Job) CloseStdin() error {
 
 func (j *Job) stdinOpen() bool {
 	if !j.stdinMu.TryLock() {
-		return true // a write is in progress
+		return true // write in progress
 	}
 	defer j.stdinMu.Unlock()
 	return j.stdin != nil
 }
 
-// Resize changes the terminal size of a PTY job.
+// Resize changes the terminal dimensions of a PTY job.
 func (j *Job) Resize(cols, rows int) error {
 	if j.term == nil {
 		return errors.New("the job does not run in a pseudo terminal (start it with pty)")
@@ -405,8 +400,8 @@ func (j *Job) Resize(cols, rows int) error {
 	return nil
 }
 
-// Screen returns the characters now shown on the terminal of a PTY job, one line per row without
-// trailing spaces, and the cursor position (0-based).
+// Screen returns the current terminal screen contents (one trailing-space-trimmed line per row)
+// and 0-based cursor position for a PTY job.
 func (j *Job) Screen() (text string, row, col int, err error) {
 	if j.screen == nil {
 		return "", 0, 0, errors.New("the job does not run in a pseudo terminal (start it with pty)")
@@ -415,7 +410,7 @@ func (j *Job) Screen() (text string, row, col int, err error) {
 	return text, row, col, nil
 }
 
-// Signal sends a signal to the job. For a PTY job, interrupt sends Ctrl-C to the terminal.
+// Signal sends a signal to the job (or writes Ctrl-C to the terminal when name is "interrupt" on a PTY job).
 func (j *Job) Signal(name string) error {
 	select {
 	case <-j.done:

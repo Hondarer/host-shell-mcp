@@ -99,8 +99,8 @@ func Register(s *mcp.Server, d *Deps) {
 	add(s, d, groupCore, &mcp.Tool{
 		Name:  "help",
 		Title: "Usage guide",
-		Description: "Explain how to use host-shell: workflow, tool choice, arguments and examples, and the restrictions in effect. " +
-			"Call it when unsure which tool to use or how an argument works. Topics: " + strings.Join(helpTopics, ", ") + ", all.",
+		Description: "Return usage guidance for host-shell: tool selection, argument details, examples, and active policy restrictions. " +
+			"Topics: " + strings.Join(helpTopics, ", ") + ", all.",
 		Annotations: readOnly(),
 	}, d.help)
 
@@ -108,11 +108,11 @@ func Register(s *mcp.Server, d *Deps) {
 	add(s, d, groupExec, &mcp.Tool{
 		Name:  "exec_run",
 		Title: "Run command",
-		Description: "Run a command on the remote host and wait for it (up to timeout_sec). Returns exit_code, stdout, stderr. " +
-			"Use command for a shell command line (default shell in sys_info) or argv to run a program with exact arguments and no shell. " +
-			"Each call is a new process: pass cwd and env; cd/export do not persist. stdin is empty unless given, so prompts fail instead of hanging. " +
-			"Sends progress notifications while running and kills the process tree if the request is cancelled. " +
-			"For commands that may run longer than a minute, need input while running or need a terminal, use job_start. To read or change files prefer fs_read/fs_edit/fs_write.",
+		Description: "Run a command on the remote host and wait for completion (up to timeout_sec), returning exit_code, stdout and stderr. " +
+			"Pass command for a shell command line (default_shell in sys_info) or argv to run a program directly without a shell. " +
+			"Each call is a separate process (pass cwd and env; cd/export do not persist) with closed stdin unless stdin is set. " +
+			"Streams progress notifications and kills the process tree on cancellation. " +
+			"Use job_start for long-running, interactive, or TTY commands; prefer fs_read/fs_edit/fs_write for file operations.",
 		Annotations: destructive(),
 	}, d.execRun)
 
@@ -120,39 +120,39 @@ func Register(s *mcp.Server, d *Deps) {
 	add(s, d, groupExec, &mcp.Tool{
 		Name:  "job_start",
 		Title: "Start background job",
-		Description: "Start a command in the background and return its id at once. Same arguments as exec_run; no time limit unless timeout_sec. " +
-			"Use for builds, test suites, servers, tail -f and other long or streaming commands. Read output with job_read (wait_sec to wait). " +
-			"Set stdin_open to send input later with job_write, or pty to run it in a pseudo terminal (password prompts, REPLs, ssh, programs that need a terminal).",
+		Description: "Start a background command and return its job id immediately (same arguments as exec_run; no timeout unless timeout_sec is set). " +
+			"Use for builds, test suites, servers, or streaming commands; read output with job_read (with wait_sec). " +
+			"Set stdin_open to send input via job_write, or pty to run in a pseudo terminal (for password prompts, REPLs, ssh, top).",
 		Annotations: destructive(),
 	}, d.jobStart)
 	add(s, d, groupExec, &mcp.Tool{
 		Name:  "job_read",
 		Title: "Read job output",
-		Description: "Read a background job's output (stdout and stderr interleaved) from a byte offset, with its status (running, exit_code). " +
-			"Start at offset 0, then pass next_offset to get only new output; a negative offset reads the tail. " +
-			"Set wait_sec to wait for output instead of polling, with until (regex, e.g. a prompt) or idle_ms (output went quiet) to wait for the right moment. " +
-			"Terminal escape sequences of pty jobs are removed unless raw.",
+		Description: "Read interleaved stdout/stderr of a background job from a byte offset and return its status (running, exit_code). " +
+			"Start at offset 0 and pass next_offset on subsequent calls (or a negative offset for the tail). " +
+			"Set wait_sec (with optional until regex or idle_ms) to wait for output instead of polling. " +
+			"Strips ANSI escape sequences from pty jobs unless raw is set.",
 		Annotations: readOnly(),
 	}, d.jobRead)
 	add(s, d, groupExec, &mcp.Tool{
 		Name:  "job_write",
 		Title: "Send input to job",
-		Description: "Send text to the input of a job started with stdin_open or pty, and/or close it (close: true, like Ctrl-D). " +
-			"Include \\n to submit a line (\\r in some pty programs). In a pty job control keys work: \\u0003 Ctrl-C, \\u0004 Ctrl-D, \\u001b Esc. " +
-			"cols and rows resize a pty. Follow with job_read (wait_sec with until or idle_ms) to see the response.",
+		Description: "Write to stdin of a job started with stdin_open or pty, close stdin (close: true), or resize a pty (cols, rows). " +
+			"Include \\n (or \\r in pty mode) to submit a line; pty jobs accept control sequences (\\u0003 Ctrl-C, \\u0004 Ctrl-D, \\u001b Esc). " +
+			"Follow with job_read (using wait_sec and until/idle_ms) to read the response.",
 		Annotations: destructive(),
 	}, d.jobWrite)
 	add(s, d, groupExec, &mcp.Tool{
 		Name:  "job_stop",
 		Title: "Stop job",
-		Description: "Stop a background job: kill (default) kills its whole process tree; on Linux interrupt, terminate, hangup and other signals go to its process group; " +
-			"in a pty job interrupt sends Ctrl-C. Returns the status after waiting up to wait_sec.",
+		Description: "Stop or signal a background job: kill (default) terminates the process tree; Linux also supports process-group signals (interrupt, terminate, hangup, ...); " +
+			"in pty jobs interrupt sends Ctrl-C. Waits up to wait_sec and returns job status.",
 		Annotations: destructive(),
 	}, d.jobStop)
 	add(s, d, groupExec, &mcp.Tool{
 		Name:        "job_list",
 		Title:       "List jobs",
-		Description: "List background jobs of this session with their status. Jobs end when the session ends; the 50 most recent finished jobs are kept.",
+		Description: "List background jobs in this session with their status (retains the 50 most recent finished jobs; all jobs terminate when the session ends).",
 		Annotations: readOnly(),
 	}, d.jobList)
 
@@ -161,10 +161,8 @@ func Register(s *mcp.Server, d *Deps) {
 		add(s, d, groupExec, &mcp.Tool{
 			Name:  "sudo_run",
 			Title: "Run as root",
-			Description: "Run a shell command with sudo as root or user. Without password it uses sudo -n (never prompts) and needs a " +
-				"NOPASSWD sudoers rule for sh; if only specific commands are allowed, use exec_run with argv [\"sudo\", \"-n\", ...] instead. " +
-				"If sudo needs a password and the user gave it to you, pass it as password: sudo gets it only when it asks, the command " +
-				"never sees it, and it is not logged or shown in the result.",
+			Description: "Run a shell command via sudo as root or user. Without password, uses sudo -n (requires NOPASSWD for sh; for command-specific sudoers rules, use exec_run with argv [\"sudo\", \"-n\", ...]). " +
+				"When password is provided by the user, passes it to sudo via askpass without exposing it to the command, logs, or output.",
 			Annotations: destructive(),
 		}, d.sudoRun)
 	}
@@ -173,69 +171,69 @@ func Register(s *mcp.Server, d *Deps) {
 	add(s, d, groupFiles, &mcp.Tool{
 		Name:        "fs_list",
 		Title:       "List directory",
-		Description: "List the entries of one directory (name, type, size, mode, modification time). Not recursive: use search_files to find files in a tree.",
+		Description: "List entries in a single directory (name, type, size, mode, mod_time). Non-recursive; use search_files to search directory trees.",
 		Annotations: readOnly(),
 	}, d.fsList)
 	add(s, d, groupFiles, &mcp.Tool{
 		Name:        "fs_stat",
 		Title:       "File attributes",
-		Description: "Get type, size, mode and modification time of a file or directory, and the target of a symlink (a final symlink is not followed). Use it to check existence or size before reading.",
+		Description: "Get type, size, mode, mod_time and symlink target of a path without following a final symlink.",
 		Annotations: readOnly(),
 	}, d.fsStat)
 	add(s, d, groupFiles, &mcp.Tool{
 		Name:  "fs_read",
 		Title: "Read file",
-		Description: "Read a file on the remote host. Text by lines: line_start (1-based) and line_count, with line_numbers for cat -n style prefixes; continue with next_line. " +
-			"Text by bytes: offset and length; continue with next_offset (for huge files and logs). Binary: encoding base64 with offset and length. " +
-			"Text is converted to UTF-8 (charset auto) and the result reports charset, bom and newline.",
+		Description: "Read a file on the remote host. Line mode: line_start (1-based), line_count and optional line_numbers (continue with next_line). " +
+			"Byte mode: offset and length (continue with next_offset). Binary mode: encoding base64 with offset and length. " +
+			"Text mode decodes to UTF-8 (charset auto by default) and reports charset, bom and newline.",
 		Annotations: readOnly(),
 	}, d.fsRead)
 	add(s, d, groupFiles, &mcp.Tool{
 		Name:  "fs_edit",
 		Title: "Edit file",
-		Description: "Replace exact text in an existing file: old_string must occur exactly once (or set replace_all); edits applies several replacements atomically. " +
-			"The file keeps its encoding, BOM and line endings (LF in old_string/new_string matches CRLF files). Returns a numbered snippet of the changed region. " +
-			"Copy old_string from fs_read output without line number prefixes. Prefer this over fs_write for changing existing files.",
+		Description: "Replace exact text in an existing file (prefer over fs_write for partial edits). old_string must match once unless replace_all is set; edits applies multiple replacements atomically. " +
+			"Preserves file encoding, BOM and line endings (LF in inputs matches CRLF files) and returns a numbered diff snippet. " +
+			"Copy old_string from fs_read without line number prefixes.",
 		Annotations: destructive(),
 	}, d.fsEdit)
 	add(s, d, groupFiles, &mcp.Tool{
 		Name:  "fs_write",
 		Title: "Write file",
-		Description: "Create or overwrite a file with text or base64 content. mode: overwrite (default), append, create (fail if it exists). " +
-			"offset writes at a byte position without truncating (chunked or resumed transfers). make_dirs creates parents; perm sets permissions such as 0755. " +
-			"charset, newline and bom control the text format; by default UTF-8 is written as given. Use fs_edit to change part of an existing file.",
+		Description: "Create, overwrite, or update a file with text or base64 content. mode: overwrite (default), append, create. " +
+			"offset writes at a byte position without truncating; make_dirs creates parent directories; perm sets octal permissions; atomic renames a temp file over the target. " +
+			"charset, newline and bom control text encoding (default UTF-8). Use fs_edit for partial edits to existing files.",
 		Annotations: destructive(),
 	}, d.fsWrite)
 	add(s, d, groupFiles, &mcp.Tool{
 		Name:        "fs_mkdir",
 		Title:       "Create directory",
-		Description: "Create a directory and any missing parents. An existing directory is not an error.",
+		Description: "Create a directory and any missing parent directories (no-op if the directory already exists).",
 		Annotations: additive(true),
 	}, d.fsMkdir)
 	add(s, d, groupFiles, &mcp.Tool{
 		Name:  "fs_move",
 		Title: "Move or rename",
-		Description: "Move or rename a file or directory. destination is the full new path. Fails if destination exists unless overwrite (files only). " +
-			"Works across file systems by copying and then deleting.",
+		Description: "Move or rename a file or directory to destination (full target path). Fails if destination exists unless overwrite is set (files only). " +
+			"Falls back to copy-and-delete across file systems.",
 		Annotations: destructive(),
 	}, d.fsMove)
 	add(s, d, groupFiles, &mcp.Tool{
 		Name:  "fs_copy",
 		Title: "Copy",
-		Description: "Copy a file, or a directory tree with recursive. destination is the full path of the copy. Keeps permissions and modification times; symlinks are recreated, not followed. " +
-			"Fails if destination exists unless overwrite (replaces files, merges directories).",
+		Description: "Copy a file or directory tree (with recursive) to destination (full target path), preserving permissions, mtimes and symlinks. " +
+			"Fails if destination exists unless overwrite is set (replaces files, merges directories).",
 		Annotations: destructive(),
 	}, d.fsCopy)
 	add(s, d, groupFiles, &mcp.Tool{
 		Name:        "fs_remove",
 		Title:       "Delete",
-		Description: "Delete a file, symlink or empty directory; recursive deletes a directory with everything under it. Refuses file system roots and the home directory. missing_ok ignores a missing path.",
+		Description: "Delete a file, symlink, empty directory, or directory tree (with recursive). Refuses filesystem roots and home directory; missing_ok ignores nonexistent paths.",
 		Annotations: destructive(),
 	}, d.fsRemove)
 	add(s, d, groupFiles, &mcp.Tool{
 		Name:        "fs_manifest",
 		Title:       "File hashes",
-		Description: "List files under a directory (or one file) with relative path, size, permissions and SHA-256. Compare with a local copy to transfer only files that differ, or verify a transfer.",
+		Description: "List regular files under a path with relative path, size, octal mode and SHA-256 hash (for incremental sync or verification).",
 		Annotations: readOnly(),
 	}, d.fsManifest)
 
@@ -243,16 +241,16 @@ func Register(s *mcp.Server, d *Deps) {
 	add(s, d, groupSearch, &mcp.Tool{
 		Name:  "search_grep",
 		Title: "Search file contents",
-		Description: "Search file contents recursively with a regular expression (Go RE2: no lookaround or backreferences; literal for plain strings), like ripgrep. " +
-			"output_mode: content (lines, with context/before/after lines), files (paths only) or count. include filters files by glob (*.go, src/**/*.ts). " +
-			"Skips binary files and .git/.hg/.svn. Files in Shift_JIS, EUC-JP etc. are decoded automatically.",
+		Description: "Search file contents recursively using a Go RE2 regex (or literal string). " +
+			"output_mode: content (matching lines with optional context/before/after), files (paths only) or count. " +
+			"Filters by include glob and gitignore, skips binary files and .git/.hg/.svn, and auto-decodes non-UTF-8 text encodings.",
 		Annotations: readOnly(),
 	}, d.searchGrep)
 	add(s, d, groupSearch, &mcp.Tool{
 		Name:  "search_files",
 		Title: "Find files",
-		Description: "Find files or directories recursively by glob: base name without a slash (*.log, *.{yml,yaml}) or relative path with a slash (**/test/*.py). " +
-			"type limits to file or dir; sort mtime lists the most recently modified first.",
+		Description: "Find files or directories recursively by glob (base name without '/', or relative path with '/'). " +
+			"Filter by type (file, dir) and sort by path or mtime (newest first).",
 		Annotations: readOnly(),
 	}, d.searchFiles)
 
@@ -263,8 +261,8 @@ func Register(s *mcp.Server, d *Deps) {
 	add(s, d, groupCore, &mcp.Tool{
 		Name:  "sys_info",
 		Title: "Host information",
-		Description: "Get OS, architecture, hostname, user, home and working directory, path separator, default shell, default encodings, " +
-			"enabled tool groups and restrictions of the remote host. Call it first to decide paths, shell syntax and encodings.",
+		Description: "Get remote host OS, architecture, hostname, user, home/working directories, path separator, default shell, default encodings, " +
+			"enabled tool groups and active policy restrictions. Call first to determine paths, shell syntax and encodings.",
 		Annotations: readOnly(),
 	}, d.sysInfo)
 

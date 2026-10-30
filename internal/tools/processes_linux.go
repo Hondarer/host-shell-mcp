@@ -10,11 +10,10 @@ import (
 	"time"
 )
 
-// clockTicks is the kernel's USER_HZ, the unit of the start time in /proc/<pid>/stat.
-// It is 100 on every Linux architecture Go supports.
+// clockTicks is the kernel USER_HZ value used for start times in /proc/<pid>/stat (100 on all Go-supported Linux architectures).
 const clockTicks = 100
 
-// listProcesses reads every process from /proc.
+// listProcesses reads all processes from /proc.
 func listProcesses() ([]Process, error) {
 	boot := bootTime()
 	users := map[string]string{}
@@ -69,7 +68,7 @@ func listProcesses() ([]Process, error) {
 	return out, nil
 }
 
-// userName returns the name of the user with the ID uid, or the ID when it has no name.
+// userName resolves a numeric UID to a username, falling back to uid.
 func userName(cache map[string]string, uid string) string {
 	if n, ok := cache[uid]; ok {
 		return n
@@ -82,7 +81,7 @@ func userName(cache map[string]string, uid string) string {
 	return n
 }
 
-// bootTime returns when the system started, from the btime line of /proc/stat.
+// bootTime reads the system boot time from the btime entry in /proc/stat.
 func bootTime() time.Time {
 	b, err := os.ReadFile("/proc/stat")
 	if err != nil {

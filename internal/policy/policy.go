@@ -1,9 +1,9 @@
-// Package policy represents the restrictions the user of host-shell specifies at startup.
+// Package policy enforces startup restrictions on tool exposure, paths, commands, network
+// destinations, environment variables, and output redaction.
 //
-// The default is no restriction; only what the options specify is restricted.
-// The checks here apply to tool arguments. When commands can be run with exec_run and similar
-// tools, the commands can touch files and the network freely, so for strict restriction remove
-// the command execution group (exec) with --tools.
+// By default, nothing is restricted. Path and network checks apply to tool arguments only;
+// child processes started via exec tools can access the host directly, so strict sandboxing
+// requires disabling the exec group with --tools.
 package policy
 
 import (
@@ -19,33 +19,33 @@ import (
 	"strings"
 )
 
-// Options are the restrictions built from the startup options.
+// Options configures startup restrictions.
 type Options struct {
-	// Tools selects the exposed tools (e.g. "all,-admin,-sudo_run"). Empty means all.
+	// Tools selects exposed tools (e.g., "all,-admin,-sudo_run"; empty means "all").
 	Tools string
-	// ReadOnly hides the tools that change the target.
+	// ReadOnly hides tools that modify the host.
 	ReadOnly bool
-	// Confirm selects the tools that need user confirmation (MCP elicitation) before they run.
+	// Confirm selects tools requiring user confirmation (MCP elicitation) per call.
 	Confirm string
-	// AllowPaths are the locations where files may be read and written. Empty means no restriction.
+	// AllowPaths restricts file read/write access to these directories (empty means unrestricted).
 	AllowPaths []string
-	// AllowReadPaths are the locations where files may only be read.
+	// AllowReadPaths allows read-only file access under these directories.
 	AllowReadPaths []string
-	// AllowCommands are the program names (globs) allowed to run. Empty means no restriction.
+	// AllowCommands restricts execution to matching program name globs (empty means unrestricted).
 	AllowCommands []string
-	// DenyCommands are regular expressions for command lines that are refused.
+	// DenyCommands rejects command lines matching any of these regular expressions.
 	DenyCommands []string
-	// AllowHosts are the destinations the network tools may connect to. Empty means no restriction.
+	// AllowHosts restricts network tools to matching destinations (empty means unrestricted).
 	AllowHosts []string
-	// UnsetEnv are the names (globs) of environment variables not passed to child processes.
+	// UnsetEnv excludes matching environment variable globs from child processes.
 	UnsetEnv []string
-	// Redact masks secrets (keys, tokens, passwords and the like) in the output.
+	// Redact masks common secrets (keys, tokens, passwords) in tool output.
 	Redact bool
-	// RedactPatterns are additional regular expressions to mask.
+	// RedactPatterns specifies additional regular expressions to mask in tool output.
 	RedactPatterns []string
 }
 
-// Policy holds the restrictions in the form used for checks. The zero value means no restriction.
+// Policy holds compiled restrictions; the zero value imposes none.
 type Policy struct {
 	ReadOnly bool
 
@@ -65,7 +65,7 @@ type Policy struct {
 	redact []redaction
 }
 
-// New validates the options and builds a Policy. known maps tool names to group names.
+// New validates o and compiles a Policy. known maps tool names to their group names.
 func New(o Options, known map[string]string) (*Policy, error) {
 	p := &Policy{ReadOnly: o.ReadOnly}
 	var err error
@@ -93,7 +93,7 @@ func New(o Options, known map[string]string) (*Policy, error) {
 		p.readRoots = append(p.readRoots, root)
 	}
 	if len(p.readRoots) > 0 && len(p.writeRoots) == 0 {
-		// When only read-only locations are given, writes are allowed nowhere.
+		// With only read-only roots configured, disallow all writes.
 		p.writeRoots = []string{}
 	}
 	for _, c := range o.AllowCommands {
@@ -151,7 +151,7 @@ func (p *Policy) NeedsConfirm(tool, group string, readOnlyTool bool) bool {
 	return p.confirm.match(tool, group, !readOnlyTool)
 }
 
-// Summary returns the restrictions as name and value pairs. Unrestricted items are left out.
+// Summary returns active restrictions as (label, value) pairs.
 func (p *Policy) Summary() [][2]string {
 	var out [][2]string
 	if p.tools.spec != "all" {
@@ -202,7 +202,7 @@ func listOrNone(s []string) string {
 
 // ---- Tool selection ----
 
-// selector is a specification such as "all,-admin,net,-sudo_run", applied from left to right.
+// selector evaluates comma-separated tool/group expressions (e.g., "all,-admin,net,-sudo_run") left to right.
 type selector struct {
 	spec  string
 	items []selItem
@@ -213,11 +213,10 @@ type selItem struct {
 	name   string
 }
 
-// Special names usable in addition to group names.
 const (
 	selAll         = "all"
-	selDestructive = "destructive" // tools that may change the target
-	selReadOnly    = "readonly"    // tools that do not change the target
+	selDestructive = "destructive" // tools that may modify the target
+	selReadOnly    = "readonly"    // tools that do not modify the target
 )
 
 func parseSelector(spec string, known map[string]string) (selector, error) {
@@ -260,7 +259,7 @@ func (s selector) match(tool, group string, destructive bool) bool {
 
 // ---- Paths ----
 
-// CheckPath checks whether reading (write is false) or writing path is allowed.
+// CheckPath verifies that reading (write=false) or writing pth is permitted.
 func (p *Policy) CheckPath(pth string, write bool) error {
 	roots := p.readRoots
 	kind := "read"
@@ -284,7 +283,7 @@ func (p *Policy) CheckPath(pth string, write bool) error {
 	return fmt.Errorf("policy: %s access to %s is not allowed (allowed: %s)", kind, abs, listOrNone(roots))
 }
 
-// resolveRoot turns an allowed location into an absolute path with symbolic links resolved.
+// resolveRoot converts r to a symlink-resolved absolute path.
 func resolveRoot(r string) (string, error) {
 	if r == "" {
 		return "", errors.New("empty path")
@@ -296,8 +295,8 @@ func resolveRoot(r string) (string, error) {
 	return resolveExisting(abs), nil
 }
 
-// resolveExisting resolves symbolic links in the part that exists and appends the rest,
-// so that a file not yet created is judged by its resolved parent.
+// resolveExisting resolves symlinks in the deepest existing prefix of abs and appends the remaining suffix,
+// so not-yet-created paths are checked against their resolved parent directory.
 func resolveExisting(abs string) string {
 	rest := ""
 	cur := filepath.Clean(abs)
@@ -327,7 +326,7 @@ func within(p, root string) bool {
 
 // ---- Commands ----
 
-// CheckCommand checks whether programs (the programs or shells started) and the whole command line text are allowed.
+// CheckCommand verifies that all executed programs/shells and the full command line text are permitted.
 func (p *Policy) CheckCommand(programs []string, text string) error {
 	if len(p.allowCommands) > 0 {
 		for _, prog := range programs {
@@ -349,7 +348,7 @@ func (p *Policy) CheckCommand(programs []string, text string) error {
 	return nil
 }
 
-// baseName returns the last element of a path regardless of the OS.
+// baseName returns the final path element across both '/' and '\' separators.
 func baseName(p string) string {
 	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
 		return p[i+1:]
@@ -357,7 +356,7 @@ func baseName(p string) string {
 	return p
 }
 
-// normalizeProgram lowercases the name and drops the executable extension on Windows.
+// normalizeProgram lowercases program names and strips executable extensions on Windows.
 func normalizeProgram(name string) string {
 	if runtime.GOOS != "windows" {
 		return name
@@ -373,7 +372,7 @@ func normalizeProgram(name string) string {
 
 // ---- Environment variables ----
 
-// FilterEnv removes the variables that must not be passed from env (a list of KEY=VALUE).
+// FilterEnv removes environment variables (KEY=VALUE) matching UnsetEnv.
 func (p *Policy) FilterEnv(env []string) []string {
 	if len(p.unsetEnv) == 0 {
 		return env
@@ -406,8 +405,8 @@ func (p *Policy) envUnset(name string) bool {
 
 // ---- Network ----
 
-// hostRule allows a destination. host is a glob or a CIDR; port is empty (any) or a glob of numbers.
-// Rules starting with "unix:" are globs of Unix domain socket paths.
+// hostRule matches an allowed network destination: a host glob or CIDR with optional port glob,
+// or a "unix:" socket path glob.
 type hostRule struct {
 	spec string
 	host string
@@ -440,8 +439,8 @@ func parseHostRule(s string) (hostRule, error) {
 	return r, nil
 }
 
-// CheckHost checks whether connecting to host:port is allowed.
-// When a name is matched against a CIDR rule, every address the name resolves to must be in the range.
+// CheckHost verifies that connecting to host:port is permitted.
+// Against a CIDR rule, every IP address that a hostname resolves to must fall within the subnet.
 func (p *Policy) CheckHost(host string, port int) error {
 	if len(p.allowHosts) == 0 {
 		return nil
@@ -510,8 +509,8 @@ type redaction struct {
 	repl string
 }
 
-// builtinRedactions are common shapes of secrets.
-// They keep the name and the separator and mask only the value.
+// builtinRedactions returns regular expressions for common secret formats, preserving key names
+// and delimiters while masking secret values.
 func builtinRedactions() []redaction {
 	r := func(expr, repl string) redaction { return redaction{re: regexp.MustCompile(expr), repl: repl} }
 	return []redaction{

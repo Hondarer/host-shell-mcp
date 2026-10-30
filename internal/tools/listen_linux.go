@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-// listeners reads listening sockets from /proc/net and finds their processes through /proc/<pid>/fd.
+// listeners reads listening sockets from /proc/net/{tcp,tcp6,udp,udp6} and resolves owning processes via /proc/<pid>/fd.
 func listeners(context.Context) ([]Listener, string, error) {
 	owners := socketOwners()
 	var out []Listener
@@ -51,8 +51,7 @@ func listeners(context.Context) ([]Listener, string, error) {
 	return out, note, nil
 }
 
-// parseProcAddr reads an address of the form "0100007F:1F90" from /proc/net/tcp.
-// Each 32-bit word of the address is in host byte order (little endian).
+// parseProcAddr decodes a "/proc/net/tcp" hex address ("0100007F:1F90", with little-endian 32-bit IP words).
 func parseProcAddr(s string) (string, int, bool) {
 	h, p, ok := strings.Cut(s, ":")
 	if !ok {

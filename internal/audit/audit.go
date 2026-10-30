@@ -1,6 +1,5 @@
-// Package audit records every operation host-shell accepts in a log file on the target.
-//
-// Standard output carries MCP JSON-RPC only, so this package never writes to it.
+// Package audit records host-shell operations to daily JSON Lines files on the target.
+// It never writes to standard output, which is reserved for MCP JSON-RPC.
 package audit
 
 import (
@@ -13,29 +12,26 @@ import (
 	"time"
 )
 
-// keepDays is how many files of earlier days are kept besides the current day's file.
+// keepDays is the number of previous daily log files retained alongside today's file.
 const keepDays = 5
 
-// dateLayout is the date put into the file names.
 const dateLayout = "2006-01-02"
 
-// Redactor is implemented by input types that replace the arguments written to the log.
-// It keeps values such as written content and passwords out of the log.
+// Redactor is implemented by tool input types that scrub sensitive fields (such as file contents or passwords) before logging.
 type Redactor interface {
 	AuditArgs() any
 }
 
-// Logger writes the audit log as JSON Lines, one file per day.
+// Logger writes daily JSON Lines audit logs.
 type Logger struct {
 	l *slog.Logger
 }
 
-// Open creates a logger that appends to a file per day named after path: audit.log becomes
-// audit-2026-10-31.log, by the local date of each record. Files of all but the last keepDays
-// earlier days are removed. An empty path records nothing.
+// Open creates a logger that appends to daily files derived from path (e.g., audit-2026-10-31.log
+// in local time) and prunes files older than keepDays. An empty path disables logging.
 //
-// Each record opens the file, appends one line with a single write and closes it again, so the
-// host-shell processes of several SSH sessions can share the files without renaming anything.
+// Each record opens, appends a single line, and closes the file so concurrent host-shell
+// processes can share daily files without coordination or file renaming.
 func Open(path string) (*Logger, error) {
 	return open(path, time.Now)
 }
@@ -48,7 +44,7 @@ func open(path string, now func() time.Time) (*Logger, error) {
 		return nil, err
 	}
 	w := &dailyWriter{base: path, now: now}
-	// Fail early when the file cannot be written.
+	// Verify writability upfront.
 	f, err := os.OpenFile(w.name(now().Format(dateLayout)), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, err
@@ -57,15 +53,15 @@ func open(path string, now func() time.Time) (*Logger, error) {
 	return &Logger{l: slog.New(slog.NewJSONHandler(w, nil))}, nil
 }
 
-// Close is kept for symmetry with Open; no file stays open between records.
+// Close is a no-op retained for symmetry with Open; files are closed after each write.
 func (a *Logger) Close() error { return nil }
 
-// Event records an event such as server start or stop.
+// Event logs a lifecycle event such as server start or stop.
 func (a *Logger) Event(msg string, attrs ...any) {
 	a.l.Info(msg, attrs...)
 }
 
-// Tool records one tool call on one line.
+// Tool logs a single tool invocation.
 func (a *Logger) Tool(name string, args any, d time.Duration, isError bool, err error) {
 	if r, ok := args.(Redactor); ok {
 		args = r.AuditArgs()
@@ -82,15 +78,15 @@ func (a *Logger) Tool(name string, args any, d time.Duration, isError bool, err 
 	a.l.Info("tool_call", attrs...)
 }
 
-// dailyWriter appends each write (one record from slog) to the file of the current day.
+// dailyWriter appends each slog record to the current day's log file.
 type dailyWriter struct {
 	mu   sync.Mutex
 	base string
 	now  func() time.Time
-	day  string // the day this process last wrote, to prune old files once per day
+	day  string // last write date, used to prune old files once per day
 }
 
-// name returns the file name for day: the date goes before the extension of base.
+// name inserts day before the file extension of base.
 func (w *dailyWriter) name(day string) string {
 	ext := filepath.Ext(w.base)
 	return strings.TrimSuffix(w.base, ext) + "-" + day + ext
@@ -115,10 +111,9 @@ func (w *dailyWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// prune removes the files of all but the keepDays most recent days other than today.
-// Only names of the form <base>-YYYY-MM-DD<ext> with a valid date are touched. Errors are ignored:
-// another host-shell may have removed the file already, or (on Windows) have it open for a moment;
-// the next day's prune tries again.
+// prune removes dated log files (<base>-YYYY-MM-DD<ext>) older than the keepDays most recent
+// days before today. Removal errors are ignored (another process may have removed the file or
+// hold it open briefly on Windows) and retried on the next day's prune.
 func (w *dailyWriter) prune(today string) {
 	ext := filepath.Ext(w.base)
 	prefix := filepath.Base(strings.TrimSuffix(w.base, ext)) + "-"

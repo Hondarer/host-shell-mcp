@@ -15,7 +15,7 @@ import (
 
 // FsMkdirInput is the input of fs_mkdir.
 type FsMkdirInput struct {
-	Path string `json:"path" jsonschema:"directory to create. Missing parent directories are created too; an existing directory is not an error"`
+	Path string `json:"path" jsonschema:"directory to create (creates missing parents; succeeds if already a directory)"`
 }
 
 // FsMkdirOutput is the output of fs_mkdir.
@@ -45,16 +45,16 @@ func (d *Deps) fsMkdir(_ context.Context, _ *mcp.CallToolRequest, in FsMkdirInpu
 // FsMoveInput is the input of fs_move.
 type FsMoveInput struct {
 	Source      string `json:"source" jsonschema:"file or directory to move or rename"`
-	Destination string `json:"destination" jsonschema:"new path (the full target path, not a directory to move into)"`
-	Overwrite   bool   `json:"overwrite,omitempty" jsonschema:"replace an existing destination file. An existing destination directory is never replaced"`
-	MakeDirs    bool   `json:"make_dirs,omitempty" jsonschema:"create parent directories of destination if missing"`
+	Destination string `json:"destination" jsonschema:"full destination path (not a parent directory)"`
+	Overwrite   bool   `json:"overwrite,omitempty" jsonschema:"replace an existing destination file (never replaces a directory)"`
+	MakeDirs    bool   `json:"make_dirs,omitempty" jsonschema:"create missing parent directories of destination"`
 }
 
 // FsMoveOutput is the output of fs_move.
 type FsMoveOutput struct {
 	Source      string `json:"source"`
 	Destination string `json:"destination"`
-	Copied      bool   `json:"copied,omitempty" jsonschema:"moved across file systems by copying and deleting the source"`
+	Copied      bool   `json:"copied,omitempty" jsonschema:"moved across file systems by copying and deleting source"`
 }
 
 func (d *Deps) fsMove(_ context.Context, _ *mcp.CallToolRequest, in FsMoveInput) (*mcp.CallToolResult, FsMoveOutput, error) {
@@ -90,10 +90,10 @@ func (d *Deps) fsMove(_ context.Context, _ *mcp.CallToolRequest, in FsMoveInput)
 // FsCopyInput is the input of fs_copy.
 type FsCopyInput struct {
 	Source      string `json:"source" jsonschema:"file or directory to copy"`
-	Destination string `json:"destination" jsonschema:"path of the copy (the full target path, not a directory to copy into)"`
-	Recursive   bool   `json:"recursive,omitempty" jsonschema:"required to copy a directory and its contents"`
-	Overwrite   bool   `json:"overwrite,omitempty" jsonschema:"replace existing files at the destination (directories are merged)"`
-	MakeDirs    bool   `json:"make_dirs,omitempty" jsonschema:"create parent directories of destination if missing"`
+	Destination string `json:"destination" jsonschema:"full destination path (not a parent directory)"`
+	Recursive   bool   `json:"recursive,omitempty" jsonschema:"copy a directory and its contents"`
+	Overwrite   bool   `json:"overwrite,omitempty" jsonschema:"replace existing destination files (merges directories)"`
+	MakeDirs    bool   `json:"make_dirs,omitempty" jsonschema:"create missing parent directories of destination"`
 }
 
 // FsCopyOutput is the output of fs_copy.
@@ -102,7 +102,7 @@ type FsCopyOutput struct {
 	Destination string `json:"destination"`
 	Files       int    `json:"files" jsonschema:"files copied"`
 	Dirs        int    `json:"dirs,omitempty" jsonschema:"directories created"`
-	Symlinks    int    `json:"symlinks,omitempty" jsonschema:"symbolic links recreated (not followed)"`
+	Symlinks    int    `json:"symlinks,omitempty" jsonschema:"symlinks recreated (not followed)"`
 	Bytes       int64  `json:"bytes" jsonschema:"bytes copied"`
 }
 
@@ -118,7 +118,7 @@ func (d *Deps) fsCopy(_ context.Context, _ *mcp.CallToolRequest, in FsCopyInput)
 		return nil, FsCopyOutput{}, errors.New("destination is inside the source directory")
 	}
 	if dst, err := os.Lstat(in.Destination); err == nil && src.IsDir() && dst.IsDir() {
-		// Directory onto directory merges the contents when overwrite is set.
+		// Directory onto directory merges contents when overwrite is set.
 		if !in.Overwrite {
 			return nil, FsCopyOutput{}, fmt.Errorf("%s already exists; set overwrite to merge into it", in.Destination)
 		}
@@ -136,9 +136,9 @@ func (d *Deps) fsCopy(_ context.Context, _ *mcp.CallToolRequest, in FsCopyInput)
 
 // FsRemoveInput is the input of fs_remove.
 type FsRemoveInput struct {
-	Path      string `json:"path" jsonschema:"file, symbolic link or directory to delete. A symbolic link is removed, not its target"`
-	Recursive bool   `json:"recursive,omitempty" jsonschema:"required to delete a non-empty directory and everything under it"`
-	MissingOK bool   `json:"missing_ok,omitempty" jsonschema:"do not fail if path does not exist"`
+	Path      string `json:"path" jsonschema:"file, symlink (unlinked without following) or directory to delete"`
+	Recursive bool   `json:"recursive,omitempty" jsonschema:"delete a non-empty directory and all its contents"`
+	MissingOK bool   `json:"missing_ok,omitempty" jsonschema:"succeed if path does not exist"`
 }
 
 // FsRemoveOutput is the output of fs_remove.

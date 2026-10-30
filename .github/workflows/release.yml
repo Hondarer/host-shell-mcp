@@ -1,7 +1,7 @@
 name: Release
 
-# When a Release is published, build at its tag and attach the source archives with dist/ and the
-# skill's bin/ (zip and tar.gz, laid out like GitHub's own source archives) to the Release.
+# On release publication, build the tagged revision and upload source+binary archives
+# (zip and tar.gz matching GitHub's source archive layout, including dist/ and skill bin/) to the release.
 on:
   release:
     types: [published]

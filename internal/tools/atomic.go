@@ -9,12 +9,10 @@ import (
 	"runtime"
 )
 
-// replaceAtomically writes data to a temporary file beside path and renames it over path, so
-// readers see either the old or the new content, never a partial one. A symbolic link is
-// followed, and the file it points to is replaced. The permissions of an existing file are kept,
-// and so are its owner and group: when they cannot be kept (host-shell is not root and does not
-// own the file), nothing is written and an error suggests writing in place instead. ACLs,
-// extended attributes and hard links are not kept. perm is used for a new file.
+// replaceAtomically writes data to a temporary file beside path and renames it over the target
+// (following symlinks). It preserves existing permissions, owner, and group (failing before modifying
+// the target if ownership cannot be preserved), or applies perm for a new file. ACLs, extended
+// attributes, and hard links are not preserved.
 func replaceAtomically(path string, data []byte, perm fs.FileMode) error {
 	target := path
 	if fi, err := os.Lstat(path); err == nil && fi.Mode()&fs.ModeSymlink != 0 {

@@ -1,7 +1,6 @@
-// Package proc starts child processes, hiding the differences between Windows and Linux.
+// Package proc spawns and manages child processes across Linux and Windows.
 //
-// It is essential not to give child processes host-shell's own standard input (the MCP channel)
-// as their standard input, nor host-shell's own standard output as their standard output.
+// Child processes must never inherit host-shell's own stdin or stdout, which carry MCP JSON-RPC.
 package proc
 
 import (
@@ -22,25 +21,25 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// Spec specifies the command to start. Set exactly one of Command and Argv.
+// Spec describes a command to start. Exactly one of Command or Argv must be set.
 type Spec struct {
-	// Command is the command line passed to the shell.
+	// Command is a command line passed to Shell.
 	Command string
-	// Argv is the argument list started without a shell. Argv[0] is the program.
+	// Argv is a program and arguments executed directly without a shell.
 	Argv []string
-	// Shell interprets Command. Empty means the OS default.
+	// Shell interprets Command (empty uses the OS default).
 	Shell string
 	// Dir is the working directory.
 	Dir string
-	// Env adds to or overrides the inherited environment variables.
+	// Env adds or overrides environment variables.
 	Env map[string]string
-	// EnvFilter narrows the environment before it is passed to the child (user restrictions). nil means no filtering.
+	// EnvFilter filters inherited environment variables before applying Env (nil means no filtering).
 	EnvFilter func([]string) []string
-	// Interactive means the command is used interactively on a terminal. PowerShell then gets no -NonInteractive.
+	// Interactive indicates an interactive terminal session (omits PowerShell's -NonInteractive).
 	Interactive bool
 }
 
-// waitDelay is how long to wait when grandchildren still hold the pipes after the process exits.
+// waitDelay bounds how long to wait for pipes held open by grandchildren after process exit.
 const waitDelay = 2 * time.Second
 
 // Command builds an exec.Cmd from spec. The caller sets up standard input and output.
@@ -93,21 +92,21 @@ type Result struct {
 	DurationMs      int64  `json:"duration_ms"`
 }
 
-// Options control how Run behaves.
+// Options configures Run.
 type Options struct {
 	DefaultShell string
-	// Stdin is the bytes passed to standard input. The caller has already converted the encoding.
+	// Stdin is pre-encoded standard input.
 	Stdin string
-	// Output is the encoding of standard output and standard error. The zero value is UTF-8 (no conversion).
+	// Output is the stdout/stderr encoding (zero value means UTF-8 without conversion).
 	Output    textenc.Choice
 	Timeout   time.Duration
 	MaxOutput int
-	// OnOutput receives the bytes written to standard output and standard error (before conversion). Used for progress notifications.
+	// OnOutput receives raw stdout/stderr bytes before encoding conversion (used for progress notifications).
 	OnOutput func([]byte)
 }
 
-// Run runs the command, waits for it to end and returns the result.
-// A non-zero exit code is not an error; an error is returned only when the command could not start.
+// Run executes spec to completion and returns its captured output and exit status.
+// Non-zero exit codes are reported in Result.ExitCode; an error is returned only if the process fails to start.
 func Run(parent context.Context, spec Spec, opt Options) (Result, error) {
 	ctx, cancel := context.WithTimeout(parent, opt.Timeout)
 	defer cancel()
@@ -157,14 +156,12 @@ func DefaultShell(windowsShell string) string {
 	return "sh"
 }
 
-// powershellArgs passes the script with -EncodedCommand to avoid differences in quote handling.
+// powershellArgs passes script via -EncodedCommand to avoid cmd/SSH quoting issues.
 //
-// Before the script, output is set to UTF-8. (Setting [Console]::InputEncoding there has no effect on
-// $input, which PowerShell sets up before the script runs; the tools encode stdin for PowerShell in
-// the console code page instead.) After the script, the exit code is taken from the
-// last statement, as with sh -c: 0 when it succeeded ($? is true), otherwise $LASTEXITCODE when a
-// native command set one, otherwise 1. A script that ends with exit N, or stops on a terminating
-// error, never reaches that part.
+// It sets [Console]::OutputEncoding to UTF-8 before running script (stdin must be encoded in the
+// console code page by the caller, as PowerShell initializes $input before running the script).
+// Afterward, it maps the last statement's status to an sh-compatible exit code: 0 if $? is true,
+// $LASTEXITCODE if non-zero, or 1 (scripts that call exit N or throw a terminating error exit earlier).
 func powershellArgs(script string, interactive bool) []string {
 	script = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n" +
 		script +

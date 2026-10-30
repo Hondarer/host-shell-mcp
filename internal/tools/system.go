@@ -19,16 +19,16 @@ import (
 
 // SudoRunInput is the input of sudo_run.
 type SudoRunInput struct {
-	Command    string `json:"command" jsonschema:"shell command line run as sh -c under sudo"`
+	Command    string `json:"command" jsonschema:"shell command line run via sudo sh -c"`
 	User       string `json:"user,omitempty" jsonschema:"target user (default: root)"`
 	Cwd        string `json:"cwd,omitempty" jsonschema:"working directory"`
-	Stdin      string `json:"stdin,omitempty" jsonschema:"text passed to standard input of the command"`
-	Password   string `json:"password,omitempty" jsonschema:"the user's sudo password, only when the user gave it to you and sudo asks for one. It is handed to sudo only if sudo asks, never to the command, and is not logged"`
+	Stdin      string `json:"stdin,omitempty" jsonschema:"text written to command stdin"`
+	Password   string `json:"password,omitempty" jsonschema:"sudo password provided by the user (passed to sudo only via askpass, never to the command or logs)"`
 	TimeoutSec int    `json:"timeout_sec,omitempty" jsonschema:"timeout in seconds"`
 	IOEncoding
 }
 
-// AuditArgs keeps the content of standard input and the password out of the log.
+// AuditArgs redacts Stdin and Password for audit logging.
 func (in SudoRunInput) AuditArgs() any {
 	in.Stdin = redactedLen(in.Stdin)
 	if in.Password != "" {
@@ -37,9 +37,8 @@ func (in SudoRunInput) AuditArgs() any {
 	return in
 }
 
-// sudoRun runs a command with sudo. Without a password it uses sudo -n (non-interactive).
-// With one it uses sudo -A, with host-shell itself as the askpass helper (see Askpass), so the
-// password reaches sudo only when sudo asks for it and never the command's standard input.
+// sudoRun runs a command via sudo: using sudo -n when Password is empty, or sudo -A with the
+// built-in askpass helper (see Askpass) so the password is never exposed to the command's stdin.
 func (d *Deps) sudoRun(ctx context.Context, req *mcp.CallToolRequest, in SudoRunInput) (*mcp.CallToolResult, proc.Result, error) {
 	if in.Command == "" {
 		return nil, proc.Result{}, errors.New("command is required")
@@ -101,15 +100,15 @@ type SysInfoOutput struct {
 	Cwd          string   `json:"cwd"`
 	PathSep      string   `json:"path_separator"`
 	DefaultShell string   `json:"default_shell"`
-	ConsoleEnc   string   `json:"console_encoding" jsonschema:"encoding used for command input/output by default (system for output_encoding/stdin_encoding)"`
-	FileEnc      string   `json:"file_encoding" jsonschema:"encoding used for text files by default (system for charset)"`
+	ConsoleEnc   string   `json:"console_encoding" jsonschema:"default command I/O encoding (system for output_encoding/stdin_encoding)"`
+	FileEnc      string   `json:"file_encoding" jsonschema:"default text file encoding (system for charset)"`
 	NumCPU       int      `json:"num_cpu"`
 	PID          int      `json:"pid"`
 	Executable   string   `json:"executable"`
 	Version      string   `json:"version" jsonschema:"host-shell version"`
 	GoVersion    string   `json:"go_version"`
-	ToolGroups   []string `json:"tool_groups" jsonschema:"tool groups available in this session (see help)"`
-	Restrictions []string `json:"restrictions,omitempty" jsonschema:"restrictions set by the administrator of this host-shell; operations outside them fail"`
+	ToolGroups   []string `json:"tool_groups" jsonschema:"enabled tool groups in this session (see help)"`
+	Restrictions []string `json:"restrictions,omitempty" jsonschema:"active policy restrictions configured on this server"`
 }
 
 func (d *Deps) sysInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, SysInfoOutput, error) {
@@ -152,29 +151,28 @@ func (d *Deps) enabledGroups() []string {
 
 // SysProcessesInput is the input of sys_processes.
 type SysProcessesInput struct {
-	Filter string `json:"filter,omitempty" jsonschema:"case-insensitive substring of the name or command line"`
-	PID    int    `json:"pid,omitempty" jsonschema:"only this process and its descendants"`
-	Max    int    `json:"max,omitempty" jsonschema:"maximum processes to return (default 500)"`
+	Filter string `json:"filter,omitempty" jsonschema:"case-insensitive name or command line substring"`
+	PID    int    `json:"pid,omitempty" jsonschema:"root pid (returns this process and its descendants)"`
+	Max    int    `json:"max,omitempty" jsonschema:"max processes to return (default 500)"`
 }
 
-// Process is one running process. Fields the OS does not provide, or that need rights host-shell
-// lacks (processes of other users on Windows), are empty.
+// Process describes one running process. Fields unavailable on the OS or inaccessible due to permissions are omitted.
 type Process struct {
 	PID         int    `json:"pid"`
 	PPID        int    `json:"ppid"`
 	Name        string `json:"name"`
 	CommandLine string `json:"command_line,omitempty"`
 	User        string `json:"user,omitempty"`
-	State       string `json:"state,omitempty" jsonschema:"Linux: R running, S sleeping, D waiting for I/O, Z zombie, T stopped, ..."`
+	State       string `json:"state,omitempty" jsonschema:"Linux: R running, S sleeping, D uninterruptible sleep, Z zombie, T stopped, ..."`
 	StartTime   string `json:"start_time,omitempty" jsonschema:"RFC 3339"`
-	MemoryBytes uint64 `json:"memory_bytes,omitempty" jsonschema:"resident memory (working set on Windows)"`
+	MemoryBytes uint64 `json:"memory_bytes,omitempty" jsonschema:"resident set size (working set on Windows)"`
 }
 
 // SysProcessesOutput is the output of sys_processes.
 type SysProcessesOutput struct {
 	Processes []Process `json:"processes"`
-	Total     int       `json:"total" jsonschema:"number of processes that matched before max was applied"`
-	Truncated bool      `json:"truncated,omitempty" jsonschema:"max was reached"`
+	Total     int       `json:"total" jsonschema:"matching processes before max limit"`
+	Truncated bool      `json:"truncated,omitempty" jsonschema:"stopped at max"`
 }
 
 // sysProcesses lists processes from /proc on Linux and the Windows API on Windows, ordered by pid.

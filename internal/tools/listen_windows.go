@@ -11,7 +11,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// listeners reads listening sockets from the output of netstat -ano and adds process names from tasklist.
+// listeners parses listening sockets from netstat -ano and resolves process names via tasklist.
 func listeners(ctx context.Context) ([]Listener, string, error) {
 	opt := proc.Options{Output: textenc.Choice{Auto: true, Enc: textenc.Console()}, Timeout: 30 * time.Second, MaxOutput: 16 << 20}
 	res, err := proc.Run(ctx, proc.Spec{Argv: []string{"netstat", "-ano"}}, opt)

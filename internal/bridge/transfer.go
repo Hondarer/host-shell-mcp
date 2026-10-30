@@ -28,16 +28,16 @@ import (
 
 const transferInstructions = `This connection goes through host-shell bridge on your local machine.
 - transfer_push copies a local file or directory to the remote host; transfer_pull copies a remote file or directory to this machine.
-- Use them instead of reading a file with fs_read and writing it with fs_write: the contents are sent directly, are verified by SHA-256, and do not use your context. Unchanged files are skipped, so they also work for syncing.
+- Prefer them over fs_read/fs_write for file transfers: contents are sent directly, verified with SHA-256, and bypass your context. Identical files are skipped, making them suitable for syncing.
 - local_path is on your local machine (relative to the agent's working directory); remote_path is on the remote host.`
 
-// partSuffix is appended to the name of a file being sent. The file is renamed after it is sent and verified.
+// partSuffix is the temporary suffix used while transferring a file before verification and rename.
 const partSuffix = ".host-shell-part"
 
-// maxListed caps the number of files listed in the result.
+// maxListed caps the number of per-file results returned in TransferOutput.
 const maxListed = 500
 
-// transfer provides the tools that send files between the local machine and the target.
+// transfer implements local-to-remote file transfers.
 type transfer struct {
 	remote *mcp.ClientSession
 	local  *policy.Policy
@@ -88,23 +88,21 @@ func (t *transfer) register(srv *mcp.Server) {
 	}, t.pull)
 }
 
-// TransferInput is the input of transfer_push and transfer_pull.
+// TransferInput defines arguments for transfer_push and transfer_pull.
 type TransferInput struct {
 	LocalPath  string   `json:"local_path" jsonschema:"path on the local machine (absolute, or relative to the agent's working directory)"`
 	RemotePath string   `json:"remote_path" jsonschema:"path on the remote host"`
 	Overwrite  bool     `json:"overwrite,omitempty" jsonschema:"replace existing files whose contents differ (identical files are always skipped)"`
 	Exclude    []string `json:"exclude,omitempty" jsonschema:"names (globs) of files or directories to skip anywhere in the tree, e.g. [\".git\", \"node_modules\", \"*.pyc\"]"`
 	DryRun     bool     `json:"dry_run,omitempty" jsonschema:"only report what would be transferred"`
-	Parallel   int      `json:"parallel,omitempty" jsonschema:"files transferred at the same time, 1 to 16 (default 4). Lower it for a slow or busy link"`
+	Parallel   int      `json:"parallel,omitempty" jsonschema:"files transferred concurrently, 1 to 16 (default 4); lower for slow or busy links"`
 }
 
-// defaultParallel and maxParallel bound how many files are transferred at the same time.
 const (
 	defaultParallel = 4
 	maxParallel     = 16
 )
 
-// parallelism returns the number of files to transfer at the same time.
 func (in TransferInput) parallelism() (int, error) {
 	switch {
 	case in.Parallel == 0:
@@ -115,8 +113,7 @@ func (in TransferInput) parallelism() (int, error) {
 	return in.Parallel, nil
 }
 
-// forEach runs fn for the indexes 0..n-1, at most parallel at a time, and stops starting new ones
-// when ctx ends. Results are kept by index, so their order does not depend on timing.
+// forEach runs fn(0..n-1) with at most parallel concurrent workers, stopping new launches if ctx is cancelled.
 func forEach(ctx context.Context, n, parallel int, fn func(i int)) error {
 	sem := make(chan struct{}, parallel)
 	var wg sync.WaitGroup
@@ -137,7 +134,7 @@ func forEach(ctx context.Context, n, parallel int, fn func(i int)) error {
 	return ctx.Err()
 }
 
-// FileResult is the result for one file.
+// FileResult reports the transfer outcome for a single file.
 type FileResult struct {
 	Path   string `json:"path" jsonschema:"path relative to the source"`
 	Bytes  int64  `json:"bytes"`
@@ -145,7 +142,7 @@ type FileResult struct {
 	Error  string `json:"error,omitempty"`
 }
 
-// TransferOutput is the result of a transfer.
+// TransferOutput summarizes a transfer operation.
 type TransferOutput struct {
 	Source      string       `json:"source"`
 	Destination string       `json:"destination"`
@@ -173,7 +170,7 @@ func (o *TransferOutput) add(r FileResult) {
 	o.Files = append(o.Files, r)
 }
 
-// finish drops unchanged files first when the list is too long.
+// finish omits unchanged files first when the file list exceeds maxListed.
 func (o *TransferOutput) finish(start time.Time) {
 	o.DurationMs = time.Since(start).Milliseconds()
 	if len(o.Files) > maxListed {
@@ -188,16 +185,15 @@ func (o *TransferOutput) finish(start time.Time) {
 	}
 }
 
-// localFile is a local file.
 type localFile struct {
-	rel  string // path relative to the source (/ separated)
+	rel  string // slash-separated path relative to source
 	full string
 	size int64
 	mode fs.FileMode
 	link bool
 }
 
-// remoteEntry is one entry of fs_manifest.
+// remoteEntry represents a single entry from fs_manifest.
 type remoteEntry struct {
 	Path   string `json:"path"`
 	Size   int64  `json:"size"`
@@ -250,7 +246,6 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 		return nil, TransferOutput{}, fmt.Errorf("remote %s exists and is not a file", dest)
 	}
 
-	// Files to send
 	var files []localFile
 	if info.IsDir() {
 		err = filepath.WalkDir(in.LocalPath, func(p string, de fs.DirEntry, err error) error {
@@ -285,7 +280,6 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 		files = []localFile{{rel: filepath.Base(in.LocalPath), full: in.LocalPath, size: info.Size(), mode: info.Mode()}}
 	}
 
-	// What the target already has
 	remote := map[string]remoteEntry{}
 	if rexists {
 		entries, err := t.manifest(ctx, dest)
@@ -354,7 +348,7 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 	return nil, out, nil
 }
 
-// sendFile sends one file in chunks, verifies it and renames it to its final name.
+// sendFile uploads a file in chunks to a temporary path, verifies its SHA-256, and renames it into place.
 func (t *transfer) sendFile(ctx context.Context, f localFile, target, sum string, onProgress func(int64)) error {
 	src, err := os.Open(f.full)
 	if err != nil {
@@ -501,7 +495,7 @@ func (t *transfer) pull(ctx context.Context, req *mcp.CallToolRequest, in Transf
 	return nil, out, nil
 }
 
-// fetchFile receives one file in chunks, verifies it and renames it to its final name.
+// fetchFile downloads a file in chunks to a temporary path, verifies its SHA-256, and renames it into place.
 func (t *transfer) fetchFile(ctx context.Context, src, target string, e remoteEntry, onProgress func(int64)) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
@@ -564,7 +558,7 @@ func (t *transfer) fetchFile(ctx context.Context, src, target string, e remoteEn
 	return nil
 }
 
-// remoteStat returns the kind of a path on the target (file, dir, symlink, other) and whether it exists.
+// remoteStat returns the remote entry type ("file", "dir", "symlink", "other") and whether it exists.
 func (t *transfer) remoteStat(ctx context.Context, p string) (string, bool, error) {
 	var st struct {
 		Entry struct {
@@ -582,7 +576,7 @@ func (t *transfer) remoteStat(ctx context.Context, p string) (string, bool, erro
 	return st.Entry.Type, true, nil
 }
 
-// notExist reports whether an error from the target means the path does not exist.
+// notExist reports whether a remote error message indicates a missing path.
 func notExist(msg string) bool {
 	m := strings.ToLower(msg)
 	return strings.Contains(m, "no such file") || strings.Contains(m, "cannot find the") || strings.Contains(m, "does not exist")
@@ -626,12 +620,12 @@ func absLocal(p string) string {
 	return p
 }
 
-// progress reports transfer progress when the agent asked for it.
+// progress throttles MCP progress notifications when requested by the caller.
 type progress struct {
 	ctx   context.Context
 	ss    *mcp.ServerSession
 	token any
-	mu    sync.Mutex // files are transferred in parallel
+	mu    sync.Mutex
 	last  time.Time
 }
 

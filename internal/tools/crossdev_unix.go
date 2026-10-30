@@ -7,5 +7,5 @@ import (
 	"syscall"
 )
 
-// isCrossDevice reports whether rename failed because it crosses file systems.
+// isCrossDevice reports whether err is a cross-device rename error (EXDEV).
 func isCrossDevice(err error) bool { return errors.Is(err, syscall.EXDEV) }

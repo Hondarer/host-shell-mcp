@@ -1,6 +1,5 @@
 #!/bin/sh
-# Starts host-shell on the target as an MCP server and checks that it answers initialize and tools/list.
-# Checks over the same path the agent uses (ssh standard input and output).
+# Launches `host-shell --mcp` on the target over SSH stdio and verifies JSON-RPC responses for initialize and tools/list.
 #
 # Usage: probe.sh ROUTE REMOTE_PATH [HOST_SHELL_OPTIONS...]
 #

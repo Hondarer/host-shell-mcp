@@ -14,8 +14,7 @@ import (
 // progressInterval is the minimum interval between progress notifications.
 const progressInterval = time.Second
 
-// progress sends notifications/progress for requests where the client asked for progress (progressToken).
-// It does nothing otherwise, and is usable when nil.
+// progress sends notifications/progress when the client provides a progressToken (no-op when nil).
 type progress struct {
 	ctx   context.Context
 	ss    *mcp.ServerSession
@@ -37,8 +36,8 @@ func newProgress(ctx context.Context, req *mcp.CallToolRequest) *progress {
 	return &progress{ctx: ctx, ss: req.Session, token: token}
 }
 
-// report sends progress. It sends nothing if progressInterval has not passed since the last one (unless force).
-// When value is 0 or less, the number of calls is used as the progress.
+// report sends a progress notification, rate-limited to progressInterval unless force is true.
+// If value <= 0, the notification count is used as the progress value.
 func (p *progress) report(value, total float64, msg string, force bool) {
 	if p == nil {
 		return

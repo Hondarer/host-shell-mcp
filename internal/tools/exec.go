@@ -16,26 +16,25 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// CommandSpec is the input shared by the command execution tools.
+// CommandSpec is the input shared by command execution tools.
 type CommandSpec struct {
-	Command    string            `json:"command,omitempty" jsonschema:"shell command line, interpreted by the selected shell (pipes, redirects, && work). Exactly one of command or argv is required"`
-	Argv       []string          `json:"argv,omitempty" jsonschema:"program and arguments to run without a shell, e.g. [\"git\", \"log\", \"-n\", \"5\"]. No quoting or globbing is applied"`
-	Shell      string            `json:"shell,omitempty" jsonschema:"shell for command: sh, bash or pwsh on Linux; cmd, powershell or pwsh on Windows. Defaults to the host default shown in sys_info"`
-	Cwd        string            `json:"cwd,omitempty" jsonschema:"working directory (default: the directory host-shell was started in). Each call starts fresh; cd in one call does not carry over"`
-	Env        map[string]string `json:"env,omitempty" jsonschema:"environment variables to add or override"`
-	Stdin      string            `json:"stdin,omitempty" jsonschema:"text passed to standard input, which is then closed. Without it the command gets an empty stdin, so interactive prompts fail instead of hanging"`
-	TimeoutSec int               `json:"timeout_sec,omitempty" jsonschema:"timeout in seconds; the process tree is killed when it expires"`
+	Command    string            `json:"command,omitempty" jsonschema:"shell command line (supports pipes, redirects, &&); set either command or argv"`
+	Argv       []string          `json:"argv,omitempty" jsonschema:"program and arguments run directly without a shell, e.g. [\"git\", \"log\", \"-n\", \"5\"]"`
+	Shell      string            `json:"shell,omitempty" jsonschema:"shell for command: sh, bash or pwsh on Linux; cmd, powershell or pwsh on Windows (default: default_shell in sys_info)"`
+	Cwd        string            `json:"cwd,omitempty" jsonschema:"working directory (default: server startup directory; does not persist across calls)"`
+	Env        map[string]string `json:"env,omitempty" jsonschema:"environment variables to set or override"`
+	Stdin      string            `json:"stdin,omitempty" jsonschema:"text written to stdin before closing it (empty by default so prompts fail instead of hanging)"`
+	TimeoutSec int               `json:"timeout_sec,omitempty" jsonschema:"timeout in seconds; kills the process tree on expiry"`
 	IOEncoding
 }
 
 // IOEncoding specifies the encoding of command input and output.
 type IOEncoding struct {
-	OutputEncoding string `json:"output_encoding,omitempty" jsonschema:"encoding of stdout/stderr: auto (default: UTF-8 if valid, otherwise the host console code page, decided per line), utf-8 (no conversion), system, or a charset name such as shift_jis, euc-jp, utf-16le"`
-	StdinEncoding  string `json:"stdin_encoding,omitempty" jsonschema:"encoding to convert stdin into: utf-8 (default; system for PowerShell on Windows, which reads stdin in the console code page), system, or a charset name"`
+	OutputEncoding string `json:"output_encoding,omitempty" jsonschema:"stdout/stderr encoding: auto (default: per-line UTF-8 if valid, else console code page), utf-8, system, or a charset name (shift_jis, euc-jp, utf-16le, ...)"`
+	StdinEncoding  string `json:"stdin_encoding,omitempty" jsonschema:"stdin encoding: utf-8 (default; system for Windows PowerShell), system, or a charset name"`
 }
 
-// resolve returns how to convert the output and the converted standard input.
-// def is the stdin encoding used when stdin_encoding is omitted.
+// resolve parses the output encoding choice and encodes stdin (using def when StdinEncoding is empty).
 func (e IOEncoding) resolve(stdin string, def textenc.Encoding) (textenc.Choice, string, error) {
 	out, err := textenc.Parse(e.OutputEncoding, textenc.Console, true, textenc.UTF8)
 	if err != nil {
@@ -52,9 +51,8 @@ func (e IOEncoding) resolve(stdin string, def textenc.Encoding) (textenc.Choice,
 	return out, string(b), nil
 }
 
-// stdinDefault returns the stdin encoding used when stdin_encoding is omitted. PowerShell on Windows
-// reads stdin ($input) in the console code page whatever the script sets, so text for it is encoded
-// that way; everything else gets UTF-8. pty jobs are not affected: the terminal takes UTF-8.
+// stdinDefault returns the default stdin encoding: console code page for non-PTY Windows PowerShell
+// (which reads $input in the console code page), and UTF-8 otherwise.
 func (d *Deps) stdinDefault(c CommandSpec, pty bool) textenc.Encoding {
 	if runtime.GOOS != "windows" || pty || len(c.Argv) > 0 {
 		return textenc.UTF8
@@ -66,7 +64,7 @@ func (d *Deps) stdinDefault(c CommandSpec, pty bool) textenc.Encoding {
 	return textenc.UTF8
 }
 
-// procSpec builds the start specification with the user's environment restrictions applied.
+// procSpec builds a proc.Spec with policy environment filtering applied.
 func (d *Deps) procSpec(c CommandSpec) proc.Spec {
 	spec := proc.Spec{Command: c.Command, Argv: c.Argv, Shell: c.Shell, Dir: c.Cwd, Env: c.Env}
 	if d.Policy.FiltersEnv() {
@@ -75,7 +73,7 @@ func (d *Deps) procSpec(c CommandSpec) proc.Spec {
 	return spec
 }
 
-// PathArgs passes the working directory to the policy check as a read target.
+// PathArgs returns Cwd as a read path for policy checks.
 func (c CommandSpec) PathArgs() (read, write []string) {
 	if c.Cwd != "" {
 		read = []string{c.Cwd}
@@ -83,7 +81,7 @@ func (c CommandSpec) PathArgs() (read, write []string) {
 	return read, nil
 }
 
-// CommandArgs passes the programs started and the whole command line to the policy check.
+// CommandArgs returns the invoked program and command string for policy checks.
 func (c CommandSpec) CommandArgs(defaultShell string) (programs []string, text string) {
 	if len(c.Argv) > 0 {
 		return []string{c.Argv[0]}, strings.Join(c.Argv, " ")
@@ -91,7 +89,7 @@ func (c CommandSpec) CommandArgs(defaultShell string) (programs []string, text s
 	return []string{orDefault(c.Shell, defaultShell)}, c.Command
 }
 
-// AuditArgs keeps the content of standard input out of the log.
+// AuditArgs redacts Stdin for audit logging.
 func (c CommandSpec) AuditArgs() any {
 	c.Stdin = redactedLen(c.Stdin)
 	return c
@@ -118,20 +116,20 @@ func (d *Deps) execRun(ctx context.Context, req *mcp.CallToolRequest, in Command
 // JobStartInput is the input of job_start.
 type JobStartInput struct {
 	CommandSpec
-	StdinOpen bool `json:"stdin_open,omitempty" jsonschema:"keep standard input open so that input can be sent later with job_write (for REPLs and programs that prompt). stdin, if given, is sent first"`
-	PTY       bool `json:"pty,omitempty" jsonschema:"run in a pseudo terminal (Linux pty, Windows ConPTY) for programs that need a terminal: password prompts, REPLs, ssh, top, programs that change behaviour when not on a terminal. Input is always open; stdout and stderr are one stream with terminal escape sequences (job_read strips them unless raw)"`
+	StdinOpen bool `json:"stdin_open,omitempty" jsonschema:"keep stdin open for job_write (stdin, if set, is written first)"`
+	PTY       bool `json:"pty,omitempty" jsonschema:"run in a pseudo terminal (Linux pty, Windows ConPTY) for interactive/TTY programs (prompts, REPLs, ssh, top); stdin stays open and combined output has ANSI escapes stripped by job_read unless raw is set"`
 	Cols      int  `json:"cols,omitempty" jsonschema:"pty: terminal width (default 120)"`
 	Rows      int  `json:"rows,omitempty" jsonschema:"pty: terminal height (default 40)"`
 }
 
-// AuditArgs keeps the content of standard input out of the log.
+// AuditArgs redacts Stdin for audit logging.
 func (in JobStartInput) AuditArgs() any {
 	in.Stdin = redactedLen(in.Stdin)
 	return in
 }
 
 func (d *Deps) jobStart(_ context.Context, _ *mcp.CallToolRequest, in JobStartInput) (*mcp.CallToolResult, jobs.Status, error) {
-	// Without timeout_sec, a job runs without a time limit.
+	// Run without a time limit when timeout_sec is omitted.
 	var timeout time.Duration
 	if in.TimeoutSec > 0 {
 		timeout = time.Duration(in.TimeoutSec) * time.Second
@@ -163,14 +161,14 @@ func (d *Deps) jobStart(_ context.Context, _ *mcp.CallToolRequest, in JobStartIn
 
 // JobWriteInput is the input of job_write.
 type JobWriteInput struct {
-	ID    string `json:"id" jsonschema:"job id returned by job_start"`
-	Input string `json:"input,omitempty" jsonschema:"text to send to standard input. Include a trailing newline to submit a line, e.g. \"yes\\n\"; it is not added automatically. In a pty job send \\r for Enter if a program expects it, \\u0003 for Ctrl-C, \\u001b for Esc, \\u001b[A for the up arrow"`
-	Close bool   `json:"close,omitempty" jsonschema:"close standard input after sending input (signals end of input, like Ctrl-D). In a pty job this sends Ctrl-D (Linux) or Ctrl-Z Enter (Windows)"`
-	Cols  int    `json:"cols,omitempty" jsonschema:"pty: resize the terminal to this width (with rows)"`
-	Rows  int    `json:"rows,omitempty" jsonschema:"pty: resize the terminal to this height (with cols)"`
+	ID    string `json:"id" jsonschema:"job id from job_start"`
+	Input string `json:"input,omitempty" jsonschema:"text to write to stdin (include trailing \\n or \\r to submit a line; in pty jobs use \\u0003 for Ctrl-C, \\u001b for Esc, \\u001b[A for Up)"`
+	Close bool   `json:"close,omitempty" jsonschema:"close stdin after writing (in pty jobs, sends Ctrl-D on Linux or Ctrl-Z Enter on Windows)"`
+	Cols  int    `json:"cols,omitempty" jsonschema:"pty: new terminal width (requires rows)"`
+	Rows  int    `json:"rows,omitempty" jsonschema:"pty: new terminal height (requires cols)"`
 }
 
-// AuditArgs keeps the input out of the log.
+// AuditArgs redacts Input for audit logging.
 func (in JobWriteInput) AuditArgs() any {
 	in.Input = redactedLen(in.Input)
 	return in
@@ -217,26 +215,26 @@ func (d *Deps) jobWrite(_ context.Context, _ *mcp.CallToolRequest, in JobWriteIn
 
 // JobReadInput is the input of job_read.
 type JobReadInput struct {
-	ID       string `json:"id" jsonschema:"job id returned by job_start"`
-	Offset   int64  `json:"offset,omitempty" jsonschema:"byte offset to read from: 0 for the beginning, then next_offset of the previous call. A negative value reads the last -offset bytes"`
-	MaxBytes int    `json:"max_bytes,omitempty" jsonschema:"maximum bytes to return (default and cap: the server output limit)"`
-	WaitSec  int    `json:"wait_sec,omitempty" jsonschema:"wait up to this many seconds (max 300) for new output beyond offset (or for until/idle_ms), returning early when the job exits. Use this instead of polling rapidly"`
-	Until    string `json:"until,omitempty" jsonschema:"with wait_sec: keep waiting until the output after offset matches this regular expression (e.g. a prompt like \\$ $ or >>> $, or a line like Listening on). matched tells whether it did"`
-	IdleMs   int    `json:"idle_ms,omitempty" jsonschema:"with wait_sec: return once new output has arrived and then nothing more came for this many milliseconds (the program is waiting or done printing). Good after sending a command to a REPL or shell"`
-	Raw      bool   `json:"raw,omitempty" jsonschema:"pty jobs: return terminal escape sequences and carriage returns as they are. By default they are removed so the output reads as plain text"`
-	Screen   bool   `json:"screen,omitempty" jsonschema:"pty jobs: return what the terminal shows now (one line per row, cols x rows) instead of the output stream, with the cursor position. Use it for full-screen programs such as top, vi or less. offset and max_bytes are ignored; wait_sec, until and idle_ms still wait on the stream first"`
+	ID       string `json:"id" jsonschema:"job id from job_start"`
+	Offset   int64  `json:"offset,omitempty" jsonschema:"byte offset to read from (0 for start, next_offset from prior call, or negative for last -offset bytes)"`
+	MaxBytes int    `json:"max_bytes,omitempty" jsonschema:"max bytes to return (default and cap: server output limit)"`
+	WaitSec  int    `json:"wait_sec,omitempty" jsonschema:"seconds to wait (max 300) for new output, until match, idle_ms, or job exit"`
+	Until    string `json:"until,omitempty" jsonschema:"with wait_sec: wait until output after offset matches this regex (e.g. \\$ $ or Listening on)"`
+	IdleMs   int    `json:"idle_ms,omitempty" jsonschema:"with wait_sec: return once new output arrives and then stays quiet for this many ms"`
+	Raw      bool   `json:"raw,omitempty" jsonschema:"pty jobs: keep ANSI escape sequences and carriage returns instead of stripping them"`
+	Screen   bool   `json:"screen,omitempty" jsonschema:"pty jobs: return current terminal screen (cols x rows) and cursor instead of stream (for top, vi, less; ignores offset/max_bytes, honors wait_sec/until/idle_ms)"`
 }
 
 // JobReadOutput is the output of job_read.
 type JobReadOutput struct {
 	Status     jobs.Status `json:"status"`
-	Matched    bool        `json:"matched,omitempty" jsonschema:"until matched the output"`
-	Output     string      `json:"output" jsonschema:"stdout and stderr interleaved"`
-	NextOffset int64       `json:"next_offset" jsonschema:"pass as offset to read only new output next time"`
-	More       bool        `json:"more,omitempty" jsonschema:"more output is already available beyond next_offset"`
-	Dropped    int64       `json:"dropped,omitempty" jsonschema:"bytes discarded from the buffer before they were read (the job produced output faster than it was read)"`
-	CursorRow  *int        `json:"cursor_row,omitempty" jsonschema:"screen: row of the cursor, from 0"`
-	CursorCol  *int        `json:"cursor_col,omitempty" jsonschema:"screen: column of the cursor, from 0"`
+	Matched    bool        `json:"matched,omitempty" jsonschema:"until regex matched"`
+	Output     string      `json:"output" jsonschema:"interleaved stdout and stderr"`
+	NextOffset int64       `json:"next_offset" jsonschema:"offset for the next incremental read"`
+	More       bool        `json:"more,omitempty" jsonschema:"more output is available beyond next_offset"`
+	Dropped    int64       `json:"dropped,omitempty" jsonschema:"bytes overwritten in the ring buffer before being read"`
+	CursorRow  *int        `json:"cursor_row,omitempty" jsonschema:"screen: 0-based cursor row"`
+	CursorCol  *int        `json:"cursor_col,omitempty" jsonschema:"screen: 0-based cursor column"`
 }
 
 func (d *Deps) jobRead(ctx context.Context, _ *mcp.CallToolRequest, in JobReadInput) (*mcp.CallToolResult, JobReadOutput, error) {
@@ -286,9 +284,7 @@ func (d *Deps) jobRead(ctx context.Context, _ *mcp.CallToolRequest, in JobReadIn
 	return nil, out, nil
 }
 
-// waitForOutput waits until output after offset arrives or the job ends.
-// With until, it waits until the output matches it and reports whether it matched.
-// With idleMs, it returns once no new output has arrived for that long after some output.
+// waitForOutput waits for new output after offset, a regex match (until), an idle gap after new output (idleMs), or job exit.
 func waitForOutput(ctx context.Context, j *jobs.Job, offset int64, wait time.Duration, until *regexp.Regexp, idleMs int, strip bool) bool {
 	deadline := time.NewTimer(wait)
 	defer deadline.Stop()
@@ -350,14 +346,14 @@ func max64(a, b int64) int64 {
 
 // JobIDInput is the input of tools that take only a job ID.
 type JobIDInput struct {
-	ID string `json:"id" jsonschema:"job id returned by job_start"`
+	ID string `json:"id" jsonschema:"job id from job_start"`
 }
 
 // JobStopInput is the input of job_stop.
 type JobStopInput struct {
-	ID      string `json:"id" jsonschema:"job id returned by job_start"`
-	Signal  string `json:"signal,omitempty" jsonschema:"kill (default: kill the whole process tree), or on Linux interrupt, terminate, hangup, quit, stop, continue, usr1, usr2 sent to the job's process group. In a pty job interrupt sends Ctrl-C to the terminal (also on Windows)"`
-	WaitSec int    `json:"wait_sec,omitempty" jsonschema:"seconds to wait for the job to exit after the signal (default 5)"`
+	ID      string `json:"id" jsonschema:"job id from job_start"`
+	Signal  string `json:"signal,omitempty" jsonschema:"kill (default: kill process tree), or Linux process-group signal (interrupt, terminate, hangup, quit, stop, continue, usr1, usr2); in pty jobs interrupt sends Ctrl-C (including Windows)"`
+	WaitSec int    `json:"wait_sec,omitempty" jsonschema:"seconds to wait for exit (default 5)"`
 }
 
 func (d *Deps) jobStop(ctx context.Context, _ *mcp.CallToolRequest, in JobStopInput) (*mcp.CallToolResult, jobs.Status, error) {

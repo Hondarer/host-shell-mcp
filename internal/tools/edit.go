@@ -21,7 +21,7 @@ const maxEditBytes = 32 << 20
 
 // EditOp is one replacement.
 type EditOp struct {
-	OldString  string `json:"old_string" jsonschema:"exact text to replace, including whitespace and indentation. Must occur exactly once unless replace_all is set"`
+	OldString  string `json:"old_string" jsonschema:"exact text to replace, including whitespace and indentation (must occur once unless replace_all is set)"`
 	NewString  string `json:"new_string" jsonschema:"replacement text (empty to delete old_string)"`
 	ReplaceAll bool   `json:"replace_all,omitempty" jsonschema:"replace every occurrence instead of requiring a unique match"`
 }
@@ -29,16 +29,16 @@ type EditOp struct {
 // FsEditInput is the input of fs_edit.
 type FsEditInput struct {
 	Path       string   `json:"path"`
-	OldString  string   `json:"old_string,omitempty" jsonschema:"single edit: exact text to replace (copy it from fs_read output, without line number prefixes). Must occur exactly once unless replace_all is set"`
+	OldString  string   `json:"old_string,omitempty" jsonschema:"single edit: exact text to replace (copy from fs_read without line number prefixes; must occur once unless replace_all is set)"`
 	NewString  string   `json:"new_string,omitempty" jsonschema:"single edit: replacement text (empty to delete old_string)"`
 	ReplaceAll bool     `json:"replace_all,omitempty" jsonschema:"single edit: replace every occurrence"`
-	Edits      []EditOp `json:"edits,omitempty" jsonschema:"several edits applied in order, each to the result of the previous one. All succeed or the file is left unchanged. Use instead of old_string/new_string"`
-	Charset    string   `json:"charset,omitempty" jsonschema:"encoding of the file: auto (default: BOM, then UTF-8 if valid, otherwise the host file code page), utf-8, system, or a charset name. The file is written back in the same encoding and BOM"`
-	DryRun     bool     `json:"dry_run,omitempty" jsonschema:"check the edits and return the snippet without writing the file"`
-	Atomic     bool     `json:"atomic,omitempty" jsonschema:"write a temporary file and rename it over the file, so readers never see a partial file (as in fs_write)"`
+	Edits      []EditOp `json:"edits,omitempty" jsonschema:"multiple edits applied in order; all succeed or the file is unchanged (mutually exclusive with old_string/new_string)"`
+	Charset    string   `json:"charset,omitempty" jsonschema:"file encoding: auto (default: BOM, then UTF-8 if valid, else host file code page), utf-8, system, or a charset name; preserved on write"`
+	DryRun     bool     `json:"dry_run,omitempty" jsonschema:"validate edits and return the snippet without writing the file"`
+	Atomic     bool     `json:"atomic,omitempty" jsonschema:"write via a temporary file and rename so readers never see a partial write"`
 }
 
-// AuditArgs logs the lengths of the replacements instead of their content.
+// AuditArgs logs replacement lengths instead of content.
 func (in FsEditInput) AuditArgs() any {
 	in.OldString, in.NewString = redactedLen(in.OldString), redactedLen(in.NewString)
 	edits := make([]EditOp, len(in.Edits))
@@ -52,15 +52,15 @@ func (in FsEditInput) AuditArgs() any {
 // FsEditOutput is the output of fs_edit.
 type FsEditOutput struct {
 	Path         string `json:"path"`
-	Replacements int    `json:"replacements" jsonschema:"total number of replaced occurrences"`
-	Lines        []int  `json:"lines" jsonschema:"line numbers (in the edited file) where replacements start"`
-	Snippet      string `json:"snippet" jsonschema:"edited regions with a few lines of context, prefixed with line numbers (not part of the file)"`
-	Charset      string `json:"charset" jsonschema:"encoding the file was read and written in"`
-	BOM          bool   `json:"bom,omitempty" jsonschema:"the file has a byte order mark (kept)"`
-	Newline      string `json:"newline,omitempty" jsonschema:"line endings of the file: lf, crlf, cr or mixed"`
-	Size         int64  `json:"size" jsonschema:"file size after the edit, in bytes"`
-	SHA256       string `json:"sha256" jsonschema:"SHA-256 of the file after the edit"`
-	DryRun       bool   `json:"dry_run,omitempty" jsonschema:"the file was not written"`
+	Replacements int    `json:"replacements" jsonschema:"total replaced occurrences"`
+	Lines        []int  `json:"lines" jsonschema:"1-based start lines of replacements in the edited file"`
+	Snippet      string `json:"snippet" jsonschema:"edited regions with surrounding context and 1-based line numbers"`
+	Charset      string `json:"charset" jsonschema:"encoding used to read and write the file"`
+	BOM          bool   `json:"bom,omitempty" jsonschema:"file has a byte order mark (preserved)"`
+	Newline      string `json:"newline,omitempty" jsonschema:"line endings: lf, crlf, cr or mixed"`
+	Size         int64  `json:"size" jsonschema:"file size after edit in bytes"`
+	SHA256       string `json:"sha256" jsonschema:"SHA-256 of the edited file"`
+	DryRun       bool   `json:"dry_run,omitempty" jsonschema:"file was not modified"`
 }
 
 func (d *Deps) fsEdit(_ context.Context, _ *mcp.CallToolRequest, in FsEditInput) (*mcp.CallToolResult, FsEditOutput, error) {
@@ -141,8 +141,8 @@ type textFile struct {
 	text string
 }
 
-// loadText reads the whole file, detects its encoding and converts it to UTF-8.
-// It fails when writing back could not reproduce the original bytes (the encoding was detected wrongly).
+// loadText reads a file, detects its encoding, and decodes it to UTF-8,
+// failing if re-encoding would not reproduce the original bytes losslessly.
 func loadText(path, charset string) (textFile, error) {
 	ch, err := textenc.Parse(charset, textenc.File, true, textenc.UTF8)
 	if err != nil {
@@ -203,8 +203,8 @@ func overwriteFile(path string, data []byte) error {
 	return err
 }
 
-// matchEdit returns the strings before and after replacement and the number of occurrences.
-// Agents often send LF newlines, so in CRLF files the newlines are made CRLF before matching.
+// matchEdit resolves the target and replacement strings and counts occurrences,
+// normalizing LF in op to CRLF when matching against CRLF files.
 func matchEdit(text string, op EditOp, nl string) (old, repl string, n int) {
 	crlf := func(s string) string { s, _ = textenc.ConvertNewline(s, "crlf"); return s }
 	plain := func() (string, string, int) {
@@ -229,7 +229,7 @@ func matchEdit(text string, op EditOp, nl string) (old, repl string, n int) {
 	return
 }
 
-// notFoundMessage explains that old_string was not found, showing the lines of candidates that differ only in whitespace.
+// notFoundMessage formats a missing-match error, noting any line where old matches modulo whitespace.
 func notFoundMessage(path, text, old string) string {
 	msg := fmt.Sprintf("old_string not found in %s. It must match the file exactly, including whitespace, indentation and line endings; re-read the file with fs_read (line_numbers: true) and copy the text without the line number prefixes", path)
 	if line := fuzzyLine(text, old); line > 0 {
@@ -238,7 +238,7 @@ func notFoundMessage(path, text, old string) string {
 	return msg
 }
 
-// fuzzyLine returns the line number where old matches when leading and trailing whitespace of each line is ignored, or 0.
+// fuzzyLine returns the 1-based start line where old matches text after normalizing per-line whitespace, or 0.
 func fuzzyLine(text, old string) int {
 	want := trimLines(strings.TrimRight(old, "\r\n"))
 	if len(want) == 0 || (len(want) == 1 && want[0] == "") {
@@ -248,7 +248,7 @@ func fuzzyLine(text, old string) int {
 	for i := 0; i+len(want) <= len(lines); i++ {
 		ok := true
 		for j, w := range want {
-			// The first and last lines may give only part of a line, so they match partially.
+			// First and last lines may be partial lines, so match them as suffix/prefix.
 			l := lines[i+j]
 			switch {
 			case len(want) == 1:
@@ -295,16 +295,15 @@ func occurrenceLines(text, old string, max int) []int {
 	return lines
 }
 
-// span is the range (byte offsets) of a string inserted by a replacement.
+// span is the byte range of an inserted replacement.
 type span struct{ start, end int }
 
-// replaceTracked replaces every old with repl and records the replaced ranges.
-// Ranges recorded by earlier replacements are shifted to follow the replacement.
+// replaceTracked replaces all occurrences of old with repl, shifting existing spans and appending new ones.
 func replaceTracked(text, old, repl string, spans []span) (string, []span) {
 	var sb strings.Builder
 	var added []span
 	delta := len(repl) - len(old)
-	var cuts []int // replaced offsets (in the coordinates before replacement)
+	var cuts []int // pre-replacement start offsets
 	pos := 0
 	for {
 		i := strings.Index(text[pos:], old)
@@ -327,7 +326,7 @@ func replaceTracked(text, old, repl string, spans []span) (string, []span) {
 			if c+len(old) <= p {
 				n++
 			} else if c < p {
-				// A range inside the replaced text moves to the start of the new range.
+				// Clamp positions inside a replaced span to the start of the replacement.
 				return c + n*delta
 			}
 		}
@@ -340,7 +339,7 @@ func replaceTracked(text, old, repl string, spans []span) (string, []span) {
 	return sb.String(), append(moved, added...)
 }
 
-// lineAt returns the number (from 1) of the line containing byte offset pos.
+// lineAt returns the 1-based line number at byte offset pos.
 func lineAt(text string, pos int) int {
 	return strings.Count(text[:min(pos, len(text))], "\n") + 1
 }
@@ -356,7 +355,7 @@ func spanLines(text string, spans []span, max int) []int {
 	return lines
 }
 
-// snippet returns the replaced range with ctx lines around it, numbered, at most maxLines lines in all.
+// snippet formats replaced spans with ctx surrounding lines and 1-based line numbers (up to maxLines).
 func snippet(text string, spans []span, ctx, maxLines int) string {
 	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 	show := make([]bool, len(lines))

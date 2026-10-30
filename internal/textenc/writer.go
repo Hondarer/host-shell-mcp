@@ -9,25 +9,23 @@ import (
 	"golang.org/x/text/transform"
 )
 
-// maxPending is the most bytes held for detection while no newline arrives.
+// maxPending caps bytes buffered while waiting for a newline during auto-detection.
 const maxPending = 4096
 
-// detectPending is how much output is held at the start to detect UTF-16 (with or without a BOM).
+// detectPending is the initial byte threshold buffered before checking for UTF-16.
 const detectPending = 64
 
-// Writer is an io.Writer that converts child process output to UTF-8 while writing it to w.
+// Writer converts child process output to UTF-8 before forwarding it to w.
 //
-// With automatic detection, each line (up to \n or \r) is passed through when it is valid UTF-8,
-// and otherwise converted from the fallback encoding.
-// Output mixing UTF-8 and other encodings is converted correctly line by line.
-// When the output starts as UTF-16 (with a BOM, or detected by DetectUTF16), the whole output is
-// converted as UTF-16.
+// In auto mode, each line (up to \n or \r) is passed through if valid UTF-8 or decoded using
+// fallback otherwise, handling mixed-encoding output line by line. Output starting with UTF-16
+// (via BOM or DetectUTF16) is converted as UTF-16 for the entire stream.
 type Writer struct {
 	mu       sync.Mutex
 	w        io.Writer
 	auto     bool
 	fallback Encoding
-	conv     io.WriteCloser // converter used when the whole output is converted
+	conv     io.WriteCloser // whole-stream converter (explicit encoding or detected UTF-16)
 	started  bool
 	pending  []byte
 	used     string
@@ -42,7 +40,7 @@ func NewWriter(w io.Writer, c Choice) *Writer {
 	if !c.Auto && !c.Enc.IsUTF8() {
 		tw.startConv(c.Enc)
 	}
-	// Even when the fallback encoding is UTF-8, check for a UTF-16 BOM.
+	// Even when the fallback is UTF-8, inspect initial output for UTF-16.
 	tw.started = !c.Auto
 	return tw
 }
@@ -77,8 +75,7 @@ func (w *Writer) Write(p []byte) (int, error) {
 	return n, w.flushLines(false)
 }
 
-// start decides how to convert from the output held so far. done reports that the held output
-// has been written and nothing is left for line-by-line conversion.
+// start inspects the initial buffered bytes for UTF-16 or non-auto passthrough, returning true if pending was flushed.
 func (w *Writer) start() (done bool, err error) {
 	w.started = true
 	if e, l, ok := DetectUnicode(w.pending); ok && !e.ASCIICompatible() {
@@ -95,7 +92,7 @@ func (w *Writer) start() (done bool, err error) {
 	return false, nil
 }
 
-// flushLines converts and writes the pending output line by line.
+// flushLines converts and writes pending output line by line.
 func (w *Writer) flushLines(final bool) error {
 	for {
 		i := bytes.IndexAny(w.pending, "\n\r")
@@ -118,7 +115,7 @@ func (w *Writer) flushLines(final bool) error {
 	return nil
 }
 
-// emit converts and writes one line (or part of one) and returns the number of bytes processed.
+// emit converts and writes a line or chunk and returns the number of source bytes consumed.
 func (w *Writer) emit(b []byte, final bool) (int, error) {
 	n := len(b)
 	if !final {
@@ -134,9 +131,8 @@ func (w *Writer) emit(b []byte, final bool) (int, error) {
 	return consumed, err
 }
 
-// Flush writes out the pending output without waiting for a newline, keeping only a tail cut in the middle of a character.
-// It makes prompts without a newline (such as "Password: ") readable before the line ends.
-// With automatic detection, the part written out and the rest of the line are detected separately.
+// Flush writes buffered bytes without waiting for a newline (retaining only a trailing split rune)
+// so newline-less prompts such as "Password: " can be read immediately.
 func (w *Writer) Flush() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -158,7 +154,7 @@ func (w *Writer) Flush() error {
 	return err
 }
 
-// Close writes out the pending output. Call it after the child process ends.
+// Close flushes any remaining buffered bytes after the child process exits.
 func (w *Writer) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -184,7 +180,7 @@ func (w *Writer) Close() error {
 	return w.flushLines(true)
 }
 
-// Converted returns the name of the encoding converted from, or an empty string when nothing was converted.
+// Converted returns the source encoding name if conversion occurred, or "" if all output was UTF-8.
 func (w *Writer) Converted() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()

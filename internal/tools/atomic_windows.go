@@ -5,5 +5,5 @@ import (
 	"os"
 )
 
-// keepOwner does nothing on Windows: a new file gets the ACL inherited from its directory.
+// keepOwner is a no-op on Windows, where new files inherit ACLs from the parent directory.
 func keepOwner(*os.File, fs.FileInfo) error { return nil }

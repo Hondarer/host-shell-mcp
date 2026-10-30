@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// exitChildEnv makes the test binary act as a host-shell that starts a long command and waits to be killed.
+// exitChildEnv instructs the test binary to spawn a long-running child process and wait to be killed.
 const exitChildEnv = "HOST_SHELL_TEST_EXIT_CHILD"
 
 func TestMain(m *testing.M) {
@@ -47,7 +47,7 @@ func exitChild() {
 	time.Sleep(time.Minute)
 }
 
-// TestChildrenEndWhenKilled checks that a command ends when the host-shell that started it is killed.
+// TestChildrenEndWhenKilled verifies that child commands terminate when host-shell is killed.
 func TestChildrenEndWhenKilled(t *testing.T) {
 	exe, err := os.Executable()
 	if err != nil {

@@ -1,5 +1,5 @@
 #!/bin/sh
-# Detects the target's OS and architecture and prints the executable type to deploy (linux-amd64 etc.).
+# Detects the target host's OS and architecture and prints the binary platform identifier (e.g. linux-amd64).
 #
 # Usage: detect.sh ROUTE
 set -eu
@@ -10,7 +10,7 @@ if [ $# -ne 1 ]; then
 fi
 dir=$(cd "$(dirname "$0")" && pwd)
 
-# Linux (and other systems with uname)
+# Probe POSIX targets via uname
 if out=$("$dir/remote.sh" "$1" 'uname -sm' 2>/dev/null); then
 	case $out in
 	Linux\ x86_64* | Linux\ amd64*) echo linux-amd64; exit 0 ;;
@@ -19,7 +19,7 @@ if out=$("$dir/remote.sh" "$1" 'uname -sm' 2>/dev/null); then
 	esac
 fi
 
-# Windows (cmd, the default OpenSSH shell). Also reached when uname exists, e.g. from Git for Windows.
+# Fallback to Windows cmd.exe environment variables (also reached when Git for Windows provides a non-Linux uname)
 out=$("$dir/remote.sh" "$1" 'echo %OS% %PROCESSOR_ARCHITECTURE%' 2>/dev/null | tr -d '\r') || true
 case $out in
 Windows_NT\ AMD64*) echo windows-amd64; exit 0 ;;

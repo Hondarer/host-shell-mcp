@@ -75,7 +75,7 @@ func killProcess(ctx context.Context, d *Deps, pid int, sig string, tree, sudo b
 	return done, nil
 }
 
-// descendants returns all descendants of pid from the parent links in /proc.
+// descendants returns all descendant PIDs of pid using /proc/<pid>/stat parent links.
 func descendants(pid int) []int {
 	children := map[int][]int{}
 	stats, _ := filepath.Glob("/proc/[0-9]*/stat")
@@ -84,7 +84,7 @@ func descendants(pid int) []int {
 		if err != nil {
 			continue
 		}
-		// comm in "pid (comm) state ppid ..." may contain spaces and parentheses, so read after the last ")".
+		// comm in "pid (comm) state ppid ..." can contain spaces and ")", so parse after the last ")".
 		s := string(b)
 		i := strings.LastIndexByte(s, ')')
 		if i < 0 {
@@ -153,7 +153,7 @@ func listServices(ctx context.Context, d *Deps, user bool) ([]Service, error) {
 		byName[s.Name] = s
 		out = append(out, s)
 	}
-	// Add units that are not loaded (never started) and whether they are enabled, from list-unit-files.
+	// Include unloaded unit files and their enablement state from list-unit-files.
 	if res, err := d.runTool(ctx, systemctl(user, "list-unit-files", "--type=service", "--plain", "--no-legend"), false); err == nil && res.ExitCode == 0 {
 		for _, line := range strings.Split(res.Stdout, "\n") {
 			f := strings.Fields(line)
@@ -297,7 +297,7 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error
 		if grep, err = regexp.Compile("(?i)" + in.Grep); err != nil {
 			return nil, fmt.Errorf("grep: %w", err)
 		}
-		// journalctl -g is unavailable when built without PCRE2, so filter here and fetch extra entries.
+		// journalctl -g requires PCRE2 build support, so fetch extra entries and filter in Go.
 		argv[5] = strconv.Itoa(min(in.Lines*20, 50000))
 	}
 	res, err := d.runTool(ctx, argv, in.Sudo)
@@ -341,8 +341,7 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error
 	return out, nil
 }
 
-// journalString turns a journalctl -o json value into a string.
-// Values with unprintable bytes are output as arrays of bytes.
+// journalString converts a journalctl -o json field (string, number, or byte array for non-printable data) to a string.
 func journalString(v any) string {
 	switch x := v.(type) {
 	case string:
@@ -366,7 +365,7 @@ func journalString(v any) string {
 
 // ---- sys_disks ----
 
-// pseudoFS lists file systems whose usage means nothing.
+// pseudoFS lists synthetic file systems excluded by default.
 var pseudoFS = map[string]bool{
 	"proc": true, "sysfs": true, "cgroup": true, "cgroup2": true, "devpts": true, "mqueue": true, "debugfs": true,
 	"tracefs": true, "securityfs": true, "pstore": true, "bpf": true, "configfs": true, "fusectl": true,
@@ -410,7 +409,7 @@ func listDisks(all bool) ([]Disk, error) {
 	return out, sc.Err()
 }
 
-// unescapeMount undoes the octal escapes (\040 and so on) of /proc/self/mounts.
+// unescapeMount decodes octal escape sequences (such as \040) in /proc/self/mounts.
 func unescapeMount(s string) string {
 	if !strings.Contains(s, `\`) {
 		return s

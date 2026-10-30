@@ -1,7 +1,6 @@
 # Editing files with fs_edit
 
-`fs_edit` replaces exact text in an existing file and writes it back in the same encoding, BOM and
-line endings. Nothing is written unless every edit succeeds.
+`fs_edit` replaces exact text in an existing file and preserves its encoding, BOM, and line endings. All edits in a call are validated before writing; if any edit fails, the file is left unchanged.
 
 ## Single edit
 
@@ -9,7 +8,7 @@ line endings. Nothing is written unless every edit succeeds.
 {"path": "/srv/app/config.yml", "old_string": "  port: 8080\n", "new_string": "  port: 9090\n"}
 ```
 
-## Several edits in one call
+## Multiple edits in one call
 
 ```json
 {"path": "src/main.c", "edits": [
@@ -18,33 +17,27 @@ line endings. Nothing is written unless every edit succeeds.
 ]}
 ```
 
-Edits apply in order; each sees the result of the previous one.
+Edits apply sequentially; each operates on the result of the previous edit.
 
-`atomic: true` writes the result to a temporary file and renames it over the file, as in `fs_write`
-(see topic `files`): use it for files that running programs read.
+`atomic: true` writes to a temporary file and renames it over the target, as in `fs_write` (see topic `files`). Use it for files read by running processes.
 
 ## Rules
 
-- `old_string` must match the file **exactly**, including indentation (tabs vs spaces) and
-  trailing spaces. Copy it from `fs_read` output, without the `line_numbers` prefix.
-- It must occur **exactly once**, unless `replace_all: true`. If it occurs several times the error
-  lists the lines; add surrounding lines to make it unique.
-- If it is not found, the error says so and, when a block differing only in whitespace exists,
-  gives its line. Re-read that part of the file and retry.
-- You may write line endings as `\n` even when the file uses CRLF: they are matched and written as
-  CRLF automatically.
-- `new_string` may be empty to delete text.
-- `dry_run: true` validates and returns the snippet without writing.
+- `old_string` must match the file **exactly**, including indentation (tabs vs spaces) and trailing spaces. Copy it from `fs_read` output without the `line_numbers` prefix.
+- `old_string` must occur **exactly once** unless `replace_all: true`. If it matches multiple locations, the error lists their line numbers; include surrounding context lines to disambiguate.
+- If `old_string` is not found and a region differs only in whitespace, the error reports that line number. Re-read that section and retry.
+- `\n` in `old_string` and `new_string` matches and writes CRLF automatically in CRLF files.
+- Set `new_string` to `""` to delete `old_string`.
+- `dry_run: true` validates the edits and returns `snippet` without modifying the file.
 
 ## Result
 
-- `replacements`: number of replaced occurrences; `lines`: where they start in the new file.
-- `snippet`: the edited regions with two lines of context and line numbers. Check it instead of
-  re-reading the file.
-- `sha256`, `size`, `charset`, `bom`, `newline` of the written file.
+- `replacements`: count of replaced occurrences; `lines`: starting line numbers in the updated file.
+- `snippet`: edited regions with two lines of context and line numbers, avoiding a follow-up `fs_read`.
+- `sha256`, `size`, `charset`, `bom`, and `newline` of the written file.
 
-## When not to use fs_edit
+## Alternatives to fs_edit
 
-- New files or complete rewrites: `fs_write`.
+- New files or full rewrites: `fs_write`.
 - Binary files: `fs_write` with `encoding: "base64"` and `offset`.
 - Files over 32 MiB: `fs_write` with `offset`.

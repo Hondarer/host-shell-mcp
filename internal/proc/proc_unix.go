@@ -20,9 +20,8 @@ func shellCommand(ctx context.Context, sh, line string, interactive bool) (*exec
 	}
 }
 
-// setupProcess starts the child in a new process group,
-// so that timeouts and stops end the whole group (including grandchildren),
-// and ends the child when host-shell exits (SetParentDeathSignal).
+// setupProcess places the child in a new process group (so cancellation kills the entire group,
+// including grandchildren) and configures parent-death termination.
 func setupProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	SetParentDeathSignal(cmd.SysProcAttr)
@@ -31,7 +30,6 @@ func setupProcess(cmd *exec.Cmd) {
 	}
 }
 
-// signals are the signal names Signal can send.
 var signals = map[string]syscall.Signal{
 	"interrupt": syscall.SIGINT,
 	"terminate": syscall.SIGTERM,
@@ -44,10 +42,10 @@ var signals = map[string]syscall.Signal{
 	"usr2":      syscall.SIGUSR2,
 }
 
-// SignalNames are the names Signal accepts.
+// SignalNames lists the signal names accepted by Signal.
 const SignalNames = "interrupt, terminate, hangup, quit, kill, stop, continue, usr1, usr2"
 
-// Signal sends a signal to a process. With group, it is sent to the whole process group led by pid.
+// Signal sends a named signal to pid, or to the process group -pid when group is true.
 func Signal(pid int, name string, group bool) error {
 	sig, ok := signals[name]
 	if !ok {

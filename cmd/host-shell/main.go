@@ -1,14 +1,13 @@
-// host-shell is an MCP server that runs on the target machine, reached through the standard input
-// and output of SSH or a similar relay.
+// host-shell is an MCP server that runs on a target host over stdin/stdout (typically via SSH):
 //
 //	ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp
 //
-// Locally, the bridge subcommand relays to host-shell at the far end of ssh and serves it as an
-// MCP server with extra tools that send files between the local machine and the target.
+// Locally, the bridge subcommand relays to a remote host-shell over SSH and adds direct
+// local-to-remote file transfer tools:
 //
 //	host-shell bridge -- ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp
 //
-// Standard output carries MCP JSON-RPC only. Diagnostics go to standard error and the audit record to a log file.
+// Standard output carries MCP JSON-RPC only; diagnostics go to standard error and audit records to a log file.
 package main
 
 import (
@@ -38,7 +37,7 @@ func main() {
 	log.SetPrefix("host-shell: ")
 	log.SetFlags(0)
 
-	// sudo_run starts host-shell itself as the askpass helper of sudo -A.
+	// sudo_run re-invokes this binary as the sudo -A askpass helper.
 	if ran, code := tools.Askpass(); ran {
 		os.Exit(code)
 	}
@@ -58,27 +57,26 @@ func main() {
 		showVer  = flag.Bool("version", false, "print version and exit")
 		noLog    = flag.Bool("no-log", false, "disable the audit log")
 		logFile  = flag.String("log-file", cfg.LogFile, "audit log file (JSON Lines)")
-		maxOut   = flag.Int("max-output", cfg.MaxOutputBytes, "maximum bytes of each output")
+		maxOut   = flag.Int("max-output", cfg.MaxOutputBytes, "maximum bytes per output stream")
 		timeout  = flag.Duration("timeout", cfg.DefaultTimeout, "default command timeout")
-		maxTime  = flag.Duration("max-timeout", cfg.MaxTimeout, "maximum command timeout a client may request")
-		winShell = flag.String("windows-shell", cfg.WindowsShell, "default shell on Windows: cmd, powershell or pwsh")
+		maxTime  = flag.Duration("max-timeout", cfg.MaxTimeout, "maximum client-requested command timeout")
+		winShell = flag.String("windows-shell", cfg.WindowsShell, "default Windows shell: cmd, powershell, or pwsh")
 
-		toolSel  = flag.String("tools", "all", "tools to expose: comma-separated groups (files, search, exec, net, admin) or tool names, applied left to right; -name removes (e.g. all,-admin,-sudo_run)")
-		readOnly = flag.Bool("read-only", false, "expose only tools that do not change the host (net_http/net_tcp limited to non-modifying use)")
-		confirm  = flag.String("confirm", "", "tools that need the user's confirmation (MCP elicitation) before each call: groups, tool names or destructive (e.g. destructive or exec,fs_remove)")
+		toolSel  = flag.String("tools", "all", "tools to expose: comma-separated groups (files, search, exec, net, admin) or names, applied left to right; -name excludes (e.g. all,-admin,-sudo_run)")
+		readOnly = flag.Bool("read-only", false, "expose only non-modifying tools (limits net_http/net_tcp to read-only use)")
+		confirm  = flag.String("confirm", "", "tools requiring user confirmation (MCP elicitation) per call: groups, tool names, or destructive (e.g. destructive or exec,fs_remove)")
 		redact   = flag.Bool("redact", false, "replace secrets (private keys, tokens, passwords) in tool output with [REDACTED]")
 	)
-	flag.Var(&allowPaths, "allow-path", "restrict file tools to this directory for reading and writing (repeatable)")
-	flag.Var(&allowReadPaths, "allow-read-path", "also allow reading (not writing) under this directory (repeatable)")
-	flag.Var(&allowCommands, "allow-command", "allow only these programs to be run (glob of the program name, comma-separated or repeatable); shell command lines need the shell allowed")
-	flag.Var(&denyCommands, "deny-command", "refuse commands whose command line matches this regular expression (repeatable)")
-	flag.Var(&allowHosts, "allow-host", "restrict network tools to these destinations: host glob or CIDR with optional :port, or unix:/path glob (comma-separated or repeatable)")
-	flag.Var(&unsetEnv, "unset-env", "do not pass these environment variables to commands (glob, comma-separated or repeatable)")
-	flag.Var(&redactPatterns, "redact-pattern", "also redact text matching this regular expression (repeatable)")
+	flag.Var(&allowPaths, "allow-path", "restrict file read/write access to this directory (repeatable)")
+	flag.Var(&allowReadPaths, "allow-read-path", "allow read-only file access under this directory (repeatable)")
+	flag.Var(&allowCommands, "allow-command", "allow only matching program names (comma-separated globs or repeatable); shell commands require the shell itself")
+	flag.Var(&denyCommands, "deny-command", "reject command lines matching this regular expression (repeatable)")
+	flag.Var(&allowHosts, "allow-host", "restrict network tools to matching destinations: host glob or CIDR with optional :port, or unix:/path glob (comma-separated or repeatable)")
+	flag.Var(&unsetEnv, "unset-env", "exclude matching environment variables from child processes (comma-separated globs or repeatable)")
+	flag.Var(&redactPatterns, "redact-pattern", "redact output matching this regular expression (repeatable)")
 	flag.Parse()
 
 	if *showVer {
-		// --version is used only when not running as MCP, so writing to standard output is fine.
 		fmt.Println("host-shell", version.Version)
 		return
 	}
@@ -120,7 +118,6 @@ func main() {
 }
 
 func run(cfg config.Config) error {
-	// Commands must not outlive host-shell, even when it is killed.
 	if err := proc.KillChildrenOnExit(); err != nil {
 		log.Printf("warning: commands may outlive host-shell if it is killed: %v", err)
 	}
@@ -140,16 +137,16 @@ func run(cfg config.Config) error {
 	defer closeServer()
 
 	al.Event("server_start", "version", version.Version, "pid", os.Getpid())
-	// Run returns when standard input is closed (SSH disconnects).
+	// Run returns when stdin closes (e.g., on SSH disconnect).
 	err = s.Run(ctx, &mcp.StdioTransport{})
 	if ctx.Err() != nil {
-		err = nil // Stopping on a signal is a normal exit.
+		err = nil
 	}
 	al.Event("server_stop", "error", fmt.Sprint(err))
 	return err
 }
 
-// listFlag is an option that may be given more than once.
+// listFlag collects repeatable flag values.
 type listFlag []string
 
 func (l *listFlag) String() string { return strings.Join(*l, ",") }
@@ -158,7 +155,6 @@ func (l *listFlag) Set(v string) error {
 	return nil
 }
 
-// splitList splits a comma-separated value.
 func splitList(l []string) []string {
 	var out []string
 	for _, v := range l {

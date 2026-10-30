@@ -17,8 +17,8 @@ type sudoOut struct {
 	Stderr   string `json:"stderr"`
 }
 
-// TestSudoPasswordNotLeaked checks that a password given to sudo_run reaches neither the command
-// nor the result when sudo does not ask for it (a NOPASSWD rule, as on CI runners).
+// TestSudoPasswordNotLeaked verifies that a password passed to sudo_run reaches neither the
+// command's stdin nor the output when sudo does not prompt for one (e.g. NOPASSWD on CI).
 func TestSudoPasswordNotLeaked(t *testing.T) {
 	if exec.Command("sudo", "-n", "true").Run() != nil {
 		t.Skip("needs sudo without a password")
@@ -30,7 +30,7 @@ func TestSudoPasswordNotLeaked(t *testing.T) {
 	if out.ExitCode != 0 || out.Stdout != "hello\n[REDACTED]\n" {
 		t.Fatalf("got %+v", out)
 	}
-	// Other tests may create and remove their own directories meanwhile: look only for new ones.
+	// Check only for newly left-behind directories, ignoring concurrent tests.
 	after, _ := filepath.Glob(filepath.Join(os.TempDir(), "host-shell-askpass-*"))
 	for _, d := range after {
 		if !slices.Contains(before, d) {
@@ -39,15 +39,14 @@ func TestSudoPasswordNotLeaked(t *testing.T) {
 	}
 }
 
-// TestSudoPassword runs sudo_run with a password. It needs a user whose sudo asks for a password;
-// CI creates one and runs this test as that user with HOST_SHELL_TEST_SUDO_PASSWORD set.
+// TestSudoPassword tests password-authenticated sudo_run when HOST_SHELL_TEST_SUDO_PASSWORD is set.
 func TestSudoPassword(t *testing.T) {
 	password := os.Getenv("HOST_SHELL_TEST_SUDO_PASSWORD")
 	if password == "" {
 		t.Skip("set HOST_SHELL_TEST_SUDO_PASSWORD and run as a user whose sudo asks for it")
 	}
 	cs := connect(t)
-	// The order matters: after a success sudo may remember the authentication.
+	// Test failure cases before the valid password, as sudo caches successful authentication.
 	out := call[sudoOut](t, cs, "sudo_run", map[string]any{"command": "id -un"})
 	if out.ExitCode == 0 || !strings.Contains(out.Stderr, "password") {
 		t.Errorf("without a password: %+v", out)

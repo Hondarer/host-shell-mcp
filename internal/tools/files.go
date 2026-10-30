@@ -120,12 +120,12 @@ func (d *Deps) fsStat(_ context.Context, _ *mcp.CallToolRequest, in FsStatInput)
 type FsReadInput struct {
 	Path        string `json:"path"`
 	Encoding    string `json:"encoding,omitempty" jsonschema:"text (default) or base64"`
-	Charset     string `json:"charset,omitempty" jsonschema:"text mode: encoding of the file: auto (default: BOM, then UTF-8 if valid, otherwise the host file code page), utf-8, system, or a charset name such as shift_jis, euc-jp, utf-16le"`
-	LineStart   int    `json:"line_start,omitempty" jsonschema:"text mode: first line to read (1-based). When set, offset/length are ignored"`
-	LineCount   int    `json:"line_count,omitempty" jsonschema:"text mode: number of lines to read (default 2000)"`
-	LineNumbers bool   `json:"line_numbers,omitempty" jsonschema:"line mode: prefix each line with its number and a tab, like cat -n. Useful before fs_edit; do not copy the prefixes into old_string"`
+	Charset     string `json:"charset,omitempty" jsonschema:"text mode: auto (default: BOM, then UTF-8 if valid, else host file code page), utf-8, system, or a charset name (shift_jis, euc-jp, utf-16le, ...)"`
+	LineStart   int    `json:"line_start,omitempty" jsonschema:"text mode: 1-based first line to read (ignores offset/length when set)"`
+	LineCount   int    `json:"line_count,omitempty" jsonschema:"text mode: max lines to read (default 2000)"`
+	LineNumbers bool   `json:"line_numbers,omitempty" jsonschema:"line mode: prefix lines with 'N\\t' (requires line_start; strip prefixes before passing to fs_edit)"`
 	Offset      int64  `json:"offset,omitempty" jsonschema:"byte offset to start reading"`
-	Length      int    `json:"length,omitempty" jsonschema:"maximum bytes to read (capped by the server output limit)"`
+	Length      int    `json:"length,omitempty" jsonschema:"max bytes to read (capped by server output limit)"`
 }
 
 // FsReadOutput is the output of fs_read.
@@ -133,14 +133,14 @@ type FsReadOutput struct {
 	Path       string `json:"path"`
 	Size       int64  `json:"size"`
 	Encoding   string `json:"encoding"`
-	Charset    string `json:"charset,omitempty" jsonschema:"text mode: encoding used to decode the content. Pass it to fs_write to keep the file encoding"`
-	BOM        bool   `json:"bom,omitempty" jsonschema:"text mode: the file starts with a byte order mark (not included in content)"`
-	Newline    string `json:"newline,omitempty" jsonschema:"text mode: line endings found in content: lf, crlf, cr or mixed"`
+	Charset    string `json:"charset,omitempty" jsonschema:"text mode: detected or selected charset (pass to fs_write to preserve encoding)"`
+	BOM        bool   `json:"bom,omitempty" jsonschema:"text mode: file has a byte order mark (stripped from content)"`
+	Newline    string `json:"newline,omitempty" jsonschema:"text mode: line endings in content (lf, crlf, cr or mixed)"`
 	Content    string `json:"content"`
 	EOF        bool   `json:"eof"`
-	NextOffset int64  `json:"next_offset,omitempty" jsonschema:"byte mode: offset to continue reading"`
-	NextLine   int    `json:"next_line,omitempty" jsonschema:"line mode: line number to continue reading"`
-	Truncated  bool   `json:"truncated,omitempty" jsonschema:"output limit was reached before the requested range"`
+	NextOffset int64  `json:"next_offset,omitempty" jsonschema:"byte mode: next byte offset"`
+	NextLine   int    `json:"next_line,omitempty" jsonschema:"line mode: next 1-based line number"`
+	Truncated  bool   `json:"truncated,omitempty" jsonschema:"stopped at output limit before completing the requested range"`
 }
 
 func (d *Deps) fsRead(_ context.Context, req *mcp.CallToolRequest, in FsReadInput) (*mcp.CallToolResult, FsReadOutput, error) {
@@ -348,24 +348,24 @@ type FsWriteInput struct {
 	Path     string `json:"path"`
 	Content  string `json:"content"`
 	Encoding string `json:"encoding,omitempty" jsonschema:"text (default) or base64"`
-	Mode     string `json:"mode,omitempty" jsonschema:"overwrite (default), append or create (fail if the file exists)"`
-	Offset   *int64 `json:"offset,omitempty" jsonschema:"write at this byte offset without truncating the file (the file is created if missing). Not allowed with mode append"`
-	MakeDirs bool   `json:"make_dirs,omitempty" jsonschema:"create parent directories if missing"`
-	Perm     string `json:"perm,omitempty" jsonschema:"octal permission for a new file, e.g. 0644 (ignored on Windows)"`
-	Charset  string `json:"charset,omitempty" jsonschema:"text: encoding to write: utf-8 (default), system (host file code page), or a charset name such as shift_jis, euc-jp, utf-16le. Characters that cannot be represented cause an error"`
-	Newline  string `json:"newline,omitempty" jsonschema:"text: convert line endings before writing: keep (default), lf or crlf"`
-	Atomic   bool   `json:"atomic,omitempty" jsonschema:"overwrite mode only: write a temporary file beside the target and rename it over the target, so readers never see a partial file (for config files read by running services). Keeps permissions and owner (fails if the owner cannot be kept), follows symbolic links, but not ACLs, extended attributes or hard links"`
-	BOM      bool   `json:"bom,omitempty" jsonschema:"text: prepend a byte order mark (utf-8, utf-16le, utf-16be only). Only when writing at the start of the file"`
+	Mode     string `json:"mode,omitempty" jsonschema:"overwrite (default), append or create (fail if exists)"`
+	Offset   *int64 `json:"offset,omitempty" jsonschema:"write at byte offset without truncating (creates file if missing; incompatible with append and atomic)"`
+	MakeDirs bool   `json:"make_dirs,omitempty" jsonschema:"create missing parent directories"`
+	Perm     string `json:"perm,omitempty" jsonschema:"octal permissions for a new file, e.g. 0644 (ignored on Windows)"`
+	Charset  string `json:"charset,omitempty" jsonschema:"text: output encoding: utf-8 (default), system (host file code page), or a charset name (shift_jis, euc-jp, utf-16le, ...); unrepresentable characters fail"`
+	Newline  string `json:"newline,omitempty" jsonschema:"text: line ending conversion: keep (default), lf or crlf"`
+	Atomic   bool   `json:"atomic,omitempty" jsonschema:"overwrite mode (without offset): write a temp file and rename over target so readers never see partial content; preserves permissions, owner, and symlink target, but not ACLs, xattrs, or hard links"`
+	BOM      bool   `json:"bom,omitempty" jsonschema:"text: prepend a byte order mark (utf-8, utf-16le, utf-16be; only at start of file)"`
 }
 
-// AuditArgs logs the length and hash instead of the written content.
+// AuditArgs logs content length and SHA-256 instead of raw content.
 func (in FsWriteInput) AuditArgs() any {
 	sum := sha256.Sum256([]byte(in.Content))
 	in.Content = fmt.Sprintf("<%d chars, sha256 %s>", len(in.Content), hex.EncodeToString(sum[:]))
 	return in
 }
 
-// data builds the bytes to write. Text gets its newlines and encoding converted, and a BOM if requested.
+// data encodes Content for writing, applying newline conversion, charset encoding, and optional BOM in text mode.
 func (in FsWriteInput) data() ([]byte, error) {
 	switch orDefault(in.Encoding, "text") {
 	case "text":

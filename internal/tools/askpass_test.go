@@ -33,7 +33,7 @@ func TestAskpass(t *testing.T) {
 			t.Fatalf("try %d: %q, %v", i+1, out, err)
 		}
 	}
-	// One more prompt than queued copies fails instead of waiting forever.
+	// An extra prompt beyond passwordTries must fail rather than block.
 	if out, err := run(); err == nil {
 		t.Fatalf("extra try printed %q", out)
 	}

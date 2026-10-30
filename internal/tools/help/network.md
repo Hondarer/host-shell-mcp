@@ -1,7 +1,6 @@
 # Network
 
-All network tools run **on the remote host**: `localhost` is the remote host, and anything the host
-can reach is reachable. This replaces port forwarding.
+All network tools execute **on the remote host**: `localhost` refers to the remote host, and any destination reachable from the host is accessible without port forwarding.
 
 ## net_http
 
@@ -14,19 +13,15 @@ can reach is reachable. This replaces port forwarding.
 {"url": "https://example.com/big.tar.gz", "save_to": "/tmp/big.tar.gz"}
 ```
 
-- Returns `status`, `headers` and `body`. Text bodies (JSON, HTML, ...) come as UTF-8 text, binary as
-  base64 (`response_encoding` to force). Bodies longer than the limit are cut (`body_truncated`);
-  use `save_to` to store any size in a remote file, then `fs_read` or `search_grep` it.
-- Redirects are followed (up to 10) unless `no_redirects`. `insecure` accepts self-signed
-  certificates; `ca_cert`, `client_cert` and `client_key` are PEM files on the remote host.
-- The host's `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` apply; `proxy: "none"` connects directly.
-- `body_file` sends a remote file as the body (uploads).
-- For HTTPS, `tls` shows the certificate and whether it verifies.
+- Returns `status`, `headers`, and `body`. Text responses (JSON, HTML, etc.) are returned as UTF-8 text and binary responses as base64 (`response_encoding` overrides detection). Responses exceeding the output limit are truncated (`body_truncated: true`); use `save_to` to stream responses of any size to a remote file, then inspect it with `fs_read` or `search_grep`.
+- Follows up to 10 redirects unless `no_redirects: true`. `insecure: true` accepts self-signed or unverified certificates; `ca_cert`, `client_cert`, and `client_key` specify PEM files on the remote host.
+- Honors `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` on the remote host; `proxy: "none"` bypasses proxies.
+- `body_file` streams a remote file as the request body.
+- For HTTPS requests, `tls` reports the server certificate and verification status.
 
 ## net_tcp
 
-Connects, optionally sends, and reads until `until` matches, `idle_ms` of silence (default 1000),
-the peer closes, or `max_bytes`.
+Connects to a TCP (or TLS) endpoint, optionally sends data, and reads until `until` matches, `idle_ms` of silence elapses (default 1000), the peer closes the connection, or `max_bytes` is reached.
 
 ```json
 {"port": 6379, "send": "PING\r\n", "until": "\\r\\n"}
@@ -36,17 +31,15 @@ the peer closes, or `max_bytes`.
 
 ## net_check
 
-Many targets in parallel: `host:port` (DNS + connect), `host` (DNS only) or URLs.
+Probes multiple targets in parallel: `host:port` (DNS + TCP connect), `host` (DNS only), or URLs.
 
 ```json
 {"targets": ["db.internal:5432", "https://example.com", "cache:6379", "registry.npmjs.org"], "tls": true}
 ```
 
-Each result has `addresses`, `dns_ms`, `connected`, `connect_ms`, the certificate with `days_left`
-and `verified` (with `tls` or https URLs), and `error` (refused, timeout, no such host, ...).
+Each entry returns `addresses`, `dns_ms`, `connected`, `connect_ms`, certificate details with `days_left` and `verified` (when `tls: true` or for `https://` URLs), and `error` (connection refused, timeout, unknown host, etc.).
 
 ## net_listen, net_interfaces
 
-`net_listen` lists listening TCP/UDP sockets with pid and process (filter by `port`, `protocol`,
-`process`). On Linux, processes of other users show only when host-shell runs as root.
-`net_interfaces` lists interfaces with addresses, MAC, MTU and flags.
+`net_listen` lists listening TCP and UDP sockets with `pid` and process name (filtered by `port`, `protocol`, or `process`). On Linux, processes owned by other users appear only when host-shell runs as root.
+`net_interfaces` lists network interfaces with IP addresses, MAC address, MTU, and flags.

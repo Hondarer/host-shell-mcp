@@ -45,8 +45,8 @@ func processAlive(pid int) bool {
 
 // ---- svc_list / svc_control ----
 
-// connectSCM connects to the service control manager with only the rights needed to list and query services.
-// mgr.Connect asks for all rights and fails for users who are not administrators.
+// connectSCM opens the Service Control Manager with read/enumerate rights so non-admin users can list and query services
+// (mgr.Connect requests all access rights and fails without elevation).
 func connectSCM() (*mgr.Mgr, error) {
 	h, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT|windows.SC_MANAGER_ENUMERATE_SERVICE)
 	if err != nil {
@@ -338,7 +338,7 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error
 		count = min(in.Lines*20, 20000)
 	}
 	argv := []string{"wevtutil", "qe", orDefault(in.Log, "System"), "/q:" + query, "/c:" + strconv.Itoa(count), "/rd:true", "/f:RenderedXml", "/e:Events"}
-	// The output encoding varies by environment (UTF-16, UTF-8, code page), so take the raw bytes and detect it.
+	// wevtutil output encoding varies (UTF-16, UTF-8, or console code page), so capture raw bytes and auto-detect.
 	res, err := proc.Run(ctx, d.procSpec(CommandSpec{Argv: argv}), proc.Options{
 		Timeout:   d.Cfg.DefaultTimeout,
 		MaxOutput: 64 << 20,
@@ -353,7 +353,7 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error
 	var doc struct {
 		Events []event `xml:"Event"`
 	}
-	// The text is already converted, so drop the declaration before parsing.
+	// Strip the XML declaration before unmarshaling the UTF-8 body.
 	body := res.Stdout
 	if i := strings.Index(body, "?>"); strings.HasPrefix(strings.TrimSpace(body), "<?xml") && i >= 0 {
 		body = body[i+2:]
@@ -389,8 +389,7 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error
 	return out, nil
 }
 
-// decodeToolOutput converts the output of standard Windows commands to UTF-8.
-// It tries UTF-16 (with a BOM, or detected by textenc.DetectUnicode), UTF-8 and then the console code page.
+// decodeToolOutput converts Windows command output to UTF-8, trying UTF-16 (BOM or heuristic), UTF-8, then the console code page.
 func decodeToolOutput(s string) string {
 	b := []byte(s)
 	if enc, n, ok := textenc.DetectUnicode(b); ok {

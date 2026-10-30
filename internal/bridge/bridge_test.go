@@ -23,7 +23,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/server"
 )
 
-// connectBridge connects "agent - bridge - host-shell on the target" over in-memory transports.
+// connectBridge wires an agent, bridge, and target host-shell over in-memory transports.
 func connectBridge(t *testing.T, remotePolicy policy.Options, opt Options, copts *mcp.ClientOptions) *mcp.ClientSession {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -153,7 +153,7 @@ type transferOut struct {
 func TestTransfer(t *testing.T) {
 	cs := connectBridge(t, policy.Options{}, Options{}, nil)
 	src := t.TempDir()
-	big := make([]byte, 2<<20+12345) // large enough to be sent in three 1 MiB chunks
+	big := make([]byte, 2<<20+12345) // spans three 1 MiB chunks
 	rand.Read(big)
 	files := map[string][]byte{
 		"a.txt":         []byte("hello\n"),
@@ -194,7 +194,7 @@ func TestTransfer(t *testing.T) {
 		}
 	}
 
-	// Sending again skips unchanged files. A different file is not sent without overwrite.
+	// Re-pushing skips unchanged files and refuses modified files without overwrite.
 	os.WriteFile(filepath.Join(src, "a.txt"), []byte("changed\n"), 0o644)
 	out = call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": src, "remote_path": remote, "exclude": []string{".git"}})
 	if out.Unchanged != 3 || out.Failed != 1 {

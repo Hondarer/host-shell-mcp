@@ -1,20 +1,17 @@
 # Restrictions (policy)
 
-The administrator who registered host-shell can restrict it with options. Without options nothing is
-restricted and every tool can do anything the host user can. `sys_info` lists `tool_groups` and
-`restrictions`; the table at the top of `help` shows them too.
+The administrator can restrict host-shell via command-line flags. When no policy flags are set, all tools operate with the full permissions of the host user. Active restrictions appear in `sys_info` (`tool_groups`, `restrictions`) and at the top of `help`.
 
-| Option | Effect on you |
+| Flag | Effect |
 |---|---|
-| `--tools` | Only some tool groups or tools exist (`files`, `search`, `exec`, `net`, `admin`). Others are not listed. |
-| `--read-only` | Only tools that do not change the host. `net_http` only GET/HEAD/OPTIONS, `net_tcp` cannot send. |
-| `--allow-path`, `--allow-read-path` | File tools work only under these directories (read-only for the second). Symbolic links are resolved before checking. |
-| `--allow-command` | Only these programs can be run. Shell command lines need the shell itself allowed; use `argv` to run an allowed program directly. |
-| `--deny-command` | Command lines matching a pattern are refused. |
-| `--allow-host` | Network tools reach only these hosts, networks, ports or Unix sockets. |
-| `--unset-env` | Some environment variables (secrets) are not passed to commands. |
-| `--confirm` | The user is asked to approve each call of some tools. If your client cannot ask, those calls fail. |
-| `--redact` | Secrets in results (keys, tokens, passwords) are replaced with `[REDACTED]`. Do not write such text back into files. |
+| `--tools` | Exposes only the specified tool groups (`files`, `search`, `exec`, `net`, `admin`) or individual tools; all others are omitted. |
+| `--read-only` | Exposes only non-mutating tools. Restricts `net_http` to `GET`, `HEAD`, and `OPTIONS`, and disables sending in `net_tcp`. |
+| `--allow-path`, `--allow-read-path` | Restricts file tools to the listed directories (`--allow-read-path` permits read-only access). Symbolic links are resolved before checking. |
+| `--allow-command` | Permits only the listed executables. Shell commands require the shell itself to be allowed; pass `argv` to invoke an allowed executable directly. |
+| `--deny-command` | Rejects command lines matching the specified pattern. |
+| `--allow-host` | Restricts network tools to the listed hosts, CIDR ranges, ports, or Unix sockets. |
+| `--unset-env` | Removes specified environment variables (such as secrets) before starting commands. |
+| `--confirm` | Prompts the user via MCP elicitation to approve each call to matching tools; fails if the client does not support elicitation. |
+| `--redact` | Replaces detected secrets (keys, tokens, passwords) in tool results with `[REDACTED]`. Do not write `[REDACTED]` placeholders back into files. |
 
-A refused call returns an error starting with `policy:` that names the rule. Do not try to work around
-it (for example by running a shell command to read a path the file tools refuse); ask the user instead.
+Rejected calls return an error prefixed with `policy:` naming the violated rule. Do not attempt to bypass policy restrictions (for example, by invoking a shell command to read a path blocked by file policy); ask the user instead.

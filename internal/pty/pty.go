@@ -1,7 +1,5 @@
-// Package pty starts child processes attached to a pseudo terminal (pty on Linux, ConPTY on Windows).
-//
-// It runs programs that expect a terminal (password prompts, REPLs, full-screen displays,
-// colored output and so on) on a terminal instead of standard I/O pipes.
+// Package pty runs child processes attached to a pseudo-terminal (POSIX pty on Linux, ConPTY on Windows)
+// for interactive prompts, REPLs, full-screen programs, and colorized output.
 package pty
 
 import (
@@ -10,18 +8,17 @@ import (
 	"os/exec"
 )
 
-// errEOF is the end of terminal output. It turns the OS-specific ways of ending into io.EOF.
+// errEOF normalizes OS-specific terminal hangup errors to io.EOF.
 var errEOF = io.EOF
 
-// Default terminal size.
+// Default terminal dimensions.
 const (
 	DefaultCols = 120
 	DefaultRows = 40
 )
 
-// Start starts cmd attached to a new pseudo terminal.
-// Pass a cmd built with proc.Command, without standard input or output set.
-// When ctx ends, the process tree is ended.
+// Start attaches cmd (built with proc.Command, without stdin/stdout set) to a new pseudo-terminal
+// of size cols x rows, terminating the process tree when ctx is cancelled.
 func Start(ctx context.Context, cmd *exec.Cmd, cols, rows int) (*Terminal, error) {
 	if cols <= 0 {
 		cols = DefaultCols

@@ -16,17 +16,17 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 )
 
-// pathArgs is implemented by input types that pass the paths they read and write to the policy check.
+// pathArgs is implemented by input types that report read and write paths for policy checks.
 type pathArgs interface {
 	PathArgs() (read, write []string)
 }
 
-// commandArgs is implemented by input types that pass the programs they start and the command line to the policy check.
+// commandArgs is implemented by input types that report invoked programs and command text for policy checks.
 type commandArgs interface {
 	CommandArgs(defaultShell string) (programs []string, text string)
 }
 
-// checkPolicy checks whether the input stays within the restrictions the user specified.
+// checkPolicy validates that the tool input satisfies configured path and command policies.
 func (d *Deps) checkPolicy(in any) error {
 	if pa, ok := in.(pathArgs); ok {
 		read, write := pa.PathArgs()
@@ -50,20 +50,19 @@ func (d *Deps) checkPolicy(in any) error {
 	return nil
 }
 
-// confirmID identifies the confirmation request (input request).
+// confirmID identifies the elicitation confirmation request.
 const confirmID = "confirm"
 
-// confirm asks the user, through MCP elicitation, to confirm running an operation.
+// confirm requests user confirmation via MCP elicitation (SEP-2322).
 //
-// Following MCP multi round-trip requests (SEP-2322), the first call returns the confirmation request as its result
-// (ask is not nil). When the client retries the same call with the user's answer, the answer is checked and
-// nil is returned if it allows the operation. For older clients, the SDK does the asking and retrying on their behalf.
-// When the client does not support elicitation, the operation is not run.
+// On the initial call it returns a non-nil CallToolResult carrying the elicitation prompt and an HMAC state
+// bound to the tool name and arguments. On retry with a matching state and accepted response, it returns nil, nil.
+// If the client does not support elicitation, it returns an error.
 func (d *Deps) confirm(req *mcp.CallToolRequest, name string, in any) (ask *mcp.CallToolResult, err error) {
 	if p := req.Session.InitializeParams(); p == nil || p.Capabilities == nil || p.Capabilities.Elicitation == nil {
 		return nil, fmt.Errorf("policy: %s requires confirmation by the user, but the client cannot ask the user (no elicitation support)", name)
 	}
-	// The answer is accepted together with state bound to the arguments, so it only applies to a retry with the same arguments.
+	// Verify that the confirmation response matches the HMAC state for these exact arguments.
 	state := d.confirmState(name, req.Params.Arguments)
 	if resp, ok := req.Params.InputResponses[confirmID]; ok && hmac.Equal([]byte(req.Params.RequestState), []byte(state)) {
 		r, ok := resp.(*mcp.ElicitResult)

@@ -18,27 +18,27 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Terminal is a process attached to a pseudo terminal (ConPTY).
+// Terminal represents a process attached to a Windows ConPTY pseudo-console.
 type Terminal struct {
 	hpc     windows.Handle
 	process windows.Handle
 	pid     int
-	in      *os.File // input to the terminal (we write)
-	out     *os.File // output of the terminal (we read)
+	in      *os.File // ConPTY input pipe (write side)
+	out     *os.File // ConPTY output pipe (read side)
 
 	closeOnce sync.Once
 	exited    chan struct{}
-	lastRead  atomic.Int64 // when output was last read (UnixNano)
+	lastRead  atomic.Int64 // UnixNano timestamp of last output read
 }
 
-// How long to wait for output to settle after the process ends. ConPTY renders asynchronously,
-// so closing it right after the process ends can lose the last output.
+// Output settle timeouts after process exit; ConPTY renders asynchronously, so closing it
+// immediately upon process exit can drop trailing output.
 const (
 	settleIdle = 300 * time.Millisecond
 	settleMax  = 2 * time.Second
 )
 
-// os/exec's Cmd cannot pass the pseudo console attribute (golang/go#62708), so call CreateProcess directly.
+// start calls CreateProcess directly because os/exec cannot pass PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE (golang/go#62708).
 func start(ctx context.Context, cmd *exec.Cmd, cols, rows int) (*Terminal, error) {
 	ptyIn, inW, err := os.Pipe()
 	if err != nil {
@@ -53,7 +53,7 @@ func start(ctx context.Context, cmd *exec.Cmd, cols, rows int) (*Terminal, error
 	var hpc windows.Handle
 	err = windows.CreatePseudoConsole(windows.Coord{X: int16(cols), Y: int16(rows)},
 		windows.Handle(ptyIn.Fd()), windows.Handle(ptyOut.Fd()), 0, &hpc)
-	// ConPTY duplicates the terminal-side ends, so close them here.
+	// ConPTY duplicates the pipe handles it needs.
 	ptyIn.Close()
 	ptyOut.Close()
 	if err != nil {
@@ -84,7 +84,7 @@ func (t *Terminal) spawn(cmd *exec.Cmd) error {
 		return err
 	}
 	defer attrs.Delete()
-	// The attribute value is the HPCON itself, not what it points to.
+	// PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE expects the HPCON value itself, not a pointer to it.
 	hpc := *(*unsafe.Pointer)(unsafe.Pointer(&t.hpc))
 	if err := attrs.Update(windows.PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, hpc, unsafe.Sizeof(t.hpc)); err != nil {
 		return err
@@ -113,8 +113,8 @@ func (t *Terminal) spawn(cmd *exec.Cmd) error {
 	}
 	si := &windows.StartupInfoEx{ProcThreadAttributeList: attrs.List()}
 	si.Cb = uint32(unsafe.Sizeof(*si))
-	// State explicitly that no standard handles are given (NULL). Otherwise the child inherits host-shell's own
-	// standard handles (the MCP channel), and what it writes to standard output never reaches the pseudo console.
+	// Pass STARTF_USESTDHANDLES with null handles so the child does not inherit host-shell's
+	// stdio (the MCP transport) and bypass the pseudo-console.
 	si.Flags = windows.STARTF_USESTDHANDLES
 	pi := &windows.ProcessInformation{}
 	flags := uint32(windows.EXTENDED_STARTUPINFO_PRESENT | windows.CREATE_UNICODE_ENVIRONMENT)
@@ -127,7 +127,7 @@ func (t *Terminal) spawn(cmd *exec.Cmd) error {
 	return nil
 }
 
-// envBlock formats the environment for CreateProcess (NUL separated, ending with two NULs).
+// envBlock encodes env as a UTF-16 block of NUL-terminated strings terminated by an extra NUL.
 func envBlock(env []string) *uint16 {
 	var b []uint16
 	for _, kv := range env {
@@ -174,7 +174,7 @@ func (t *Terminal) Wait() (int, error) {
 	if err := windows.GetExitCodeProcess(t.process, &code); err != nil {
 		return -1, err
 	}
-	// Close ConPTY after the output settles. Closing it flushes the remaining output and then closes the output pipe.
+	// Close ConPTY once output settles, which flushes buffered rendering and closes the output pipe.
 	go func() {
 		deadline := time.Now().Add(settleMax)
 		start := time.Now().UnixNano()
@@ -197,18 +197,17 @@ func (t *Terminal) closeConsole() {
 	})
 }
 
-// Close closes the terminal. A Read in progress returns.
+// Close closes the pseudo-console and pipes, unblocking any concurrent Read.
 func (t *Terminal) Close() error {
 	t.closeConsole()
 	windows.CloseHandle(t.process)
 	return t.out.Close()
 }
 
-// kill ends the process tree.
 func (t *Terminal) kill() {
 	_ = exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(t.pid)).Run()
 	_ = windows.TerminateProcess(t.process, 1)
 }
 
-// EOF is the characters sent to the terminal to signal end of input (Ctrl-Z and Enter).
+// EOF is the terminal end-of-input sequence on Windows (Ctrl-Z followed by CR).
 const EOF = "\x1a\r"

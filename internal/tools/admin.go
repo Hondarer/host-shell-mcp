@@ -17,14 +17,14 @@ func registerAdmin(s *mcp.Server, d *Deps) {
 		Name:  "sys_processes",
 		Title: "List processes",
 		Description: "List running processes with pid, ppid, name, command line, user, state, start time and memory, ordered by pid. " +
-			"filter keeps those whose name or command line contains a substring; pid keeps one process and its descendants. Use proc_kill to end one.",
+			"filter matches name or command line by substring; pid keeps one process and its descendants. Use proc_kill to end a process.",
 		Annotations: readOnly(),
 	}, d.sysProcesses)
 	add(s, d, groupAdmin, &mcp.Tool{
 		Name:  "proc_kill",
 		Title: "Signal or kill process",
-		Description: "Send a signal to a process by pid (Linux: terminate by default, or kill, interrupt, hangup, ...; Windows: kill). " +
-			"tree includes all its descendants. On Linux sudo sends it as root via sudo -n. For jobs started by host-shell use job_stop instead.",
+		Description: "Send a signal to a process by pid (Linux: terminate by default, kill, interrupt, hangup, ...; Windows: kill). " +
+			"tree includes all descendants; sudo sends as root via sudo -n on Linux. Use job_stop for jobs started by host-shell.",
 		Annotations: destructive(),
 	}, d.procKill)
 	add(s, d, groupAdmin, &mcp.Tool{
@@ -37,17 +37,17 @@ func registerAdmin(s *mcp.Server, d *Deps) {
 	add(s, d, groupAdmin, &mcp.Tool{
 		Name:  "svc_control",
 		Title: "Control service",
-		Description: "Show or change one service: status (details and recent log lines), start, stop, restart, reload (Linux), enable, disable. " +
-			"Linux uses systemctl (sudo for system units when not root, user for --user units); Windows uses the Service Control Manager (needs an elevated session for most changes). " +
-			"Returns the status after the action.",
+		Description: "Query or control a service: status (details and recent log lines), start, stop, restart, reload (Linux), enable, disable. " +
+			"Uses systemctl on Linux (sudo for system units when not root, user for --user units) and Service Control Manager on Windows (needs elevation for most changes). " +
+			"Returns post-action status.",
 		Annotations: destructive(),
 	}, d.svcControl)
 	add(s, d, groupAdmin, &mcp.Tool{
 		Name:  "log_query",
 		Title: "Query system logs",
-		Description: "Read the system log as structured entries: the systemd journal on Linux (unit, priority), the Windows Event Log on Windows (log, provider, level, event_id). " +
-			"since accepts durations like 30m, 2h, 1d or a timestamp; grep filters messages by regular expression. Newest lines last. " +
-			"For plain log files use fs_read (negative offset for the tail) or search_grep.",
+		Description: "Read structured system log entries: systemd journal on Linux (unit, priority), Windows Event Log on Windows (log, unit as provider, priority, event_id). " +
+			"since accepts durations (30m, 2h, 1d) or timestamps; grep filters messages by regex. Oldest first. " +
+			"For plain log files use fs_read or search_grep.",
 		Annotations: readOnly(),
 	}, d.logQuery)
 	add(s, d, groupAdmin, &mcp.Tool{
@@ -61,21 +61,21 @@ func registerAdmin(s *mcp.Server, d *Deps) {
 		add(s, d, groupAdmin, &mcp.Tool{
 			Name:  "reg_read",
 			Title: "Read registry",
-			Description: "Read a Windows registry key: its subkeys and values, or one value with value. Keys like HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion " +
-				"(HKLM, HKCU, HKCR, HKU, HKCC). view 32 or 64 selects the WOW64 view.",
+			Description: "Read a Windows registry key (subkeys and values, or one value via value). Keys use roots HKLM, HKCU, HKCR, HKU, HKCC " +
+				"(e.g. HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion). view 32 or 64 selects the WOW64 view.",
 			Annotations: readOnly(),
 		}, d.regRead)
 		add(s, d, groupAdmin, &mcp.Tool{
 			Name:  "reg_write",
 			Title: "Write registry",
-			Description: "Create or set a Windows registry value (and create the key if missing). type: REG_SZ (default), REG_EXPAND_SZ, REG_MULTI_SZ (data is an array of strings), " +
-				"REG_DWORD, REG_QWORD (data is a number), REG_BINARY (data is base64). Omit value to only create the key.",
+			Description: "Create or set a Windows registry value (creating the key if missing), or omit value to only create the key. " +
+				"type: REG_SZ (default), REG_EXPAND_SZ, REG_MULTI_SZ (string array), REG_DWORD, REG_QWORD (number), REG_BINARY (base64).",
 			Annotations: destructive(),
 		}, d.regWrite)
 		add(s, d, groupAdmin, &mcp.Tool{
 			Name:        "reg_delete",
 			Title:       "Delete registry",
-			Description: "Delete a Windows registry value (with value) or key (recursive deletes a key with all subkeys).",
+			Description: "Delete a Windows registry value (with value) or key (recursive deletes subkeys).",
 			Annotations: destructive(),
 		}, d.regDelete)
 	}
@@ -86,15 +86,15 @@ func registerAdmin(s *mcp.Server, d *Deps) {
 // ProcKillInput is the input of proc_kill.
 type ProcKillInput struct {
 	PID    int    `json:"pid" jsonschema:"process id (see sys_processes)"`
-	Signal string `json:"signal,omitempty" jsonschema:"Linux: terminate (default), kill, interrupt, hangup, quit, stop, continue, usr1, usr2. Windows: kill (default, the only one)"`
+	Signal string `json:"signal,omitempty" jsonschema:"Linux: terminate (default), kill, interrupt, hangup, quit, stop, continue, usr1, usr2. Windows: kill (default)"`
 	Tree   bool   `json:"tree,omitempty" jsonschema:"also signal all descendant processes"`
-	Sudo   bool   `json:"sudo,omitempty" jsonschema:"Linux: send the signal as root with sudo -n (for processes of other users. If sudo needs a password, use sudo_run with password instead)"`
+	Sudo   bool   `json:"sudo,omitempty" jsonschema:"Linux: send as root via sudo -n (for other users' processes; if sudo needs a password, use sudo_run)"`
 }
 
 // ProcKillOutput is the output of proc_kill.
 type ProcKillOutput struct {
-	Signaled []int `json:"signaled" jsonschema:"process ids the signal was sent to"`
-	Exited   bool  `json:"exited" jsonschema:"the process was gone within 3 seconds"`
+	Signaled []int `json:"signaled" jsonschema:"process ids signaled"`
+	Exited   bool  `json:"exited" jsonschema:"process exited within 3 seconds"`
 }
 
 func (d *Deps) procKill(ctx context.Context, _ *mcp.CallToolRequest, in ProcKillInput) (*mcp.CallToolResult, ProcKillOutput, error) {
@@ -131,18 +131,18 @@ func (d *Deps) procKill(ctx context.Context, _ *mcp.CallToolRequest, in ProcKill
 
 // SvcListInput is the input of svc_list.
 type SvcListInput struct {
-	Filter string `json:"filter,omitempty" jsonschema:"case-insensitive substring of the name or description"`
+	Filter string `json:"filter,omitempty" jsonschema:"case-insensitive name or description substring"`
 	State  string `json:"state,omitempty" jsonschema:"running, stopped, failed or all (default)"`
-	User   bool   `json:"user,omitempty" jsonschema:"Linux: list the user's systemd units (systemctl --user)"`
+	User   bool   `json:"user,omitempty" jsonschema:"Linux: list user systemd units (systemctl --user)"`
 }
 
 // Service is the state of a service.
 type Service struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
-	State       string `json:"state" jsonschema:"running, stopped, failed, starting, stopping or the native state"`
-	SubState    string `json:"sub_state,omitempty" jsonschema:"Linux: systemd sub-state such as running, exited, dead"`
-	StartMode   string `json:"start_mode,omitempty" jsonschema:"Linux: enabled, disabled, static, masked...; Windows: auto, delayed-auto, manual, disabled"`
+	State       string `json:"state" jsonschema:"running, stopped, failed, starting, stopping or native state"`
+	SubState    string `json:"sub_state,omitempty" jsonschema:"Linux: systemd sub-state (running, exited, dead, ...)"`
+	StartMode   string `json:"start_mode,omitempty" jsonschema:"Linux: enabled, disabled, static, masked, ...; Windows: auto, delayed-auto, manual, disabled"`
 	PID         int    `json:"pid,omitempty"`
 }
 
@@ -177,19 +177,19 @@ func (d *Deps) svcList(ctx context.Context, _ *mcp.CallToolRequest, in SvcListIn
 
 // SvcControlInput is the input of svc_control.
 type SvcControlInput struct {
-	Name    string `json:"name" jsonschema:"service name: systemd unit (nginx or nginx.service) or Windows service name (not the display name)"`
+	Name    string `json:"name" jsonschema:"service name: systemd unit (nginx or nginx.service) or Windows service name (not display name)"`
 	Action  string `json:"action,omitempty" jsonschema:"status (default), start, stop, restart, reload (Linux), enable, disable"`
-	User    bool   `json:"user,omitempty" jsonschema:"Linux: a user unit (systemctl --user)"`
-	Sudo    bool   `json:"sudo,omitempty" jsonschema:"Linux: run systemctl with sudo -n (needed for system units when host-shell is not root. If sudo needs a password, use sudo_run with password instead)"`
-	WaitSec int    `json:"wait_sec,omitempty" jsonschema:"Windows: seconds to wait for start/stop to complete (default 30)"`
+	User    bool   `json:"user,omitempty" jsonschema:"Linux: user unit (systemctl --user)"`
+	Sudo    bool   `json:"sudo,omitempty" jsonschema:"Linux: run systemctl via sudo -n (needed for system units when not root; if sudo needs a password, use sudo_run)"`
+	WaitSec int    `json:"wait_sec,omitempty" jsonschema:"Windows: seconds to wait for start/stop (default 30)"`
 }
 
 // SvcControlOutput is the output of svc_control.
 type SvcControlOutput struct {
 	Service    Service           `json:"service"`
-	Properties map[string]string `json:"properties,omitempty" jsonschema:"details such as the executable path, account and main pid"`
-	StatusText string            `json:"status_text,omitempty" jsonschema:"Linux: output of systemctl status including recent log lines"`
-	Output     string            `json:"output,omitempty" jsonschema:"output of the control command"`
+	Properties map[string]string `json:"properties,omitempty" jsonschema:"unit or service properties (executable path, account, main pid, ...)"`
+	StatusText string            `json:"status_text,omitempty" jsonschema:"Linux: systemctl status output with recent log lines"`
+	Output     string            `json:"output,omitempty" jsonschema:"control command output"`
 }
 
 func (d *Deps) svcControl(ctx context.Context, _ *mcp.CallToolRequest, in SvcControlInput) (*mcp.CallToolResult, SvcControlOutput, error) {
@@ -217,15 +217,15 @@ func (d *Deps) svcControl(ctx context.Context, _ *mcp.CallToolRequest, in SvcCon
 // LogQueryInput is the input of log_query.
 type LogQueryInput struct {
 	Unit     string `json:"unit,omitempty" jsonschema:"Linux: systemd unit (e.g. nginx); Windows: event provider (source) name"`
-	Log      string `json:"log,omitempty" jsonschema:"Windows: event log name: System (default), Application, Security, Setup or a channel such as Microsoft-Windows-PowerShell/Operational. Linux: kernel for kernel messages only"`
-	Since    string `json:"since,omitempty" jsonschema:"only entries newer than this: a duration ago (30m, 2h, 1d) or a timestamp (2026-10-30 09:00, RFC3339)"`
-	Until    string `json:"until,omitempty" jsonschema:"only entries older than this (same formats as since)"`
+	Log      string `json:"log,omitempty" jsonschema:"Windows: event log channel: System (default), Application, Security, Setup or a full channel name. Linux: kernel for kernel messages only"`
+	Since    string `json:"since,omitempty" jsonschema:"entries newer than a relative duration (30m, 2h, 1d) or timestamp (2026-10-30 09:00, RFC3339)"`
+	Until    string `json:"until,omitempty" jsonschema:"entries older than this (same formats as since)"`
 	Priority string `json:"priority,omitempty" jsonschema:"minimum severity: Linux emerg, alert, crit, err, warning, notice, info, debug; Windows critical, error, warning, information, verbose"`
-	EventID  int    `json:"event_id,omitempty" jsonschema:"Windows: only this event id"`
-	Grep     string `json:"grep,omitempty" jsonschema:"regular expression the message must match (case-insensitive)"`
-	Lines    int    `json:"lines,omitempty" jsonschema:"maximum entries, newest kept (default 100, max 2000)"`
-	User     bool   `json:"user,omitempty" jsonschema:"Linux: the user's journal (journalctl --user)"`
-	Sudo     bool   `json:"sudo,omitempty" jsonschema:"Linux: run journalctl with sudo -n (to read the system journal without journal group membership. If sudo needs a password, use sudo_run with password instead)"`
+	EventID  int    `json:"event_id,omitempty" jsonschema:"Windows: filter by event id"`
+	Grep     string `json:"grep,omitempty" jsonschema:"case-insensitive regex to match message"`
+	Lines    int    `json:"lines,omitempty" jsonschema:"max entries, newest kept (default 100, max 2000)"`
+	User     bool   `json:"user,omitempty" jsonschema:"Linux: user journal (journalctl --user)"`
+	Sudo     bool   `json:"sudo,omitempty" jsonschema:"Linux: run journalctl via sudo -n (to read system journal without journal group; if sudo needs a password, use sudo_run)"`
 }
 
 // LogEntry is one log entry.
@@ -241,7 +241,7 @@ type LogEntry struct {
 // LogQueryOutput is the output of log_query.
 type LogQueryOutput struct {
 	Entries   []LogEntry `json:"entries"`
-	Truncated bool       `json:"truncated,omitempty" jsonschema:"messages were shortened to fit the output limit"`
+	Truncated bool       `json:"truncated,omitempty" jsonschema:"oldest entries were dropped to fit the output limit"`
 }
 
 func (d *Deps) logQuery(ctx context.Context, _ *mcp.CallToolRequest, in LogQueryInput) (*mcp.CallToolResult, LogQueryOutput, error) {
@@ -254,7 +254,7 @@ func (d *Deps) logQuery(ctx context.Context, _ *mcp.CallToolRequest, in LogQuery
 	if out.Entries == nil {
 		out.Entries = []LogEntry{}
 	}
-	// Beyond the output limit, drop the oldest entries.
+	// Drop oldest entries when exceeding MaxOutputBytes.
 	total := 0
 	for i := len(out.Entries) - 1; i >= 0; i-- {
 		total += len(out.Entries[i].Message) + 100
@@ -267,7 +267,7 @@ func (d *Deps) logQuery(ctx context.Context, _ *mcp.CallToolRequest, in LogQuery
 	return nil, out, nil
 }
 
-// parseSince parses an elapsed time such as "30m", "2h" or "1d", or a timestamp.
+// parseSince parses a relative duration ("30m", "2h", "1d") or timestamp.
 func parseSince(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	if n, ok := strings.CutSuffix(s, "d"); ok {

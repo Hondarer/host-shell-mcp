@@ -10,8 +10,7 @@ import (
 	"time"
 )
 
-// TestConPTY checks that cmd and PowerShell attached to ConPTY show a prompt, accept input,
-// and that what they write to standard output reaches the terminal.
+// TestConPTY verifies interactive prompt/input handling and stdout capture over ConPTY for cmd and PowerShell.
 func TestConPTY(t *testing.T) {
 	for _, argv := range [][]string{
 		{"cmd", "/v:on", "/c", "set /p n=name? & echo hello !n!"},

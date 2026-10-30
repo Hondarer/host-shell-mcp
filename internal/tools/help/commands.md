@@ -2,46 +2,30 @@
 
 ## exec_run
 
-Runs one command, waits for it, and returns `exit_code`, `stdout`, `stderr` and `duration_ms`.
-A non-zero exit code is a normal result, not a tool error.
+Runs a command to completion and returns `exit_code`, `stdout`, `stderr`, and `duration_ms`. A non-zero `exit_code` is returned as a normal result rather than a tool error.
 
-- `command` is a command line for a shell (`sh` on Linux, the configured shell on Windows; see
-  `default_shell` in `sys_info`). Pipes, redirects and `&&` work.
-- `argv` runs a program directly with exact arguments and no shell: no quoting problems, no globbing.
-  Prefer it when arguments contain spaces, quotes or user data.
-- `shell` picks another shell: `sh`, `bash`, `pwsh` on Linux; `cmd`, `powershell`, `pwsh` on Windows.
-- Every call is a new process. `cd` and `export` do not carry over: pass `cwd` and `env`.
-- Standard input is empty unless you pass `stdin`, so a command that asks a question fails instead
-  of hanging. Use non-interactive flags (`-y`, `--batch`, `DEBIAN_FRONTEND=noninteractive`) or a job
-  with `stdin_open` (topic `jobs`).
-- `timeout_sec` limits the run (server default and maximum apply). On timeout the whole process
-  tree is killed and `timed_out: true` is returned with the output so far.
-- Output beyond the limit keeps the head and tail with a marker in the middle and sets
-  `stdout_truncated`. Reduce output (`| tail -n 100`, `--quiet`, redirect to a file and `fs_read` it).
-- Output is converted to UTF-8 (`output_encoding`, default `auto`). See topic `encoding`.
-- If your client sends a progress token, `exec_run` and `sudo_run` report progress every second
-  (elapsed time, output size, last line). If your client cancels the request, the process tree is
-  killed at once.
+- `command` runs in a shell (`sh` on Linux, `default_shell` from `sys_info` on Windows) and supports pipes, redirects, and `&&`.
+- `argv` executes a program directly without a shell, avoiding quoting and globbing. Prefer `argv` when arguments contain spaces, quotes, or untrusted input.
+- `shell` overrides the shell: `sh`, `bash`, or `pwsh` on Linux; `cmd`, `powershell`, or `pwsh` on Windows.
+- Each call spawns a new process; `cd` and `export` do not persist across calls. Pass `cwd` and `env` instead.
+- Standard input is closed unless `stdin` is set, so interactive prompts fail immediately instead of hanging. Pass non-interactive flags (`-y`, `--batch`, `DEBIAN_FRONTEND=noninteractive`) or run a job with `stdin_open` (see topic `jobs`).
+- `timeout_sec` caps execution time (subject to the server default and maximum). On timeout, the entire process tree is killed and the call returns `timed_out: true` with the output collected so far.
+- Output exceeding the server limit retains the head and tail separated by an omission marker and sets `stdout_truncated: true`. Filter verbose commands (`| tail -n 100`, `--quiet`) or redirect output to a file and read it with `fs_read`.
+- Output is decoded to UTF-8 using `output_encoding` (default `auto`; see topic `encoding`).
+- When the client supplies a progress token, `exec_run` and `sudo_run` emit progress notifications every second (elapsed time, output byte count, and latest line). Canceling the request kills the process tree immediately.
 
 ## sudo_run (Linux)
 
-`sudo -n -- sh -c <command>`, optionally `-u user`. It never prompts: without a matching NOPASSWD
-sudoers rule it fails with "a password is required". Narrow rules are often written for specific
-commands; then run `exec_run` with `argv: ["sudo", "-n", "/usr/bin/systemctl", "restart", "app"]`.
+Runs `sudo -n -- sh -c <command>` (with `-u <user>` when `user` is set). Without `password`, `sudo_run` never prompts and fails with `"a password is required"` if no NOPASSWD sudoers rule matches. When sudoers restricts NOPASSWD to specific command paths and arguments, invoke `sudo` directly via `exec_run` with `argv: ["sudo", "-n", "/usr/bin/systemctl", "restart", "app"]`.
 
-If the user gives you their sudo password, pass it as `password`. host-shell then runs `sudo -A` with
-itself as the askpass helper: sudo gets the password only if it asks, the command never sees it on
-stdin, it is not written to the audit log, and any copy of it in the output is shown as `[REDACTED]`.
-The password still passes through you, so use it only when the user offered it. `proc_kill`,
-`svc_control` and `log_query` with `sudo: true` take no password; use `sudo_run` for those commands
-instead. A pty job (`job_start` with `pty`, then `job_write`) also works for programs that prompt.
+When the user provides a sudo password, pass it in `password`. host-shell then runs `sudo -A` with itself as the askpass helper: `sudo` receives the password only when it prompts, the target command never sees it on stdin, the audit log omits it, and any occurrence in command output is replaced with `[REDACTED]`. Pass `password` only when explicitly provided by the user. Because `proc_kill`, `svc_control`, and `log_query` with `sudo: true` do not accept a password, use `sudo_run` when a password is required. Programs that prompt on a terminal can also run in a `pty` job (`job_start` with `pty: true`, then `job_write`).
 
-## Choosing
+## Choosing an execution tool
 
-| Situation | Use |
+| Scenario | Tool |
 |---|---|
-| Finishes within a minute, no input needed | `exec_run` |
+| Completes within a minute without interactive input | `exec_run` |
 | Builds, test suites, downloads, servers, `tail -f` | `job_start` + `job_read` |
-| Programs reading stdin interactively | `job_start` with `stdin_open` + `job_write` |
-| Password prompts, REPLs, `ssh`, `top`, anything that needs a terminal | `job_start` with `pty` + `job_write` |
-| Reading or changing files | `fs_*` tools rather than `cat`, `sed -i`, `echo >` |
+| Programs reading piped stdin interactively | `job_start` (`stdin_open: true`) + `job_write` |
+| Password prompts, REPLs, `ssh`, `top`, or terminal-only programs | `job_start` (`pty: true`) + `job_write` |
+| Reading or modifying files | `fs_*` tools instead of `cat`, `sed -i`, or `echo >` |

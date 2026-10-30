@@ -67,12 +67,12 @@ func TestPaths(t *testing.T) {
 	ng(rw+"x", false) // A name prefix match is not allowed.
 
 	if runtime.GOOS != "windows" {
-		// A symbolic link inside an allowed location that points outside is judged after resolving it.
+		// Symlinks inside an allowed directory pointing outside must be rejected after resolution.
 		os.Symlink(dir, filepath.Join(rw, "escape"))
 		ng(filepath.Join(rw, "escape", "other"), false)
 	}
 
-	// When only read-only locations are given, writes are allowed nowhere.
+	// With only read-only roots configured, all writes must be rejected.
 	p, _ = New(Options{AllowReadPaths: []string{ro}}, nil)
 	if p.CheckPath(filepath.Join(ro, "x"), true) == nil {
 		t.Error("write must be refused with only read paths")

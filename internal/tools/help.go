@@ -15,7 +15,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
-// helpFS holds the usage guides for agents, one file per topic.
+// helpFS embeds the per-topic agent usage guides.
 //
 //go:embed help/*.md
 var helpFS embed.FS
@@ -23,10 +23,10 @@ var helpFS embed.FS
 // helpTopics lists the help topics in display order.
 var helpTopics = []string{"overview", "files", "edit", "search", "commands", "jobs", "network", "admin", "transfer", "encoding", "windows", "policy", "limits"}
 
-// helpResourcePrefix is the URI prefix under which help topics are exposed as MCP resources.
+// helpResourcePrefix is the MCP resource URI prefix for help topics.
 const helpResourcePrefix = "host-shell://help/"
 
-// HelpInput is the input of help.
+// HelpInput defines arguments for the help tool.
 type HelpInput struct {
 	Topic string `json:"topic,omitempty" jsonschema:"overview (default), files, edit, search, commands, jobs, network, admin, transfer, encoding, windows, policy, limits, or all"`
 }
@@ -60,7 +60,7 @@ func helpText(topic string) string {
 	return strings.TrimSpace(string(b))
 }
 
-// registerHelp also exposes each help topic as a resource.
+// registerHelp registers each help topic as an MCP resource.
 func registerHelp(s *mcp.Server, d *Deps) {
 	for _, t := range helpTopics {
 		uri := helpResourcePrefix + t
@@ -81,7 +81,7 @@ func registerHelp(s *mcp.Server, d *Deps) {
 	}
 }
 
-// hostSummary returns the target and server settings as Markdown.
+// hostSummary formats the target host and server configuration as Markdown.
 func (d *Deps) hostSummary() string {
 	host, _ := os.Hostname()
 	cwd, _ := os.Getwd()
@@ -111,40 +111,40 @@ func (d *Deps) hostSummary() string {
 			fmt.Fprintf(&sb, "| %s | `%s` |\n", kv[0], kv[1])
 		}
 	} else {
-		sb.WriteString("\nNo restrictions are set: every tool can do whatever the host user can.\n")
+		sb.WriteString("\nNo policy restrictions are set; tools operate with the full permissions of the host user.\n")
 	}
 	return strings.TrimSpace(sb.String())
 }
 
-// Instructions returns the guidance given to the agent in the initialize response, covering only the exposed tools.
+// Instructions builds the MCP initialize instructions for the enabled tools.
 func Instructions(d *Deps) string {
 	host, _ := os.Hostname()
 	cwd, _ := os.Getwd()
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "host-shell executes every operation on the remote host %q (%s/%s), not on your local machine. Paths, programs, network and environment are those of that host; working directory %q.\n",
+	fmt.Fprintf(&sb, "host-shell executes all operations on remote host %q (%s/%s; working directory %q). Paths, programs, network, and environment belong to that host; local files are not accessible.\n",
 		host, runtime.GOOS, runtime.GOARCH, cwd)
 	fmt.Fprintf(&sb, "Defaults: exec_run shell %q; console encoding %s; file encoding %s; output limit %s per call; command timeout %s (max %s).\n",
 		d.DefaultShell, textenc.Console().Name, textenc.File().Name,
 		formatBytes(d.Cfg.MaxOutputBytes), d.Cfg.DefaultTimeout, d.Cfg.MaxTimeout)
-	sb.WriteString("\nHow to work:\n- Start with sys_info.\n")
+	sb.WriteString("\nWorkflow:\n- Call sys_info first.\n")
 	for _, l := range []struct {
 		tool, text string
 	}{
-		{"search_grep", "Find files with search_files (globs such as **/*.py) and contents with search_grep (regex, context lines, output_mode files/count) rather than shell find/grep."},
-		{"fs_read", "Read with fs_read: line_start + line_numbers for code, offset/length for large files (negative offset in job_read for tails), encoding base64 for binary."},
-		{"fs_edit", "Change files with fs_edit (exact old_string -> new_string; keeps encoding, BOM and line endings). Use fs_write for new files or full rewrites, and fs_mkdir/fs_move/fs_copy/fs_remove instead of shell commands."},
-		{"exec_run", "Run commands with exec_run (argv avoids quoting issues). Each call is a fresh process: pass cwd and env instead of cd/export. stdin is empty, so prompts fail rather than hang."},
-		{"job_start", "Use job_start/job_read (wait_sec with until or idle_ms) for anything long-running; stdin_open + job_write for programs that need input; pty for programs that need a terminal (password prompts, REPLs, ssh)."},
-		{"net_http", "Reach services from the host itself with net_http (e.g. http://localhost:8080; unix_socket for Docker), net_tcp for other protocols and net_check for DNS/ports/certificates. No port forwarding is needed."},
-		{"svc_control", "Inspect and control services with svc_list/svc_control, logs with log_query, processes with sys_processes/proc_kill, disks with sys_disks."},
+		{"search_grep", "Locate files with search_files (globs such as **/*.py) and search content with search_grep (regex, context lines, output_mode files/count) instead of shell find/grep."},
+		{"fs_read", "Read files with fs_read: line_start + line_numbers for source code, offset/length for large files (negative offset in job_read for tails), and encoding base64 for binary data."},
+		{"fs_edit", "Edit files with fs_edit (exact old_string -> new_string; preserves encoding, BOM, and line endings). Use fs_write for new files or full rewrites, and fs_mkdir/fs_move/fs_copy/fs_remove instead of shell commands."},
+		{"exec_run", "Run commands with exec_run (pass argv to avoid shell quoting). Each call spawns a new process: pass cwd and env instead of cd/export. stdin is closed unless provided, so interactive prompts fail immediately."},
+		{"job_start", "Use job_start/job_read (wait_sec with until or idle_ms) for long-running commands; stdin_open + job_write for piped input; pty for terminal-dependent programs (password prompts, REPLs, ssh)."},
+		{"net_http", "Access host-reachable services directly with net_http (e.g. http://localhost:8080; unix_socket for Docker), net_tcp for raw TCP/TLS, and net_check for DNS/ports/certificates without port forwarding."},
+		{"svc_control", "Manage services with svc_list/svc_control, query logs with log_query, inspect or signal processes with sys_processes/proc_kill, and check disk usage with sys_disks."},
 	} {
 		if d.Enabled(l.tool) {
 			sb.WriteString("- " + l.text + "\n")
 		}
 	}
-	sb.WriteString("- All text is UTF-8; host encodings are converted automatically. Results larger than the limit are truncated and flagged; narrow the request.\n")
+	sb.WriteString("- All text is UTF-8; host encodings are converted automatically. Results exceeding the output limit are truncated and flagged; narrow the request.\n")
 	if r := d.Policy.Summary(); len(r) > 0 {
-		sb.WriteString("\nRestrictions set by the administrator (calls outside them fail with a policy: error; do not work around them):\n")
+		sb.WriteString("\nActive policy restrictions (disallowed calls fail with a policy: error; do not attempt workarounds):\n")
 		for _, kv := range r {
 			fmt.Fprintf(&sb, "- %s: %s\n", kv[0], kv[1])
 		}

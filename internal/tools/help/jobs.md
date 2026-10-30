@@ -1,76 +1,54 @@
 # Background jobs
 
-1. `job_start` takes the same arguments as `exec_run` and returns at once with `id` (e.g. `job-1`).
-   Without `timeout_sec` a job has no time limit.
-2. `job_read` with `offset: 0` returns output so far (stdout and stderr interleaved) and `next_offset`.
-   Pass `next_offset` as `offset` next time to get only new output. A negative `offset` reads the
-   last bytes (`-4000` for the tail).
-3. `status.running` becomes false and `status.exit_code` is set when the job ends.
-4. `job_stop` kills the job and its child processes. `job_list` shows all jobs of this session
-   (the 50 most recent finished jobs are kept).
+1. `job_start` accepts the same arguments as `exec_run` and returns immediately with `id` (e.g. `job-1`). Unless `timeout_sec` is set, jobs run without a time limit.
+2. `job_read` with `offset: 0` returns combined stdout/stderr output and `next_offset`. Pass `next_offset` as `offset` on subsequent calls to read incremental output, or pass a negative `offset` (e.g. `-4000`) to read the tail.
+3. When the job exits, `status.running` becomes `false` and `status.exit_code` is populated.
+4. `job_stop` terminates the job and its child processes. `job_list` lists active jobs and the 50 most recent finished jobs in the current session.
 
-Jobs and their child processes end when host-shell exits (the session closes), even if host-shell is
-killed. To keep a program running after the session, start it outside host-shell: on Linux with
-`systemd-run --user --unit=NAME ...`, on Windows as a service or a scheduled task (`schtasks`,
-`Register-ScheduledTask`).
+All jobs and their child processes are terminated when the MCP session ends (when the SSH connection closes), even if host-shell is killed. To keep a process running across sessions, launch it detached outside host-shell (e.g. `systemd-run --user --unit=NAME ...` or `nohup ... &` on Linux; a Windows service or scheduled task via `schtasks` or `Register-ScheduledTask` on Windows) and inspect its log files.
 
-Each job keeps the most recent part of its output (four times the output limit). If the job writes
-faster than you read, older output is discarded and `dropped` says how many bytes you missed.
-`more: true` means output beyond `next_offset` is already available: read again right away.
+Each job buffers the most recent output up to four times the server output limit. If a job produces output faster than it is read, older bytes are discarded and reported in `dropped`. `more: true` indicates additional buffered output is available after `next_offset`.
 
-## Waiting for the right moment
+## Waiting for output conditions
 
-`job_read` with `wait_sec` (up to 300) waits instead of polling, and returns early when the job ends.
+`job_read` with `wait_sec` (up to 300) blocks until a condition is met or the job exits:
 
-| Add | Returns when |
+| Arguments | Returns when |
 |---|---|
-| nothing | any new output arrived |
-| `until: "Listening on"` | the new output matches the regular expression (`matched: true`) |
-| `until: "\\$ $"` or `">>> $"` | a prompt is shown (end of the output) |
-| `idle_ms: 500` | output arrived and then stayed quiet for 500 ms |
+| `wait_sec` only | Any new output arrives |
+| `until: "Listening on"` | New output matches the regular expression (`matched: true`) |
+| `until: "\\$ $"` or `">>> $"` | A shell or REPL prompt appears at the end of output |
+| `idle_ms: 500` | New output arrives and remains quiet for 500 ms |
 
-## Input
+## Standard input
 
-Start with `stdin_open: true` (pipe) or `pty: true` (terminal), then send input with `job_write`:
+Start the job with `stdin_open: true` (pipe) or `pty: true` (pseudo-terminal), then send input with `job_write`:
 
 ```json
 {"id": "job-3", "input": "y\n"}
 {"id": "job-3", "close": true}
 ```
 
-- Input is sent as is; add `\n` to submit a line. `close: true` sends end of input (like Ctrl-D).
-- `stdin_encoding` of `job_start` also applies to `job_write`.
+- `input` is written verbatim; append `\n` to submit a line. `close: true` closes the input stream (EOF / Ctrl-D).
+- `stdin_encoding` set on `job_start` applies to `job_write`.
 
-## Terminal (pty)
+## Pseudo-terminal (pty)
 
-`pty: true` runs the program in a pseudo terminal (Linux pty, Windows ConPTY). Use it for programs
-that refuse to work without a terminal: `sudo` or `ssh` asking for a password, `python`/`node`/`psql`
-REPLs with prompts, `top`, installers, and tools that buffer or hide output when piped.
+`pty: true` runs the job in a pseudo-terminal (Linux pty, Windows ConPTY). Use it for programs that require a terminal, such as `sudo` or `ssh` password prompts, interactive REPLs (`python`, `node`, `psql`), full-screen tools (`top`), installers, and programs that buffer or suppress output when piped.
 
-- stdout and stderr are one stream. Input is always open.
-- `job_read` removes colours, cursor movement and other escape sequences, and keeps only the final
-  text of lines redrawn with carriage returns. Set `raw: true` to get the bytes as the terminal got them.
-- For full-screen programs (`top`, `vi`, `less`, installers with menus) use `job_read` with
-  `screen: true`: it returns what the terminal shows now, one line per row, plus `cursor_row` and
-  `cursor_col`. Combine it with `wait_sec` and `idle_ms` so the program has finished drawing.
-- In `job_write`, control keys are characters: `\u0003` Ctrl-C, `\u0004` Ctrl-D, `\u001b` Esc,
-  `\u001b[A` up arrow, `\t` tab. Some programs expect `\r` for Enter. `cols` and `rows` resize the terminal
-  (default 120x40).
-- Typical exchange: `job_write` the command, then `job_read` with `wait_sec: 30, idle_ms: 500` or with
-  `until` set to the prompt.
-- `TERM` is `xterm-256color` on Linux unless you set it in `env`.
+- stdout and stderr are merged into a single stream, and input is always open.
+- By default, `job_read` strips ANSI color and cursor escape sequences and collapses lines overwritten via carriage return (`\r`). Pass `raw: true` to receive unmodified terminal bytes.
+- For full-screen applications (`top`, `vi`, `less`, menu-driven installers), pass `screen: true` to `job_read` to get the rendered terminal grid (one line per row) plus `cursor_row` and `cursor_col`. Combine with `wait_sec` and `idle_ms` to read after screen redraws settle.
+- Send control characters via `job_write`: `\u0003` (Ctrl-C), `\u0004` (Ctrl-D), `\u001b` (Esc), `\u001b[A` (Up arrow), `\t` (Tab), or `\r` (Enter for programs expecting CR). Resize the terminal with `cols` and `rows` (default 120x40).
+- Typical interactive cycle: send a command with `job_write`, then call `job_read` with `wait_sec: 30, idle_ms: 500` or `until` matching the prompt.
+- On Linux, `TERM` defaults to `xterm-256color` unless overridden in `env`.
 
-## Signals
+## Signals and output buffering
 
-`job_stop` with `signal`:
+`job_stop` accepts `signal`:
 
-- `kill` (default): kill the whole process tree.
-- Linux: `interrupt`, `terminate`, `hangup`, `quit`, `stop`, `continue`, `usr1`, `usr2` go to the
-  job's process group, then `job_stop` waits up to `wait_sec` (default 5) and returns the status.
-- pty jobs (also on Windows): `interrupt` types Ctrl-C into the terminal.
+- `kill` (default): kills the entire process tree immediately.
+- Linux signals (`interrupt`, `terminate`, `hangup`, `quit`, `stop`, `continue`, `usr1`, `usr2`): sent to the job's process group, after which `job_stop` waits up to `wait_sec` (default 5) and returns the updated status.
+- `pty` jobs (Linux and Windows): `interrupt` writes Ctrl-C (`\u0003`) to the terminal.
 
-Without a pty, many programs buffer output or disable prompts: use flags such as `python -u` or
-`stdbuf -oL` to get output promptly, or use `pty`.
-
-Jobs are stopped when the MCP session ends (the SSH connection closes). For work that must survive,
-start it detached on the host (`nohup ... &`, `systemd-run`, a scheduled task) and check its log files.
+Without `pty: true`, many programs block-buffer piped stdout or disable prompts; pass unbuffered flags (`python -u`, `stdbuf -oL`) or run with `pty: true`.

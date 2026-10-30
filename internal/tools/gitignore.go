@@ -9,30 +9,28 @@ import (
 	"strings"
 )
 
-// gitignore decides which files git ignores, for the search tools.
+// gitignore evaluates .gitignore rules for the search tools.
 //
-// It reads the .gitignore files of the search root and of every directory below it, and, inside a
-// repository, those of the directories from the repository root down to the search root and the
-// repository's .git/info/exclude. git's global settings (core.excludesFile) are not read.
-// Rules are applied in git's order: .git/info/exclude first, then .gitignore from the top
-// directory down, the last matching rule deciding. Directories that are ignored are not entered,
-// so a negated rule cannot bring back a file inside them, as in git.
+// It loads .gitignore files from the repository root (or search root if outside a repository) down
+// through the searched tree, plus .git/info/exclude (global core.excludesFile is not read).
+// Rules apply in git order (.git/info/exclude first, then .gitignore from top down, last match wins).
+// Ignored directories are not traversed, so negated rules inside them have no effect.
 type gitignore struct {
-	top   string                  // repository root, or the search root outside a repository
-	extra []ignoreRule            // rules of .git/info/exclude (based at top)
+	top   string                  // repository root, or search root outside a repository
+	extra []ignoreRule            // .git/info/exclude rules (based at top)
 	rules map[string][]ignoreRule // .gitignore rules by directory, loaded on demand
 }
 
-// ignoreRule is one line of a .gitignore file.
+// ignoreRule is one parsed .gitignore line.
 type ignoreRule struct {
-	base     string   // directory of the file that has the rule
-	segs     []string // pattern split at "/" (anchored rules), or the single name pattern
-	anchored bool     // the pattern has a "/" before its end: match the path relative to base
+	base     string   // directory containing the rule file
+	segs     []string // "/" segments for anchored patterns, or single name pattern
+	anchored bool     // contains "/" before the end: match relative to base
 	negate   bool     // "!pattern"
 	dirOnly  bool     // "pattern/"
 }
 
-// newGitignore prepares the rules for a search from root, an existing directory.
+// newGitignore initializes gitignore rules for a search rooted at root.
 func newGitignore(root string) *gitignore {
 	abs, err := filepath.Abs(root)
 	if err != nil {
@@ -110,7 +108,7 @@ func (r ignoreRule) matches(p string, isDir bool) bool {
 	return ok
 }
 
-// parseIgnoreFile reads the rules of a .gitignore (or info/exclude) file. A missing file has none.
+// parseIgnoreFile reads rules from a .gitignore or info/exclude file (returning nil if missing).
 func parseIgnoreFile(file, base string) []ignoreRule {
 	f, err := os.Open(file)
 	if err != nil {
@@ -127,8 +125,7 @@ func parseIgnoreFile(file, base string) []ignoreRule {
 	return rules
 }
 
-// parseIgnoreLine parses one line of a .gitignore file. ok is false for blank lines, comments and
-// patterns that cannot be used.
+// parseIgnoreLine parses one .gitignore line, returning ok=false for comments, blank lines, or invalid patterns.
 func parseIgnoreLine(line, base string) (ignoreRule, bool) {
 	line = strings.TrimSuffix(line, "\r")
 	// Trailing spaces are dropped unless escaped with a backslash.
