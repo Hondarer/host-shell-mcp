@@ -29,8 +29,9 @@ type Config struct {
 	// for the whole server, or with shell "cmd" for a single call.
 	WindowsShell string
 
-	// LogFile is where the audit log (JSON Lines) is written. An empty string records nothing.
-	// TODO(open question): decide the location and retention (rotation).
+	// LogFile names the audit log (JSON Lines). Records go to one file per day with the date before
+	// the extension (audit-2026-10-31.log), and five earlier days are kept (see package audit).
+	// An empty string records nothing.
 	LogFile string
 
 	// Policy holds the restrictions given by the user. The zero value means no restriction.
