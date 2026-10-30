@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -29,9 +30,12 @@ func TestSudoPasswordNotLeaked(t *testing.T) {
 	if out.ExitCode != 0 || out.Stdout != "hello\n[REDACTED]\n" {
 		t.Fatalf("got %+v", out)
 	}
+	// Other tests may create and remove their own directories meanwhile: look only for new ones.
 	after, _ := filepath.Glob(filepath.Join(os.TempDir(), "host-shell-askpass-*"))
-	if len(after) != len(before) {
-		t.Errorf("askpass directories left behind: %v", after)
+	for _, d := range after {
+		if !slices.Contains(before, d) {
+			t.Errorf("askpass directory left behind: %s", d)
+		}
 	}
 }
 
