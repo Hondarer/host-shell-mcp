@@ -300,6 +300,8 @@ func (j *Job) Done() <-chan struct{} { return j.done }
 
 // Status はジョブの状態を返します。
 func (j *Job) Status() Status {
+	// 改行のないプロンプトも出力の量に数え、読めるようにする。
+	j.conv.Flush()
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	s := Status{
@@ -327,6 +329,7 @@ func (j *Job) Status() Status {
 
 // Read は絶対位置 offset から最大 n バイトの出力を返します。
 func (j *Job) Read(offset int64, n int) (data string, next, dropped int64) {
+	j.conv.Flush()
 	return j.out.Read(offset, n)
 }
 

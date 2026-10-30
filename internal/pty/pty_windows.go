@@ -113,7 +113,7 @@ func (t *Terminal) spawn(cmd *exec.Cmd) error {
 	}
 	si := &windows.StartupInfoEx{ProcThreadAttributeList: attrs.List()}
 	si.Cb = uint32(unsafe.Sizeof(*si))
-	// 標準入出力のハンドルを空にして指定する。指定しないと、子プロセスは host-shell 自身の
+	// 標準入出力のハンドルを指定しない (NULL) ことを明示する。指定しないと、子プロセスは host-shell 自身の
 	// 標準入出力 (MCP の通信路) を受け継ぎ、標準出力に書いた内容が疑似端末に届かない。
 	si.Flags = windows.STARTF_USESTDHANDLES
 	pi := &windows.ProcessInformation{}

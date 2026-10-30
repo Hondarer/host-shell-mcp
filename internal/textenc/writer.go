@@ -122,6 +122,25 @@ func (w *Writer) emit(b []byte, final bool) (int, error) {
 	return consumed, err
 }
 
+// Flush は、改行を待たずに保留中の出力を書き出します。文字の途中で切れている末尾だけは残します。
+// 改行のないプロンプト (「Password: 」など) を、行が終わる前に読めるようにするために使います。
+// 自動判定では、書き出した部分と行の残りを別々に判定します。
+func (w *Writer) Flush() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.conv != nil || !w.started || len(w.pending) == 0 {
+		return nil
+	}
+	if !w.auto {
+		_, err := w.w.Write(w.pending)
+		w.pending = nil
+		return err
+	}
+	k, err := w.emit(w.pending, false)
+	w.pending = append([]byte(nil), w.pending[k:]...)
+	return err
+}
+
 // Close は保留中の出力を書き出します。子プロセスの終了後に呼びます。
 func (w *Writer) Close() error {
 	w.mu.Lock()

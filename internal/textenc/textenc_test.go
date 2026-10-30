@@ -127,3 +127,29 @@ func TestLooksUTF8(t *testing.T) {
 		t.Error("LooksUTF8 accepted Shift_JIS")
 	}
 }
+
+func TestWriterFlushPrompt(t *testing.T) {
+	sjis, err := Lookup("shift_jis")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	w := NewWriter(&buf, Choice{Auto: true, Enc: sjis})
+	w.Write([]byte("Password: "))
+	if buf.Len() != 0 {
+		t.Fatalf("written before flush: %q", buf.String())
+	}
+	w.Flush()
+	if buf.String() != "Password: " {
+		t.Errorf("after flush: %q", buf.String())
+	}
+	// 文字の途中で切れた末尾は残す。
+	b, _ := sjis.Encode("日本")
+	w.Write(append([]byte("x"), b[:3]...))
+	w.Flush()
+	w.Write(b[3:])
+	w.Write([]byte("\n"))
+	if buf.String() != "Password: x日本\n" {
+		t.Errorf("result: %q", buf.String())
+	}
+}

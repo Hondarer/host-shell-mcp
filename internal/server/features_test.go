@@ -368,7 +368,8 @@ func TestPTYJob(t *testing.T) {
 	}
 	r := call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 20, "until": `name`})
 	if !r.Matched {
-		t.Fatalf("prompt not seen: %q", r.Output)
+		raw := call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "raw": true})
+		t.Fatalf("prompt not seen: %q; status %+v; raw output (%d bytes): %q", r.Output, raw.Status, len(raw.Output), raw.Output)
 	}
 	if runtime.GOOS != "windows" && !strings.Contains(r.Output, "TTY") {
 		t.Errorf("not a terminal: %q", r.Output)
