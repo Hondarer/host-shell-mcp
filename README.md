@@ -110,8 +110,8 @@ Table: Documentation
 
 ### Security
 
-By default, `host-shell` runs with the full permissions of the connecting user.  
-Use a dedicated OS user and SSH key, and restrict access via OS file permissions and `sudoers`. You can also narrow published tools and allowed targets with startup options (`--read-only`, `--tools`, `--allow-path`, `--confirm`, etc.).  
+When used over SSH, `host-shell` operates with the same user permissions as a regular SSH session; it does not grant additional OS privileges or require a new listening port. Existing SSH authentication, OS file permissions, and `sudoers` rules continue to apply.  
+Beyond these SSH and OS controls, `host-shell` provides startup options to narrow the operations available to an agent: read-only access (`--read-only`), tool selection (`--tools`), file access restrictions (`--allow-path`), and per-call user confirmation (`--confirm`). Dedicated OS users and SSH keys can be combined with these options to tailor access to your workflow.  
 See the [Operations Guide](docs/en/operations.md) for details.
 
 ## 日本語
@@ -222,6 +222,6 @@ Table: ドキュメント
 
 ### 安全性
 
-`host-shell` は、既定では接続ユーザーの権限で任意の操作を実行できます。  
-専用ユーザーと専用 SSH 鍵を用意し、OS のファイル権限と sudoers で操作範囲を制限してください。あわせて起動オプション (`--read-only`、`--tools`、`--allow-path`、`--confirm` など) で公開ツールと操作対象を絞り込めます。  
+SSH 経由で使用する `host-shell` は、通常の SSH 接続と同じユーザー権限で動作し、追加の OS 権限や新たな待ち受けポートを必要としません。既存の SSH 認証、OS のファイル権限、sudoers による制御がそのまま適用されます。  
+さらに、SSH と OS による制御に加え、エージェントに許可する操作を絞り込む機能を備えています。起動オプションで、読み取り専用化 (`--read-only`)、公開ツールの選択 (`--tools`)、ファイルのアクセス範囲の制限 (`--allow-path`)、呼び出しごとのユーザー確認 (`--confirm`) を設定できます。専用ユーザーや専用 SSH 鍵と組み合わせ、用途に応じた操作範囲を設定できます。  
 詳細は [運用ガイド](docs/ja/operations.md) を参照してください。
