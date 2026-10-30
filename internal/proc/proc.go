@@ -156,14 +156,21 @@ func DefaultShell(windowsShell string) string {
 	return "sh"
 }
 
-// powershellArgs passes script via -EncodedCommand to avoid cmd/SSH quoting issues.
+// powershellArgs passes script, base64-encoded, to a short loader given with -Command, which avoids
+// cmd/SSH quoting issues. -EncodedCommand is not used: Windows PowerShell 5.1 then writes errors,
+// warnings and progress to stderr as CLIXML, even with -OutputFormat Text. With -Command, errors are
+// plain text and warnings go to stdout. The loader pipes $input into the script and dot-sources it,
+// so the script sees stdin and runs in the global scope as with -EncodedCommand.
 //
-// It sets [Console]::OutputEncoding to UTF-8 before running script (stdin must be encoded in the
-// console code page by the caller, as PowerShell initializes $input before running the script).
-// Afterward, it maps the last statement's status to an sh-compatible exit code: 0 if $? is true,
-// $LASTEXITCODE if non-zero, or 1 (scripts that call exit N or throw a terminating error exit earlier).
+// Before script, it hides progress, turns off PowerShell 7's ANSI colors and sets
+// [Console]::OutputEncoding to UTF-8. (Setting the input encoding there has no effect, as PowerShell
+// initializes $input before running the script; see UTF8Console.) Afterward, it maps the last
+// statement's status to an sh-compatible exit code: 0 if $? is true, $LASTEXITCODE if non-zero, or 1
+// (scripts that call exit N or throw a terminating error exit earlier).
 func powershellArgs(script string, interactive bool) []string {
-	script = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n" +
+	script = "$ProgressPreference = 'SilentlyContinue'\n" +
+		"if ($PSStyle) { $PSStyle.OutputRendering = 'PlainText' }\n" +
+		"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n" +
 		script +
 		"\n$hostShellOk = $?; if ($hostShellOk) { exit 0 }; if ($LASTEXITCODE) { exit $LASTEXITCODE }; exit 1"
 	u := utf16.Encode([]rune(script))
@@ -171,7 +178,9 @@ func powershellArgs(script string, interactive bool) []string {
 	for i, c := range u {
 		binary.LittleEndian.PutUint16(b[i*2:], c)
 	}
-	args := []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", base64.StdEncoding.EncodeToString(b)}
+	loader := "$input | . ([ScriptBlock]::Create([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('" +
+		base64.StdEncoding.EncodeToString(b) + "'))))"
+	args := []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-OutputFormat", "Text", "-Command", loader}
 	if interactive {
 		args = slices.Delete(args, 1, 2)
 	}

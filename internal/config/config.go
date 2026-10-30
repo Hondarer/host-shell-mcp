@@ -24,7 +24,7 @@ type Config struct {
 	MaxTimeout time.Duration
 
 	// WindowsShell is the default Windows shell (cmd, powershell, or pwsh).
-	// It defaults to powershell, which produces UTF-8 output and accepts -EncodedCommand scripts
+	// It defaults to powershell, which produces UTF-8 output and receives scripts base64-encoded,
 	// immune to cmd and SSH quoting; cmd remains available via --windows-shell or per-call shell="cmd".
 	WindowsShell string
 

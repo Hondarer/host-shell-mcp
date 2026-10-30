@@ -1,7 +1,7 @@
 # Windows hosts
 
 - The default shell is PowerShell (`powershell`, or as configured in `default_shell` in `sys_info`). Pass `"shell": "cmd"` or `"shell": "pwsh"` to `exec_run` or `job_start` to override per call, or start host-shell with `--windows-shell cmd` to change the server default.
-- PowerShell commands run via `-EncodedCommand`, so quotes, `$`, and newlines in `command` require no extra escaping, and output is UTF-8. Like `sh -c`, the exit code reflects the last statement (0 on success, the native exit code if a native program failed, or 1 if a cmdlet failed). Prepend `$ErrorActionPreference = 'Stop'` to halt on the first error.
+- PowerShell scripts are passed base64-encoded, so quotes, `$`, and newlines in `command` require no extra escaping, and output is UTF-8. Errors go to stderr and `Write-Warning` to stdout, both as plain text; progress output is suppressed. Like `sh -c`, the exit code reflects the last statement (0 on success, the native exit code if a native program failed, or 1 if a cmdlet failed). Prepend `$ErrorActionPreference = 'Stop'` to halt on the first error.
 - For `cmd`, `command` is passed verbatim to `cmd /d /s /c` using `cmd.exe` quoting rules.
 - If a native program invoked from PowerShell produces garbled output, run it with `shell: "cmd"` so host-shell decodes using the console code page (`console_encoding`).
 - Paths accept `\` or `/`; absolute paths require a drive letter (e.g. `C:\work`).

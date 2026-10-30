@@ -448,7 +448,7 @@ SSH セッションが切断されると実行中のジョブはすべて停止�
 ### Windows の接続先
 
 - `exec_run` と `job_start` の既定シェルは PowerShell です。`cmd` 構文を使う場合は呼び出しごとに `"shell": "cmd"` を指定するか、起動オプション `--windows-shell cmd` で既定シェルを変更します。
-- PowerShell コマンドは `-EncodedCommand` で渡されるため、SSH や `cmd` による引用符解釈の影響を受けません。
+- PowerShell コマンドは base64 で渡されるため、SSH や `cmd` による引用符解釈の影響を受けません。エラーと警告はプレーン テキストで返ります (警告は標準出力)。
 - `cmd` やネイティブ コマンドの Shift_JIS 出力は自動で UTF-8 に変換され、元の文字コード名が `stdout_encoding` に返ります。
 - `sudo_run` は存在しません。管理者権限を要する操作 (サービス変更、HKLM レジストリ書き込みなど) は、管理者アカウントで起動した `host-shell` から実行します。
 - サービス (`svc_list`、`svc_control`)、イベント ログ (`log_query`)、レジストリ (`reg_read`、`reg_write`、`reg_delete`) を専用ツールで直接操作できます。

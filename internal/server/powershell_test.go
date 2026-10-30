@@ -66,3 +66,48 @@ func TestPowerShellStdin(t *testing.T) {
 		}
 	}
 }
+
+// TestPowerShellPlainErrors checks that errors are plain text and that progress is not written
+// (PowerShell 5.1 writes both as CLIXML when started with -EncodedCommand).
+func TestPowerShellPlainErrors(t *testing.T) {
+	cs := connect(t)
+	for _, sh := range powershells(t) {
+		for _, script := range []string{
+			`Get-Item C:\no-such-file`,
+			`throw "host-shell-stop"`,
+			`Write-Progress -Activity busy -Status half -PercentComplete 50; Write-Output done`,
+		} {
+			out := call[struct {
+				Stdout string `json:"stdout"`
+				Stderr string `json:"stderr"`
+			}](t, cs, "exec_run", map[string]any{"command": script, "shell": sh})
+			if strings.Contains(out.Stderr, "CLIXML") || strings.Contains(out.Stdout, "CLIXML") || strings.Contains(out.Stderr, "\x1b") {
+				t.Errorf("%s: %q: stdout %q, stderr %q", sh, script, out.Stdout, out.Stderr)
+			}
+			if strings.HasPrefix(script, "Write-Progress") && (strings.TrimSpace(out.Stdout) != "done" || out.Stderr != "") {
+				t.Errorf("%s: progress: stdout %q, stderr %q", sh, out.Stdout, out.Stderr)
+			}
+			if strings.HasPrefix(script, "throw") && !strings.Contains(out.Stderr, "host-shell-stop") {
+				t.Errorf("%s: throw: stderr %q", sh, out.Stderr)
+			}
+		}
+	}
+}
+
+// TestPowerShellPTY checks that Read-Host reads from the terminal of a pty job.
+func TestPowerShellPTY(t *testing.T) {
+	cs := connect(t)
+	for _, sh := range powershells(t) {
+		st := call[jobStatus](t, cs, "job_start", map[string]any{"pty": true, "shell": sh, "command": `$n = Read-Host 'name'; "hello [$n]"`})
+		r := call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 20, "until": "name"})
+		if !r.Matched {
+			t.Errorf("%s: no prompt: %q", sh, r.Output)
+		}
+		call[map[string]any](t, cs, "job_write", map[string]any{"id": st.ID, "input": "bob\r"})
+		r = call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 20, "until": `hello \[bob\]`, "offset": r.NextOffset})
+		if !r.Matched {
+			t.Errorf("%s: Read-Host: %q", sh, r.Output)
+		}
+		call[map[string]any](t, cs, "job_stop", map[string]any{"id": st.ID})
+	}
+}

@@ -1549,12 +1549,25 @@ Table: transfer_push と transfer_pull の出力
 | `sh` | Linux (既定) | `sh -c '<command>'` |
 | `bash` | Linux | `bash -c '<command>'` |
 | `cmd` | Windows | `"%ComSpec%" /d /s /c "<command>"` |
-| `powershell` | Windows (既定) | `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand <base64>` |
-| `pwsh` | Windows、Linux | `pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand <base64>` |
+| `powershell` | Windows (既定) | `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -OutputFormat Text -Command "$input \| . ([ScriptBlock]::Create(...<base64>...))"` |
+| `pwsh` | Windows、Linux | `pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -OutputFormat Text -Command "$input \| . ([ScriptBlock]::Create(...<base64>...))"` |
 
 Table: シェルの起動の形
 
-Windows の既定シェルを PowerShell にしているのは、UTF-16LE base64 の `-EncodedCommand` でコマンド ラインを渡すことで `cmd` や SSH の引用符解釈の影響を排除し、`[Console]::OutputEncoding` を UTF-8 に統一できるためです。  
+Windows の既定シェルを PowerShell にしているのは、コマンド ラインを UTF-16LE の base64 で渡すことで `cmd` や SSH の引用符解釈の影響を排除し、出力を UTF-8 に統一できるためです。  
+`-Command` には、base64 のスクリプトを復元して実行する短い読み込み処理だけを渡します。読み込み処理は標準入力を `$input` としてスクリプトへ渡し、スクリプトを現在のスコープで実行します。`-EncodedCommand` は使いません。Windows PowerShell 5.1 は `-EncodedCommand` で起動するとエラー、警告、進行状況を CLIXML (XML) で標準エラーへ出力するためです。
+
+スクリプトの前には次の処理が付加されます。
+
+| 処理 | 目的 |
+|---|---|
+| `$ProgressPreference = 'SilentlyContinue'` | 進行状況 (初回のモジュール読み込み、`Invoke-WebRequest` など) を出力しない |
+| `if ($PSStyle) { $PSStyle.OutputRendering = 'PlainText' }` | PowerShell 7 の色の制御文字を出力しない (5.1 では何もしない) |
+| `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` | PowerShell の出力を UTF-8 に統一する |
+
+Table: PowerShell のスクリプトの前に付加する処理
+
+エラーは標準エラーへ、`Write-Warning` の警告は標準出力へ、いずれもプレーン テキストで出力されます (`-Command` の動作)。  
 PowerShell 実行時は末尾に終了コード決定処理が付加され、Linux の `sh -c` と同様の規則で終了コードを決定します。
 
 | 最後に実行した文の結果 | 終了コード |
