@@ -31,8 +31,10 @@ Set `literal: true` to search for a plain string without escaping. `ignore_case`
 - Binary files (NUL bytes) and files larger than `max_file_bytes` (default 10 MiB) are skipped.
 - Lines are decoded per line (see topic `encoding`), so Japanese patterns match Shift_JIS or
   EUC-JP files; `charset` on a match says it was converted.
-- Matching is per line. To find something spanning lines, search for one line and read around it
-  with `fs_read`.
+- Matching is per line. To match across lines (a function with its body, a block), set
+  `multiline: true`: the pattern runs on the whole file, `.` also matches a newline, `^`/`$` match at
+  line boundaries, and each match gives `line`, `end_line` and the matched text. Files over 32 MiB
+  are skipped (`skipped_large`).
 
 Typical sequence: `output_mode: "files"` to find candidates, then `content` with `context: 3` in
 the interesting file, then `fs_read` with `line_start` for the full picture.

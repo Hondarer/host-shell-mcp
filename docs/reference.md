@@ -1144,6 +1144,7 @@ Windows の接続先では、大文字と小文字を区別せずに照合し、
 | `max_matches` | integer | | 返す最大数。`content` では行の数、`files` と `count` ではファイルの数。省略時は 200 |
 | `max_file_bytes` | integer | | これより大きいファイルを飛ばす。省略時は 10 MiB |
 | `charset` | string | | ファイルの文字コード。省略時は `auto` ([文字コードの指定](#文字コードの指定)) |
+| `multiline` | boolean | | 行ごとではなく、ファイル全体に照合する (下記の [複数の行にまたがる検索](#複数の行にまたがる検索-multiline)) |
 
 Table: search_grep の引数
 
@@ -1154,6 +1155,7 @@ Table: search_grep の引数
 | `files_scanned` | integer | 検索したファイルの数 |
 | `files_matched` | integer | 一致があったファイルの数 |
 | `skipped` | integer | 読めなかった項目の数 |
+| `skipped_large` | integer | 大きすぎるために飛ばしたファイルの数 (`max_file_bytes`、`multiline` では 32 MiB も) |
 | `truncated` | boolean | `max_matches` で打ち切った場合に `true` |
 
 Table: search_grep の出力
@@ -1161,8 +1163,9 @@ Table: search_grep の出力
 | 項目 | 型 | 内容 |
 |---|---|---|
 | `path` | string | ファイルのパス |
-| `line` | integer | 行番号 (1 から数える) |
-| `text` | string | UTF-8 に変換した行の内容。改行は含めない |
+| `line` | integer | 行番号 (1 から数える)。`multiline` では一致の始まる行 |
+| `end_line` | integer | `multiline` の場合に、一致の終わる行 |
+| `text` | string | UTF-8 に変換した行の内容。改行は含めない。`multiline` では一致した範囲の内容 (改行を含む) |
 | `before` | string[] | 前の行 (古い順)。`context` か `before` を指定した場合 |
 | `after` | string[] | 後の行。`context` か `after` を指定した場合 |
 | `charset` | string | 行を UTF-8 以外から変換した場合に、その文字コード |
@@ -1181,6 +1184,20 @@ Table: search_grep の一致
 1 MiB を超える行があるファイルは、その行の手前までを検索します。  
 正規表現は、UTF-8 に変換した後の行に対して照合します。日本語のパターンで、Shift_JIS や EUC-JP のファイルも検索できます。  
 `text`、`before`、`after` は、行が 500 バイトを超える場合に先頭 500 バイト (文字の境界まで) に切り詰めます。
+
+#### 複数の行にまたがる検索 (multiline)
+
+`multiline: true` を指定すると、ファイル全体を UTF-8 に変換してから、パターンを照合します。
+
+- `.` は改行にも一致します。`^` と `$` は各行の先頭と末尾に一致します (RE2 の `(?sm)`)。
+- 一致ごとに、始まる行 (`line`)、終わる行 (`end_line`)、一致した範囲の内容 (`text`、500 バイトまで) を返します。`context`、`before`、`after` は、一致の範囲の前後の行を返します。
+- 空の文字列への一致は返しません。
+- ファイル全体を読むため、32 MiB (`fs_edit` の上限と同じ) を超えるファイルは飛ばし、`skipped_large` に数えます。`max_file_bytes` が小さい場合は、そちらを使います。
+- 文字コードの自動判定は、行ごとではなく、ファイル全体で行います (全体が UTF-8 として正しくなければ、接続先の既定の文字コードとみなします)。
+
+```json
+{"pattern": "func \\w+\\(ctx context\\.Context.*?\\n\\}", "path": "/srv/app", "include": "*.go", "multiline": true}
+```
 
 ```json
 {"pattern": "TODO", "path": "/srv/app", "include": "*.{c,h}", "output_mode": "count"}
@@ -1921,7 +1938,6 @@ Table: 操作ログで置き換える値
 
 - 疑似端末は `job_start` の `pty` だけで使えます。`exec_run` は端末なしで動きます。全画面のプログラム (`vi`、`top` など) は動きますが、`job_read` は画面の状態ではなく出力の流れを返すため、内容を読み取りにくい場合があります。
 - `search_grep` と `search_files` は `.gitignore` を解釈しません。`node_modules` などは `exclude_dirs` で除外してください。
-- `search_grep` は行ごとに照合します。複数の行にまたがる正規表現は一致しません。
 - 文字コードの自動判定は、UTF-8 として正しいかどうかと BOM だけで行います。UTF-8 以外の文字コードどうし (Shift_JIS と EUC-JP など) は区別しません。接続先の既定と異なる文字コードのファイルは、`charset` で指定してください。
 - まれに、UTF-8 以外の短い文字列が、UTF-8 としても正しいバイト列になることがあります。その場合は UTF-8 とみなすため、文字化けします。`output_encoding` や `charset` を明示してください。
 - `net_listen`、`svc_list`、`svc_control`、`log_query`、`sys_disks` は、Linux と Windows だけに対応します。Linux のサービスとログは systemd を前提にします。

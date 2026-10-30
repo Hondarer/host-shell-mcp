@@ -76,13 +76,15 @@ type SearchGrepInput struct {
 	MaxMatches   int      `json:"max_matches,omitempty" jsonschema:"maximum matching lines (content mode) or files (files and count modes) to return (default 200)"`
 	MaxFileBytes int64    `json:"max_file_bytes,omitempty" jsonschema:"skip files larger than this (default 10 MiB)"`
 	Charset      string   `json:"charset,omitempty" jsonschema:"encoding of the files: auto (default: BOM, then UTF-8 if valid, otherwise the host file code page, decided per line), utf-8, system, or a charset name such as shift_jis, euc-jp, utf-16le"`
+	Multiline    bool     `json:"multiline,omitempty" jsonschema:"match the pattern against the whole file instead of each line: . also matches a newline, ^ and $ match at line starts and ends. A match reports its first line (line), last line (end_line) and the matched text. Files over 32 MiB are skipped"`
 }
 
 // Match is one matching line.
 type Match struct {
 	Path    string   `json:"path"`
 	Line    int      `json:"line" jsonschema:"1-based line number"`
-	Text    string   `json:"text" jsonschema:"the matching line without its line ending (cut at 500 bytes)"`
+	EndLine int      `json:"end_line,omitempty" jsonschema:"multiline: line number where the match ends"`
+	Text    string   `json:"text" jsonschema:"the matching line without its line ending (multiline: the matched text), cut at 500 bytes"`
 	Before  []string `json:"before,omitempty" jsonschema:"context lines before the match, oldest first"`
 	After   []string `json:"after,omitempty" jsonschema:"context lines after the match"`
 	Charset string   `json:"charset,omitempty" jsonschema:"set when the line was converted to UTF-8 from this encoding"`
@@ -101,10 +103,15 @@ type SearchGrepOutput struct {
 	FilesScanned int           `json:"files_scanned"`
 	FilesMatched int           `json:"files_matched"`
 	Skipped      int           `json:"skipped,omitempty" jsonschema:"entries skipped because they could not be read"`
+	SkippedLarge int           `json:"skipped_large,omitempty" jsonschema:"files skipped because they are larger than max_file_bytes (or 32 MiB with multiline)"`
 	Truncated    bool          `json:"truncated,omitempty" jsonschema:"max_matches was reached; narrow the search or raise the limit"`
 }
 
 const maxMatchLineBytes = 500
+
+// maxMultilineBytes is the largest file searched with multiline, which reads the whole file.
+// It is the same limit as for fs_edit.
+const maxMultilineBytes = maxEditBytes
 
 // grepAction tells how the search continues after a match is handled.
 type grepAction int
@@ -123,6 +130,9 @@ func (d *Deps) searchGrep(ctx context.Context, _ *mcp.CallToolRequest, in Search
 	if in.IgnoreCase {
 		pat = "(?i)" + pat
 	}
+	if in.Multiline {
+		pat = "(?sm)" + pat
+	}
 	re, err := regexp.Compile(pat)
 	if err != nil {
 		return nil, SearchGrepOutput{}, fmt.Errorf("invalid pattern (Go RE2 syntax; set literal for a plain string): %w", err)
@@ -136,7 +146,7 @@ func (d *Deps) searchGrep(ctx context.Context, _ *mcp.CallToolRequest, in Search
 		return nil, SearchGrepOutput{}, fmt.Errorf("charset: %w", err)
 	}
 	mode := orDefault(in.OutputMode, "content")
-	opt := grepOptions{re: re, ch: ch}
+	opt := grepOptions{re: re, ch: ch, multiline: in.Multiline}
 	switch mode {
 	case "content":
 		opt.before, opt.after = in.Context, in.Context
@@ -155,18 +165,30 @@ func (d *Deps) searchGrep(ctx context.Context, _ *mcp.CallToolRequest, in Search
 	if maxFile <= 0 {
 		maxFile = 10 << 20
 	}
+	if in.Multiline && maxFile > maxMultilineBytes {
+		maxFile = maxMultilineBytes
+	}
 
 	out := SearchGrepOutput{}
 	skipped, err := walkFiles(ctx, orDefault(in.Path, "."), in.ExcludeDirs, func(path, rel string, de fs.DirEntry) error {
 		if !de.Type().IsRegular() || !include.match(rel, de.Name()) {
 			return nil
 		}
-		if info, err := de.Info(); err != nil || info.Size() > maxFile {
+		info, err := de.Info()
+		if err != nil {
+			return nil
+		}
+		if info.Size() > maxFile {
+			out.SkippedLarge++
 			return nil
 		}
 		out.FilesScanned++
 		count := 0
-		err := grepFile(path, opt, func(m Match) grepAction {
+		search := grepFile
+		if opt.multiline {
+			search = grepFileMultiline
+		}
+		err = search(path, opt, func(m Match) grepAction {
 			count++
 			switch mode {
 			case "files":
@@ -209,6 +231,7 @@ type grepOptions struct {
 	re            *regexp.Regexp
 	ch            textenc.Choice
 	before, after int
+	multiline     bool
 }
 
 // grepFile searches one file line by line, converting it to UTF-8.
@@ -220,16 +243,10 @@ func grepFile(path string, opt grepOptions, emit func(Match) grepAction) error {
 	}
 	defer f.Close()
 
-	ch := opt.ch
 	br := bufio.NewReaderSize(f, 64*1024)
-	head, _ := br.Peek(8000)
-	if bomEnc, n, ok := textenc.DetectBOM(head); ok && (ch.Auto || ch.Enc.Name == bomEnc.Name) {
-		br.Discard(n)
-		ch = textenc.Choice{Enc: bomEnc}
-	} else if e, ok := textenc.DetectUTF16(head); ok && ch.Auto {
-		ch = textenc.Choice{Enc: e}
-	} else if ch.Enc.ASCIICompatible() && bytes.IndexByte(head, 0) >= 0 {
-		return nil // treat as binary
+	ch, ok := fileEncoding(br, opt.ch)
+	if !ok {
+		return nil
 	}
 
 	var src io.Reader = br
@@ -304,6 +321,86 @@ func grepFile(path string, opt grepOptions, emit func(Match) grepAction) error {
 		return errStop
 	}
 	return nil // For a file whose reading stopped early (for example at an overlong line), return the results so far.
+}
+
+// fileEncoding decides the encoding of a file from its start (BOM, UTF-16, binary) and skips the BOM.
+// ok is false for a binary file: one with NUL bytes that does not look like UTF-16.
+func fileEncoding(br *bufio.Reader, ch textenc.Choice) (textenc.Choice, bool) {
+	head, _ := br.Peek(8000)
+	if bomEnc, n, ok := textenc.DetectBOM(head); ok && (ch.Auto || ch.Enc.Name == bomEnc.Name) {
+		br.Discard(n)
+		return textenc.Choice{Enc: bomEnc}, true
+	} else if e, ok := textenc.DetectUTF16(head); ok && ch.Auto {
+		return textenc.Choice{Enc: e}, true
+	} else if ch.Enc.ASCIICompatible() && bytes.IndexByte(head, 0) >= 0 {
+		return ch, false
+	}
+	return ch, true
+}
+
+// grepFileMultiline searches the whole file at once, so that matches can span lines.
+// With automatic detection the file is UTF-8 if it is valid as a whole, otherwise the fallback encoding.
+func grepFileMultiline(path string, opt grepOptions, emit func(Match) grepAction) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	br := bufio.NewReaderSize(f, 64*1024)
+	ch, ok := fileEncoding(br, opt.ch)
+	if !ok {
+		return nil
+	}
+	raw, err := io.ReadAll(br)
+	if err != nil {
+		return nil
+	}
+	text, cs := raw, ""
+	if !ch.Enc.IsUTF8() && !(ch.Auto && utf8.Valid(raw)) {
+		text, cs = []byte(ch.Enc.Decode(raw)), ch.Enc.Name
+	}
+
+	// starts[i] is the offset where line i+1 begins.
+	starts := []int{0}
+	for i, b := range text {
+		if b == '\n' {
+			starts = append(starts, i+1)
+		}
+	}
+	lineOf := func(off int) int { // 1-based line containing off
+		i, _ := slices.BinarySearch(starts, off+1)
+		return i
+	}
+	lineText := func(n int) string { // line n (1-based) without its line ending
+		end := len(text)
+		if n < len(starts) {
+			end = starts[n]
+		}
+		return clipLine(bytes.TrimRight(text[starts[n-1]:end], "\r\n"))
+	}
+	for _, m := range opt.re.FindAllIndex(text, -1) {
+		if m[0] == m[1] {
+			continue // empty matches carry nothing to show
+		}
+		first, last := lineOf(m[0]), lineOf(m[1]-1)
+		match := Match{Path: path, Line: first, EndLine: last, Text: clipLine(text[m[0]:m[1]]), Charset: cs}
+		for n := max(1, first-opt.before); n < first; n++ {
+			match.Before = append(match.Before, lineText(n))
+		}
+		for n := last + 1; n <= min(len(starts), last+opt.after); n++ {
+			if n == len(starts) && starts[n-1] == len(text) {
+				break // no line after a final newline
+			}
+			match.After = append(match.After, lineText(n))
+		}
+		switch emit(match) {
+		case grepNextFile:
+			return nil
+		case grepStop:
+			return errStop
+		}
+	}
+	return nil
 }
 
 // clipLine shortens a line to the limit and makes it a UTF-8 string.
