@@ -23,8 +23,10 @@ type Config struct {
 	// MaxTimeout is the largest timeout the agent may specify.
 	MaxTimeout time.Duration
 
-	// WindowsShell is the shell used on Windows when shell is omitted (cmd or powershell).
-	// TODO(open question): whether the default should be cmd or PowerShell.
+	// WindowsShell is the shell used on Windows when shell is omitted (cmd, powershell or pwsh).
+	// The default is powershell: scripts are passed with -EncodedCommand, so quoting by cmd and SSH
+	// cannot change them, and their output is UTF-8. cmd stays available with --windows-shell cmd
+	// for the whole server, or with shell "cmd" for a single call.
 	WindowsShell string
 
 	// LogFile is where the audit log (JSON Lines) is written. An empty string records nothing.

@@ -1738,7 +1738,12 @@ Table: transfer_push と transfer_pull の出力
 
 Table: シェルの起動の形
 
-Windows の既定のシェルは `--windows-shell` で変更できます。  
+Windows で cmd を使うには、次のどちらかを使います。
+
+- 呼び出しごと: `exec_run` と `job_start` の引数に `"shell": "cmd"` を指定する (エージェントが選ぶ)
+- サーバー全体: `host-shell` を `--windows-shell cmd` で起動し、既定のシェルを cmd にする (利用者が登録のコマンドで選ぶ)
+
+既定が PowerShell なのは、コマンド行を `-EncodedCommand` で渡すため cmd や SSH の引用符の解釈に左右されず、出力を UTF-8 にそろえられるためです。  
 その OS で使えないシェルを指定した場合はエラーになります。
 
 PowerShell には、コマンド行を UTF-16LE の base64 にして `-EncodedCommand` で渡します。  

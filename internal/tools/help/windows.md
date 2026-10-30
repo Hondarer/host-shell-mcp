@@ -1,7 +1,8 @@
 # Windows hosts
 
-- The default shell is PowerShell (`powershell`, or as configured); `cmd` and `pwsh` are available via
-  `shell`. Check `default_shell` in `sys_info`.
+- The default shell is PowerShell (`powershell`, or as configured); check `default_shell` in `sys_info`.
+  To use cmd, pass `"shell": "cmd"` to `exec_run` or `job_start` for that call (`pwsh` works the same way).
+  The user can make cmd the default for the whole server by starting host-shell with `--windows-shell cmd`.
 - PowerShell scripts are passed with `-EncodedCommand`, so quotes, `$` and newlines in `command`
   need no extra escaping. The exit code of the last native command is returned. Output is UTF-8.
 - For `cmd`, the command line is passed to `cmd /d /s /c` unchanged, with cmd quoting rules.

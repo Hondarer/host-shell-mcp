@@ -500,7 +500,7 @@ bridge を挟んでいない場合も、MCP のツールでファイルをやり
 
 ### Windows の接続先
 
-- `exec_run` の既定のシェルは PowerShell です。cmd の構文で書く場合は `"shell": "cmd"` を指定します。既定は `--windows-shell` で変えられます。
+- `exec_run` と `job_start` の既定のシェルは PowerShell です。cmd の構文で書く場合は、呼び出しごとに `"shell": "cmd"` を指定します。既定そのものを cmd にするには、登録のコマンドで `host-shell` に `--windows-shell cmd` を付けます。
 - PowerShell のコマンドは引用符をそのまま書けます。SSH や cmd による引用符の解釈は `host-shell` が回避します。
 - cmd やネイティブ コマンドの Shift_JIS の出力は、自動で UTF-8 に変換して受け取れます。結果の `stdout_encoding` に、変換元の文字コードが入ります。
 - `sudo_run` はありません。管理者の権限が必要な操作は、管理者のアカウントで接続した `host-shell` で行います。
