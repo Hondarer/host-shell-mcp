@@ -208,9 +208,10 @@ func (j *Job) startPTY(ctx context.Context, cmd *exec.Cmd, opt StartOptions) (fu
 	return func() (int, error) {
 		code, err := t.Wait()
 		// 孫プロセスが端末を握ったままの場合に備え、読み切るのを待つ時間に上限を設ける。
+		// Windows では、出力が落ち着くのを待ってから端末を閉じるため、その分も待つ。
 		select {
 		case <-copied:
-		case <-time.After(drainWait):
+		case <-time.After(drainWait + time.Second):
 		}
 		t.Close()
 		<-copied

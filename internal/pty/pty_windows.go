@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"strconv"
 	"sync"
+	"sync/atomic"
+	"time"
 	"unicode/utf16"
 	"unsafe"
 
@@ -26,7 +28,15 @@ type Terminal struct {
 
 	closeOnce sync.Once
 	exited    chan struct{}
+	lastRead  atomic.Int64 // 最後に出力を読んだ時刻 (UnixNano)
 }
+
+// 終了の後、出力が落ち着くのを待つ時間です。ConPTY は描画を非同期に行うため、
+// プロセスの終了直後に閉じると、最後の出力が失われることがあります。
+const (
+	settleIdle = 300 * time.Millisecond
+	settleMax  = 2 * time.Second
+)
 
 // os/exec の Cmd は疑似端末の属性を渡せないため (golang/go#62708)、CreateProcess を直接呼ぶ。
 func start(ctx context.Context, cmd *exec.Cmd, cols, rows int) (*Terminal, error) {
@@ -134,6 +144,9 @@ func (t *Terminal) Pid() int { return t.pid }
 // Read は端末の出力を読みます。端末を閉じると io.EOF を返します。
 func (t *Terminal) Read(p []byte) (int, error) {
 	n, err := t.out.Read(p)
+	if n > 0 {
+		t.lastRead.Store(time.Now().UnixNano())
+	}
 	if err != nil && (errors.Is(err, windows.ERROR_BROKEN_PIPE) || errors.Is(err, os.ErrClosed)) {
 		err = errEOF
 	}
@@ -158,8 +171,19 @@ func (t *Terminal) Wait() (int, error) {
 	if err := windows.GetExitCodeProcess(t.process, &code); err != nil {
 		return -1, err
 	}
-	// ConPTY を閉じると、残りの出力を送り終えてから出力のパイプが閉じられる。
-	go t.closeConsole()
+	// 出力が落ち着いてから ConPTY を閉じる。閉じると、残りの出力を送り終えてから出力のパイプが閉じられる。
+	go func() {
+		deadline := time.Now().Add(settleMax)
+		start := time.Now().UnixNano()
+		for time.Now().Before(deadline) {
+			last := max(t.lastRead.Load(), start)
+			if time.Since(time.Unix(0, last)) >= settleIdle {
+				break
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		t.closeConsole()
+	}()
 	return int(code), nil
 }
 

@@ -376,7 +376,8 @@ func TestPTYJob(t *testing.T) {
 	call[map[string]any](t, cs, "job_write", map[string]any{"id": st.ID, "input": "bob\r"})
 	r = call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "offset": r.NextOffset, "wait_sec": 20, "until": "hello bob"})
 	if !r.Matched || strings.Contains(r.Output, "\x1b") {
-		t.Errorf("answer: %+v", r)
+		raw := call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "raw": true})
+		t.Errorf("answer: %+v\nraw output: %q", r, raw.Output)
 	}
 	r = call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 20, "until": "^$x"})
 	deadline := time.Now().Add(20 * time.Second)
