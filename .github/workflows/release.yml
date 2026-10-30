@@ -2,9 +2,12 @@ name: Release
 
 # Build the tagged revision and upload source+binary archives
 # (zip and tar.gz matching GitHub's source archive layout, including dist/ and skill bin/).
-# Runs when a release is published or edited, and when an existing tag is moved
-# (a force-push). Creating a tag is left to the published event so a new release
-# is not built twice. Assets from an older archive name are removed after upload.
+# Runs when a release is published or edited, and when an existing tag is moved.
+# A moved tag is a push whose before and after SHAs are both real commits.
+# GitHub leaves `forced` false for tag updates, so do not use it.
+# Creating a tag (before is all zeros) is left to the published event so a new
+# release is not built twice. Deleting a tag (after is all zeros) does not build.
+# Assets from an older archive name are removed after upload.
 on:
   release:
     types: [published, edited]
@@ -21,7 +24,7 @@ concurrency:
 
 jobs:
   release:
-    if: github.event_name == 'release' || (github.event_name == 'push' && github.event.forced)
+    if: github.event_name == 'release' || (github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000' && github.event.after != '0000000000000000000000000000000000000000')
     runs-on: ubuntu-latest
     env:
       TAG: ${{ github.event.release.tag_name || github.ref_name }}
