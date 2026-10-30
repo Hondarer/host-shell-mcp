@@ -15,7 +15,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # Linux と Windows は接続先、macOS は手元 (host-shell bridge) として使う。
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -24,11 +25,15 @@ jobs:
           go-version-file: go.mod
       - name: Vet
         run: go vet ./...
-      - name: Vet for Windows
+      - name: Vet for other OSes
         if: runner.os == 'Linux'
-        run: GOOS=windows go vet ./...
+        run: |
+          GOOS=windows go vet ./...
+          GOOS=darwin go vet ./...
+      # 結果、飛ばしたテスト、テストのログだけを表示する。bash は pipefail で動くため、失敗は検出される。
       - name: Test
-        run: go test -count=1 ./...
+        run: go test -count=1 -v ./... 2>&1 | grep -E '^(---|ok|FAIL|PASS|panic)|_test\.go'
+        shell: bash
 
   build:
     needs: test

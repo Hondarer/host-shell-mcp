@@ -143,7 +143,7 @@ type FsReadOutput struct {
 	Truncated  bool   `json:"truncated,omitempty" jsonschema:"output limit was reached before the requested range"`
 }
 
-func (d *Deps) fsRead(_ context.Context, _ *mcp.CallToolRequest, in FsReadInput) (*mcp.CallToolResult, FsReadOutput, error) {
+func (d *Deps) fsRead(_ context.Context, req *mcp.CallToolRequest, in FsReadInput) (*mcp.CallToolResult, FsReadOutput, error) {
 	f, err := os.Open(in.Path)
 	if err != nil {
 		return nil, FsReadOutput{}, err
@@ -165,7 +165,12 @@ func (d *Deps) fsRead(_ context.Context, _ *mcp.CallToolRequest, in FsReadInput)
 		if in.Charset != "" {
 			return nil, FsReadOutput{}, errors.New("charset applies to encoding text only")
 		}
-		err = d.readBase64(f, in, &out)
+		limit := d.Cfg.MaxOutputBytes / 4 * 3 // base64 で膨らんだ後に上限に収める。
+		if fromBridge(req) {
+			// bridge の転送はエージェントの文脈を通らないため、大きな単位で読む。
+			limit = TransferChunkBytes
+		}
+		err = d.readBase64(f, in, limit, &out)
 	default:
 		err = fmt.Errorf("unknown encoding %q", in.Encoding)
 	}
@@ -304,8 +309,7 @@ func (d *Deps) readTextBytes(f *os.File, skip int64, ch textenc.Choice, in FsRea
 	return nil
 }
 
-func (d *Deps) readBase64(f *os.File, in FsReadInput, out *FsReadOutput) error {
-	n := d.Cfg.MaxOutputBytes / 4 * 3 // base64 で膨らんだ後に上限に収める。
+func (d *Deps) readBase64(f *os.File, in FsReadInput, n int, out *FsReadOutput) error {
 	if in.Length > 0 && in.Length < n {
 		n = in.Length
 	} else if in.Length > n {
@@ -320,6 +324,21 @@ func (d *Deps) readBase64(f *os.File, in FsReadInput, out *FsReadOutput) error {
 	out.NextOffset = in.Offset + int64(k)
 	out.EOF = out.NextOffset >= out.Size
 	return nil
+}
+
+// BridgeClientName は host-shell bridge が接続するときのクライアントの名前です。
+const BridgeClientName = "host-shell-bridge"
+
+// TransferChunkBytes は bridge がファイルを送るときの 1 回の読み書きの大きさです。
+const TransferChunkBytes = 1 << 20
+
+// fromBridge は要求が host-shell bridge からのものかを返します。
+func fromBridge(req *mcp.CallToolRequest) bool {
+	if req == nil || req.Session == nil {
+		return false
+	}
+	p := req.Session.InitializeParams()
+	return p != nil && p.ClientInfo != nil && p.ClientInfo.Name == BridgeClientName
 }
 
 // FsWriteInput は fs_write の入力です。

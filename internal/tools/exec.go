@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -48,8 +50,29 @@ func (e IOEncoding) resolve(stdin string) (textenc.Choice, string, error) {
 	return out, string(b), nil
 }
 
-func (c CommandSpec) spec() proc.Spec {
-	return proc.Spec{Command: c.Command, Argv: c.Argv, Shell: c.Shell, Dir: c.Cwd, Env: c.Env}
+// procSpec は利用者が指定した環境変数の制限を加えて、起動の指定を作ります。
+func (d *Deps) procSpec(c CommandSpec) proc.Spec {
+	spec := proc.Spec{Command: c.Command, Argv: c.Argv, Shell: c.Shell, Dir: c.Cwd, Env: c.Env}
+	if d.Policy.FiltersEnv() {
+		spec.EnvFilter = d.Policy.FilterEnv
+	}
+	return spec
+}
+
+// PathArgs は作業ディレクトリを、読み取りの対象として方針の検査に渡します。
+func (c CommandSpec) PathArgs() (read, write []string) {
+	if c.Cwd != "" {
+		read = []string{c.Cwd}
+	}
+	return read, nil
+}
+
+// CommandArgs は起動するプログラムと、コマンド行の全体を方針の検査に渡します。
+func (c CommandSpec) CommandArgs(defaultShell string) (programs []string, text string) {
+	if len(c.Argv) > 0 {
+		return []string{c.Argv[0]}, strings.Join(c.Argv, " ")
+	}
+	return []string{orDefault(c.Shell, defaultShell)}, c.Command
 }
 
 // AuditArgs は標準入力の内容をログに残さないようにします。
@@ -58,17 +81,20 @@ func (c CommandSpec) AuditArgs() any {
 	return c
 }
 
-func (d *Deps) execRun(ctx context.Context, _ *mcp.CallToolRequest, in CommandSpec) (*mcp.CallToolResult, proc.Result, error) {
+func (d *Deps) execRun(ctx context.Context, req *mcp.CallToolRequest, in CommandSpec) (*mcp.CallToolResult, proc.Result, error) {
 	output, stdin, err := in.resolve(in.Stdin)
 	if err != nil {
 		return nil, proc.Result{}, err
 	}
-	res, err := proc.Run(ctx, in.spec(), proc.Options{
+	tap, stop := watchOutput(newProgress(ctx, req))
+	defer stop()
+	res, err := proc.Run(ctx, d.procSpec(in), proc.Options{
 		DefaultShell: d.DefaultShell,
 		Stdin:        stdin,
 		Output:       output,
 		Timeout:      d.Cfg.ClampTimeout(in.TimeoutSec),
 		MaxOutput:    d.Cfg.MaxOutputBytes,
+		OnOutput:     tap,
 	})
 	return nil, res, err
 }
@@ -77,6 +103,9 @@ func (d *Deps) execRun(ctx context.Context, _ *mcp.CallToolRequest, in CommandSp
 type JobStartInput struct {
 	CommandSpec
 	StdinOpen bool `json:"stdin_open,omitempty" jsonschema:"keep standard input open so that input can be sent later with job_write (for REPLs and programs that prompt). stdin, if given, is sent first"`
+	PTY       bool `json:"pty,omitempty" jsonschema:"run in a pseudo terminal (Linux pty, Windows ConPTY) for programs that need a terminal: password prompts, REPLs, ssh, top, programs that change behaviour when not on a terminal. Input is always open; stdout and stderr are one stream with terminal escape sequences (job_read strips them unless raw)"`
+	Cols      int  `json:"cols,omitempty" jsonschema:"pty: terminal width (default 120)"`
+	Rows      int  `json:"rows,omitempty" jsonschema:"pty: terminal height (default 40)"`
 }
 
 // AuditArgs は標準入力の内容をログに残さないようにします。
@@ -99,12 +128,15 @@ func (d *Deps) jobStart(_ context.Context, _ *mcp.CallToolRequest, in JobStartIn
 	if err != nil {
 		return nil, jobs.Status{}, fmt.Errorf("stdin_encoding: %w", err)
 	}
-	j, err := d.Jobs.Start(in.spec(), jobs.StartOptions{
+	j, err := d.Jobs.Start(d.procSpec(in.CommandSpec), jobs.StartOptions{
 		Stdin:         stdin,
 		KeepStdin:     in.StdinOpen,
 		StdinEncoding: stdinEnc.Enc,
 		Output:        output,
 		Timeout:       timeout,
+		PTY:           in.PTY,
+		Cols:          in.Cols,
+		Rows:          in.Rows,
 	})
 	if err != nil {
 		return nil, jobs.Status{}, err
@@ -115,8 +147,10 @@ func (d *Deps) jobStart(_ context.Context, _ *mcp.CallToolRequest, in JobStartIn
 // JobWriteInput は job_write の入力です。
 type JobWriteInput struct {
 	ID    string `json:"id" jsonschema:"job id returned by job_start"`
-	Input string `json:"input,omitempty" jsonschema:"text to send to standard input. Include a trailing newline to submit a line, e.g. \"yes\\n\"; it is not added automatically"`
-	Close bool   `json:"close,omitempty" jsonschema:"close standard input after sending input (signals end of input, like Ctrl-D)"`
+	Input string `json:"input,omitempty" jsonschema:"text to send to standard input. Include a trailing newline to submit a line, e.g. \"yes\\n\"; it is not added automatically. In a pty job send \\r for Enter if a program expects it, \\u0003 for Ctrl-C, \\u001b for Esc, \\u001b[A for the up arrow"`
+	Close bool   `json:"close,omitempty" jsonschema:"close standard input after sending input (signals end of input, like Ctrl-D). In a pty job this sends Ctrl-D (Linux) or Ctrl-Z Enter (Windows)"`
+	Cols  int    `json:"cols,omitempty" jsonschema:"pty: resize the terminal to this width (with rows)"`
+	Rows  int    `json:"rows,omitempty" jsonschema:"pty: resize the terminal to this height (with cols)"`
 }
 
 // AuditArgs は入力の内容をログに残さないようにします。
@@ -136,6 +170,15 @@ func (d *Deps) jobWrite(_ context.Context, _ *mcp.CallToolRequest, in JobWriteIn
 	if err != nil {
 		return nil, JobWriteOutput{}, err
 	}
+	resized := in.Cols > 0 || in.Rows > 0
+	if resized {
+		if in.Cols <= 0 || in.Rows <= 0 {
+			return nil, JobWriteOutput{}, errors.New("set both cols and rows to resize")
+		}
+		if err := j.Resize(in.Cols, in.Rows); err != nil {
+			return nil, JobWriteOutput{}, err
+		}
+	}
 	var data []byte
 	if in.Input != "" {
 		if data, err = j.StdinEncoding().Encode(in.Input); err != nil {
@@ -149,8 +192,8 @@ func (d *Deps) jobWrite(_ context.Context, _ *mcp.CallToolRequest, in JobWriteIn
 		if err := j.CloseStdin(); err != nil {
 			return nil, JobWriteOutput{}, err
 		}
-	} else if in.Input == "" {
-		return nil, JobWriteOutput{}, errors.New("input or close is required")
+	} else if in.Input == "" && !resized {
+		return nil, JobWriteOutput{}, errors.New("input, close or cols/rows is required")
 	}
 	return nil, JobWriteOutput{Status: j.Status(), BytesWritten: len(data)}, nil
 }
@@ -158,14 +201,18 @@ func (d *Deps) jobWrite(_ context.Context, _ *mcp.CallToolRequest, in JobWriteIn
 // JobReadInput は job_read の入力です。
 type JobReadInput struct {
 	ID       string `json:"id" jsonschema:"job id returned by job_start"`
-	Offset   int64  `json:"offset,omitempty" jsonschema:"byte offset to read from: 0 for the beginning, then next_offset of the previous call"`
+	Offset   int64  `json:"offset,omitempty" jsonschema:"byte offset to read from: 0 for the beginning, then next_offset of the previous call. A negative value reads the last -offset bytes"`
 	MaxBytes int    `json:"max_bytes,omitempty" jsonschema:"maximum bytes to return (default and cap: the server output limit)"`
-	WaitSec  int    `json:"wait_sec,omitempty" jsonschema:"wait up to this many seconds (max 30) until output beyond offset arrives or the job exits. Use this instead of polling rapidly"`
+	WaitSec  int    `json:"wait_sec,omitempty" jsonschema:"wait up to this many seconds (max 300) for new output beyond offset (or for until/idle_ms), returning early when the job exits. Use this instead of polling rapidly"`
+	Until    string `json:"until,omitempty" jsonschema:"with wait_sec: keep waiting until the output after offset matches this regular expression (e.g. a prompt like \\$ $ or >>> $, or a line like Listening on). matched tells whether it did"`
+	IdleMs   int    `json:"idle_ms,omitempty" jsonschema:"with wait_sec: return once new output has arrived and then nothing more came for this many milliseconds (the program is waiting or done printing). Good after sending a command to a REPL or shell"`
+	Raw      bool   `json:"raw,omitempty" jsonschema:"pty jobs: return terminal escape sequences and carriage returns as they are. By default they are removed so the output reads as plain text"`
 }
 
 // JobReadOutput は job_read の出力です。
 type JobReadOutput struct {
 	Status     jobs.Status `json:"status"`
+	Matched    bool        `json:"matched,omitempty" jsonschema:"until matched the output"`
 	Output     string      `json:"output" jsonschema:"stdout and stderr interleaved"`
 	NextOffset int64       `json:"next_offset" jsonschema:"pass as offset to read only new output next time"`
 	More       bool        `json:"more,omitempty" jsonschema:"more output is already available beyond next_offset"`
@@ -181,31 +228,92 @@ func (d *Deps) jobRead(ctx context.Context, _ *mcp.CallToolRequest, in JobReadIn
 	if max <= 0 || max > d.Cfg.MaxOutputBytes {
 		max = d.Cfg.MaxOutputBytes
 	}
-	if in.WaitSec > 0 {
-		waitForOutput(ctx, j, in.Offset, time.Duration(min(in.WaitSec, 30))*time.Second)
+	offset := in.Offset
+	if offset < 0 {
+		offset = max64(0, j.Status().Output+offset)
 	}
-	data, next, dropped := j.Read(in.Offset, max)
+	var until *regexp.Regexp
+	if in.Until != "" {
+		if until, err = regexp.Compile(in.Until); err != nil {
+			return nil, JobReadOutput{}, fmt.Errorf("until: %w", err)
+		}
+	}
+	strip := j.PTY() && !in.Raw
+	out := JobReadOutput{}
+	if in.WaitSec > 0 {
+		out.Matched = waitForOutput(ctx, j, offset, time.Duration(min(in.WaitSec, 300))*time.Second, until, in.IdleMs, strip)
+	}
+	data, next, dropped := j.Read(offset, max)
+	if strip {
+		var pending int
+		data, pending = stripTerminal(data)
+		next -= int64(pending)
+	}
 	st := j.Status()
-	return nil, JobReadOutput{Status: st, Output: data, NextOffset: next, More: next < st.Output, Dropped: dropped}, nil
+	out.Status, out.Output, out.NextOffset, out.More, out.Dropped = st, data, next, next < st.Output, dropped
+	return nil, out, nil
 }
 
 // waitForOutput は offset より後の出力が届くか、ジョブが終了するまで待ちます。
-func waitForOutput(ctx context.Context, j *jobs.Job, offset int64, wait time.Duration) {
+// until を指定した場合は、出力がそれに一致するまで待ち、一致したかを返します。
+// idleMs を指定した場合は、出力が届いた後、その時間だけ新しい出力がなければ戻ります。
+func waitForOutput(ctx context.Context, j *jobs.Job, offset int64, wait time.Duration, until *regexp.Regexp, idleMs int, strip bool) bool {
 	deadline := time.NewTimer(wait)
 	defer deadline.Stop()
-	tick := time.NewTicker(100 * time.Millisecond)
+	tick := time.NewTicker(50 * time.Millisecond)
 	defer tick.Stop()
-	for j.Status().Output <= offset {
+	idle := time.Duration(idleMs) * time.Millisecond
+	lastSize, lastChange := offset, time.Now()
+	for {
+		size := j.Status().Output
+		if size != lastSize {
+			lastSize, lastChange = size, time.Now()
+		}
+		switch {
+		case until != nil:
+			if size > offset {
+				data, _, _ := j.Read(offset, 1<<20)
+				if strip {
+					data, _ = stripTerminal(data)
+				}
+				if until.MatchString(data) {
+					return true
+				}
+			}
+		case idle > 0:
+			if size > offset && time.Since(lastChange) >= idle {
+				return false
+			}
+		default:
+			if size > offset {
+				return false
+			}
+		}
 		select {
 		case <-ctx.Done():
-			return
+			return false
 		case <-deadline.C:
-			return
+			return false
 		case <-j.Done():
-			return
+			// 終了までに届いた出力で、もう一度だけ判定する。
+			if until != nil {
+				data, _, _ := j.Read(offset, 1<<20)
+				if strip {
+					data, _ = stripTerminal(data)
+				}
+				return until.MatchString(data)
+			}
+			return false
 		case <-tick.C:
 		}
 	}
+}
+
+func max64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // JobIDInput はジョブの識別子だけを受け取るツールの入力です。
@@ -213,12 +321,31 @@ type JobIDInput struct {
 	ID string `json:"id" jsonschema:"job id returned by job_start"`
 }
 
-func (d *Deps) jobStop(_ context.Context, _ *mcp.CallToolRequest, in JobIDInput) (*mcp.CallToolResult, jobs.Status, error) {
+// JobStopInput は job_stop の入力です。
+type JobStopInput struct {
+	ID      string `json:"id" jsonschema:"job id returned by job_start"`
+	Signal  string `json:"signal,omitempty" jsonschema:"kill (default: kill the whole process tree), or on Linux interrupt, terminate, hangup, quit, stop, continue, usr1, usr2 sent to the job's process group. In a pty job interrupt sends Ctrl-C to the terminal (also on Windows)"`
+	WaitSec int    `json:"wait_sec,omitempty" jsonschema:"seconds to wait for the job to exit after the signal (default 5)"`
+}
+
+func (d *Deps) jobStop(ctx context.Context, _ *mcp.CallToolRequest, in JobStopInput) (*mcp.CallToolResult, jobs.Status, error) {
 	j, err := d.Jobs.Get(in.ID)
 	if err != nil {
 		return nil, jobs.Status{}, err
 	}
-	j.Stop(5 * time.Second)
+	wait := time.Duration(orDefaultInt(in.WaitSec, 5)) * time.Second
+	if sig := orDefault(in.Signal, "kill"); sig == "kill" {
+		j.Stop(wait)
+	} else {
+		if err := j.Signal(sig); err != nil {
+			return nil, jobs.Status{}, err
+		}
+		select {
+		case <-j.Done():
+		case <-ctx.Done():
+		case <-time.After(wait):
+		}
+	}
 	return nil, j.Status(), nil
 }
 

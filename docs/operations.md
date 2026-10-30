@@ -7,6 +7,7 @@
 
 - [安全性の考え方](#安全性の考え方)
 - [専用のユーザーと鍵](#専用のユーザーと鍵)
+- [制限のオプション](#制限のオプション)
 - [起動するコマンドの固定](#起動するコマンドの固定)
 - [sudo の設定](#sudo-の設定)
 - [エージェント側の承認](#エージェント側の承認)
@@ -16,15 +17,15 @@
 
 ## 安全性の考え方
 
-`host-shell` は、接続したユーザーの権限で任意のコマンドを実行できます。  
-つまり、エージェントに `host-shell` を使わせることは、そのユーザーでの SSH のログインを許すことと同じです。
+`host-shell` は、既定では接続したユーザーの権限で何でもできます。  
+つまり、制限のオプションなしでエージェントに `host-shell` を使わせることは、そのユーザーでの SSH のログインを許すことと同じです。
 
-`host-shell` 自身は、実行できるコマンドを制限しません。  
-安全性は、次の 3 つを組み合わせて確保します。
+安全性は、次の 4 つを組み合わせて確保します。
 
 | 層 | 手段 | 守るもの |
 |---|---|---|
-| 接続先の OS | 専用のユーザー、ファイルの権限、sudoers の規則 | 操作できる範囲 |
+| 接続先の OS | 専用のユーザー、ファイルの権限、sudoers の規則 | 操作できる範囲 (確実な境界) |
+| host-shell | [制限のオプション](#制限のオプション) | 公開するツール、操作する場所、実行するプログラム、接続する宛先、実行前の確認 |
 | エージェント | 変更を伴うツールの承認 | 意図しない変更の実行 |
 | 記録 | `host-shell` の操作ログ | 何が行われたかの追跡 |
 
@@ -58,6 +59,29 @@ Host target
 
 中継サーバーを経由する場合は、中継サーバー上の `~/.ssh/config` にも同じように次の段の設定を書きます。
 
+## 制限のオプション
+
+`host-shell` の起動オプションで、エージェントに使わせる範囲を絞れます。指定しなかったものは制限しません。詳しくは [リファレンスの制限 (方針)](reference.md#制限-方針) を参照してください。
+
+| 用途 | オプションの例 |
+|---|---|
+| 障害の調査だけ (何も変えない) | `--read-only` |
+| ログと設定を読むだけ | `--tools files,search --read-only --allow-read-path /var/log --allow-read-path /etc/app` |
+| アプリのディレクトリだけで開発 | `--tools files,search,exec --allow-path /srv/app --allow-command git,make,go,npm,node` |
+| 変更の前に必ず人が確認 | `--confirm destructive` |
+| 外への通信を止める | `--allow-host localhost,127.0.0.1,::1,unix:/var/run/*.sock` |
+| 秘密を出力に出さない | `--redact --unset-env 'AWS_*,*TOKEN*,*SECRET*,*PASSWORD*'` |
+
+Table: 制限のオプションの例
+
+注意する点は次のとおりです。
+
+- 制限は、ツールの引数に対する検査です。`exec` の組 (`exec_run` など) を公開すると、コマンドはファイルやネットワークに自由に触れられます。場所や宛先を厳密に絞るには、`--tools` で `exec` を外すか、`--allow-command` でプログラムを絞ります。シェル (`sh`、`powershell` など) を許可すると、シェルの中では何でもできます。
+- `--deny-command` は、書き方を変えれば避けられます。誤操作の防止に使い、境界としては使わないでください。
+- `--confirm` は、クライアントが MCP の elicitation に対応している必要があります。対応していない場合、対象のツールはすべて失敗します。
+- `--redact` は、既知の形の秘密だけを伏せます。秘密を読ませたくないファイルは、OS の権限で読めないようにしてください。
+- オプションは、次の [起動するコマンドの固定](#起動するコマンドの固定) で `authorized_keys` に書き、利用者やエージェントが外せないようにします。
+
 ## 起動するコマンドの固定
 
 接続先の `authorized_keys` で、この鍵で起動できるコマンドを `host-shell` に固定できます。  
@@ -74,7 +98,15 @@ command="C:/tools/host-shell.exe --mcp",no-pty,no-port-forwarding,no-agent-forwa
 `command=` を指定すると、クライアントが指定したコマンドは無視され、常に `host-shell` が起動します。  
 このため、エージェントに登録するコマンドは `ssh -T target` だけでも動きます。
 
-ただし、`host-shell` 自体が任意のコマンドを実行できるため、これは権限を制限するものではありません。  
+[制限のオプション](#制限のオプション) も、ここに書きます。エージェントの登録で指定したオプションは無視されるため、利用者やエージェントが制限を外すことはできません。
+
+```{.text caption="~hsagent/.ssh/authorized_keys (読み取り専用に固定する例)"}
+command="/opt/host-shell/host-shell --mcp --read-only --redact",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA... host-shell agent
+```
+
+`no-pty` は SSH のセッションに端末を割り当てないための指定です。`host-shell` が `pty` のジョブで作る疑似端末には影響しません。
+
+制限のオプションを付けない場合、`host-shell` 自体が任意のコマンドを実行できるため、これは権限を制限するものではありません。  
 権限の範囲は、ユーザーと sudoers の規則で決めてください。
 
 ユーザー単位で固定する場合は、sshd の `ForceCommand` も使えます。
@@ -89,7 +121,8 @@ Match User hsagent
 
 ## sudo の設定
 
-`host-shell` は、パスワードを尋ねない `sudo -n` だけに対応します。  
+`sudo_run` と、管理のツールの `sudo` は、パスワードを尋ねない `sudo -n` だけに対応します。  
+パスワードを入力する運用にする場合は、エージェントが `pty` のジョブで `sudo` を起動し、利用者から教えられたパスワードを `job_write` で入力します (入力の内容は操作ログに記録しません)。  
 sudoers に `NOPASSWD` の規則を書いて、必要なコマンドだけを許可します。
 
 ### コマンドを絞って許可する (推奨)
@@ -127,6 +160,11 @@ sudoers のファイルは、必ず `visudo -f /etc/sudoers.d/hsagent` で編集
 - `exec_run`、`job_start`、`job_write`、`job_stop`
 - `fs_edit`、`fs_write`、`fs_move`、`fs_copy`、`fs_remove`
 - `sudo_run`
+- `net_http`、`net_tcp` (接続先から外部に送れるため)
+- `proc_kill`、`svc_control`、`reg_write`、`reg_delete`
+- bridge を使う場合は `transfer_push`、`transfer_pull`
+
+エージェント側で承認を設定できない場合や、接続先の管理者として確認を強制したい場合は、`--confirm destructive` を使います。
 
 `fs_mkdir` は、新しいディレクトリを作るだけで既存の内容を変えないため、`destructiveHint` を `false` にしています。
 
@@ -199,8 +237,9 @@ jq -c 'select(.tool | IN("exec_run", "job_start", "job_write", "sudo_run", "fs_e
 
 - [ ] エージェント専用のユーザーと鍵を用意した
 - [ ] ユーザーの権限で、読める範囲と書ける範囲を確認した
+- [ ] 必要に応じて、制限のオプション (`--read-only`、`--tools`、`--allow-path` など) を決めた
 - [ ] sudoers の規則を、必要なコマンドだけに絞った
-- [ ] `authorized_keys` の `command=` または `ForceCommand` で、起動を `host-shell` に固定した
+- [ ] `authorized_keys` の `command=` または `ForceCommand` で、起動を `host-shell` (と制限のオプション) に固定した
 - [ ] 各段で `-T` を指定し、接続先のシェルが余計な出力をしないことを確認した
 - [ ] エージェント側で、変更を伴うツールに承認を必須にした
 - [ ] 操作ログの保存先、ローテーション、転送を決めた

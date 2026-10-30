@@ -3,8 +3,10 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -12,6 +14,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/config"
 	"github.com/hondarer/host-shell-mcp/internal/jobs"
+	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
 // Deps はツールの実装が共有する依存です。
@@ -20,82 +23,165 @@ type Deps struct {
 	Audit        *audit.Logger
 	Jobs         *jobs.Manager
 	DefaultShell string
+	// Policy は利用者が起動時に指定した制限です。nil の場合は制限なしです。
+	Policy *policy.Policy
+
+	// enabled は公開したツールの名前と組です。help と案内の表示に使います。
+	enabled map[string]string
+	// catalog は、Catalog で一覧を作るときだけ使います。登録はしません。
+	catalog map[string]string
+
+	// confirmKey は、利用者の確認の回答を呼び出しの引数に結び付ける署名の鍵です。
+	keyOnce    sync.Once
+	confirmKey []byte
+}
+
+// ツールの組です。--tools で、組の単位で公開するかを選べます。
+const (
+	groupCore   = "core"   // help、sys_info (常に公開)
+	groupFiles  = "files"  // ファイルの読み書きと操作
+	groupSearch = "search" // ファイルと内容の検索
+	groupExec   = "exec"   // コマンドの実行とジョブ
+	groupNet    = "net"    // ネットワーク
+	groupAdmin  = "admin"  // プロセス、サービス、ログ、ディスク、レジストリ
+)
+
+// Groups は組の名前と説明です。
+var Groups = [][2]string{
+	{groupFiles, "fs_* file reading, writing and file operations"},
+	{groupSearch, "search_grep, search_files"},
+	{groupExec, "exec_run, sudo_run and job_* (commands, background jobs, pseudo terminals)"},
+	{groupNet, "net_* HTTP requests, TCP connections, reachability, listening ports, interfaces"},
+	{groupAdmin, "processes, services, system logs, disks, Windows registry"},
+}
+
+// readOnlyCapable は、--read-only のときも、変更を伴わない使い方に限って公開するツールです。
+var readOnlyCapable = map[string]bool{"net_http": true, "net_tcp": true}
+
+// Catalog はすべてのツールの名前と組を返します。OS に固有のツールも含みます。
+func Catalog() map[string]string {
+	d := &Deps{catalog: map[string]string{}}
+	Register(nil, d)
+	return d.catalog
+}
+
+// Enabled はツールが公開されているかを返します。
+func (d *Deps) Enabled(name string) bool {
+	_, ok := d.enabled[name]
+	return ok
+}
+
+// groupEnabled は組のツールが 1 つでも公開されているかを返します。
+func (d *Deps) groupEnabled(group string) bool {
+	for _, g := range d.enabled {
+		if g == group {
+			return true
+		}
+	}
+	return false
+}
+
+// onOS は、OS に固有のツールを登録するかを返します。一覧を作るときはすべてを含めます。
+func (d *Deps) onOS(goos string) bool {
+	return d.catalog != nil || runtime.GOOS == goos
 }
 
 // Register はすべてのツールをサーバーに登録します。
 //
 // 説明 (Description) はエージェントが読むものです。何をするか、いつ使うか、何と組み合わせるかを書きます。
 func Register(s *mcp.Server, d *Deps) {
+	if d.Policy == nil {
+		d.Policy = policy.Unrestricted()
+	}
+	d.enabled = map[string]string{}
+
 	// 使い方
-	add(s, d, &mcp.Tool{
+	add(s, d, groupCore, &mcp.Tool{
 		Name:  "help",
 		Title: "Usage guide",
-		Description: "Explain how to use host-shell: workflow, tool choice, arguments and examples. " +
+		Description: "Explain how to use host-shell: workflow, tool choice, arguments and examples, and the restrictions in effect. " +
 			"Call it when unsure which tool to use or how an argument works. Topics: " + strings.Join(helpTopics, ", ") + ", all.",
 		Annotations: readOnly(),
 	}, d.help)
 
 	// コマンド実行
-	add(s, d, &mcp.Tool{
+	add(s, d, groupExec, &mcp.Tool{
 		Name:  "exec_run",
 		Title: "Run command",
 		Description: "Run a command on the remote host and wait for it (up to timeout_sec). Returns exit_code, stdout, stderr. " +
 			"Use command for a shell command line (default shell in sys_info) or argv to run a program with exact arguments and no shell. " +
 			"Each call is a new process: pass cwd and env; cd/export do not persist. stdin is empty unless given, so prompts fail instead of hanging. " +
-			"For commands that may run longer than a minute or need input while running, use job_start. To read or change files prefer fs_read/fs_edit/fs_write.",
+			"Sends progress notifications while running and kills the process tree if the request is cancelled. " +
+			"For commands that may run longer than a minute, need input while running or need a terminal, use job_start. To read or change files prefer fs_read/fs_edit/fs_write.",
 		Annotations: destructive(),
 	}, d.execRun)
 
 	// 長時間の実行
-	add(s, d, &mcp.Tool{
+	add(s, d, groupExec, &mcp.Tool{
 		Name:  "job_start",
 		Title: "Start background job",
 		Description: "Start a command in the background and return its id at once. Same arguments as exec_run; no time limit unless timeout_sec. " +
 			"Use for builds, test suites, servers, tail -f and other long or streaming commands. Read output with job_read (wait_sec to wait). " +
-			"Set stdin_open to send input later with job_write.",
+			"Set stdin_open to send input later with job_write, or pty to run it in a pseudo terminal (password prompts, REPLs, ssh, programs that need a terminal).",
 		Annotations: destructive(),
 	}, d.jobStart)
-	add(s, d, &mcp.Tool{
+	add(s, d, groupExec, &mcp.Tool{
 		Name:  "job_read",
 		Title: "Read job output",
 		Description: "Read a background job's output (stdout and stderr interleaved) from a byte offset, with its status (running, exit_code). " +
-			"Start at offset 0, then pass next_offset to get only new output. Set wait_sec (max 30) to wait for new output or job exit instead of polling.",
+			"Start at offset 0, then pass next_offset to get only new output; a negative offset reads the tail. " +
+			"Set wait_sec to wait for output instead of polling, with until (regex, e.g. a prompt) or idle_ms (output went quiet) to wait for the right moment. " +
+			"Terminal escape sequences of pty jobs are removed unless raw.",
 		Annotations: readOnly(),
 	}, d.jobRead)
-	add(s, d, &mcp.Tool{
+	add(s, d, groupExec, &mcp.Tool{
 		Name:  "job_write",
 		Title: "Send input to job",
-		Description: "Send text to the standard input of a job started with stdin_open, and/or close it (close: true, like Ctrl-D). " +
-			"Include \\n to submit a line. There is no terminal (PTY), so programs that require one may not prompt.",
+		Description: "Send text to the input of a job started with stdin_open or pty, and/or close it (close: true, like Ctrl-D). " +
+			"Include \\n to submit a line (\\r in some pty programs). In a pty job control keys work: \\u0003 Ctrl-C, \\u0004 Ctrl-D, \\u001b Esc. " +
+			"cols and rows resize a pty. Follow with job_read (wait_sec with until or idle_ms) to see the response.",
 		Annotations: destructive(),
 	}, d.jobWrite)
-	add(s, d, &mcp.Tool{
-		Name:        "job_stop",
-		Title:       "Stop job",
-		Description: "Stop a background job, killing its whole process tree, and return its final status.",
+	add(s, d, groupExec, &mcp.Tool{
+		Name:  "job_stop",
+		Title: "Stop job",
+		Description: "Stop a background job: kill (default) kills its whole process tree; on Linux interrupt, terminate, hangup and other signals go to its process group; " +
+			"in a pty job interrupt sends Ctrl-C. Returns the status after waiting up to wait_sec.",
 		Annotations: destructive(),
 	}, d.jobStop)
-	add(s, d, &mcp.Tool{
+	add(s, d, groupExec, &mcp.Tool{
 		Name:        "job_list",
 		Title:       "List jobs",
-		Description: "List background jobs of this session with their status. Jobs end when the session ends.",
+		Description: "List background jobs of this session with their status. Jobs end when the session ends; the 50 most recent finished jobs are kept.",
 		Annotations: readOnly(),
 	}, d.jobList)
 
+	// 特権実行 (Windows 以外)
+	if d.catalog != nil || runtime.GOOS != "windows" {
+		add(s, d, groupExec, &mcp.Tool{
+			Name:  "sudo_run",
+			Title: "Run as root",
+			Description: "Run a shell command with sudo -n (never prompts) as root or user. Needs a NOPASSWD sudoers rule for sh; " +
+				"if only specific commands are allowed, use exec_run with argv [\"sudo\", \"-n\", ...] instead. " +
+				"If sudo needs a password, run sudo in a pty job (job_start pty) and type it with job_write.",
+			Annotations: destructive(),
+		}, d.sudoRun)
+	}
+
 	// ファイル操作
-	add(s, d, &mcp.Tool{
+	add(s, d, groupFiles, &mcp.Tool{
 		Name:        "fs_list",
 		Title:       "List directory",
 		Description: "List the entries of one directory (name, type, size, mode, modification time). Not recursive: use search_files to find files in a tree.",
 		Annotations: readOnly(),
 	}, d.fsList)
-	add(s, d, &mcp.Tool{
+	add(s, d, groupFiles, &mcp.Tool{
 		Name:        "fs_stat",
 		Title:       "File attributes",
 		Description: "Get type, size, mode and modification time of a file or directory, and the target of a symlink (a final symlink is not followed). Use it to check existence or size before reading.",
 		Annotations: readOnly(),
 	}, d.fsStat)
-	add(s, d, &mcp.Tool{
+	add(s, d, groupFiles, &mcp.Tool{
 		Name:  "fs_read",
 		Title: "Read file",
 		Description: "Read a file on the remote host. Text by lines: line_start (1-based) and line_count, with line_numbers for cat -n style prefixes; continue with next_line. " +
@@ -103,7 +189,7 @@ func Register(s *mcp.Server, d *Deps) {
 			"Text is converted to UTF-8 (charset auto) and the result reports charset, bom and newline.",
 		Annotations: readOnly(),
 	}, d.fsRead)
-	add(s, d, &mcp.Tool{
+	add(s, d, groupFiles, &mcp.Tool{
 		Name:  "fs_edit",
 		Title: "Edit file",
 		Description: "Replace exact text in an existing file: old_string must occur exactly once (or set replace_all); edits applies several replacements atomically. " +
@@ -111,43 +197,49 @@ func Register(s *mcp.Server, d *Deps) {
 			"Copy old_string from fs_read output without line number prefixes. Prefer this over fs_write for changing existing files.",
 		Annotations: destructive(),
 	}, d.fsEdit)
-	add(s, d, &mcp.Tool{
+	add(s, d, groupFiles, &mcp.Tool{
 		Name:  "fs_write",
 		Title: "Write file",
 		Description: "Create or overwrite a file with text or base64 content. mode: overwrite (default), append, create (fail if it exists). " +
-			"offset writes at a byte position without truncating (chunked or resumed transfers). make_dirs creates parents. " +
+			"offset writes at a byte position without truncating (chunked or resumed transfers). make_dirs creates parents; perm sets permissions such as 0755. " +
 			"charset, newline and bom control the text format; by default UTF-8 is written as given. Use fs_edit to change part of an existing file.",
 		Annotations: destructive(),
 	}, d.fsWrite)
-	add(s, d, &mcp.Tool{
+	add(s, d, groupFiles, &mcp.Tool{
 		Name:        "fs_mkdir",
 		Title:       "Create directory",
 		Description: "Create a directory and any missing parents. An existing directory is not an error.",
 		Annotations: additive(true),
 	}, d.fsMkdir)
-	add(s, d, &mcp.Tool{
+	add(s, d, groupFiles, &mcp.Tool{
 		Name:  "fs_move",
 		Title: "Move or rename",
 		Description: "Move or rename a file or directory. destination is the full new path. Fails if destination exists unless overwrite (files only). " +
 			"Works across file systems by copying and then deleting.",
 		Annotations: destructive(),
 	}, d.fsMove)
-	add(s, d, &mcp.Tool{
+	add(s, d, groupFiles, &mcp.Tool{
 		Name:  "fs_copy",
 		Title: "Copy",
 		Description: "Copy a file, or a directory tree with recursive. destination is the full path of the copy. Keeps permissions and modification times; symlinks are recreated, not followed. " +
 			"Fails if destination exists unless overwrite (replaces files, merges directories).",
 		Annotations: destructive(),
 	}, d.fsCopy)
-	add(s, d, &mcp.Tool{
+	add(s, d, groupFiles, &mcp.Tool{
 		Name:        "fs_remove",
 		Title:       "Delete",
 		Description: "Delete a file, symlink or empty directory; recursive deletes a directory with everything under it. Refuses file system roots and the home directory. missing_ok ignores a missing path.",
 		Annotations: destructive(),
 	}, d.fsRemove)
+	add(s, d, groupFiles, &mcp.Tool{
+		Name:        "fs_manifest",
+		Title:       "File hashes",
+		Description: "List files under a directory (or one file) with relative path, size, permissions and SHA-256. Compare with a local copy to transfer only files that differ, or verify a transfer.",
+		Annotations: readOnly(),
+	}, d.fsManifest)
 
 	// 検索
-	add(s, d, &mcp.Tool{
+	add(s, d, groupSearch, &mcp.Tool{
 		Name:  "search_grep",
 		Title: "Search file contents",
 		Description: "Search file contents recursively with a regular expression (Go RE2: no lookaround or backreferences; literal for plain strings), like ripgrep. " +
@@ -155,54 +247,73 @@ func Register(s *mcp.Server, d *Deps) {
 			"Skips binary files and .git/.hg/.svn. Files in Shift_JIS, EUC-JP etc. are decoded automatically.",
 		Annotations: readOnly(),
 	}, d.searchGrep)
-	add(s, d, &mcp.Tool{
+	add(s, d, groupSearch, &mcp.Tool{
 		Name:  "search_files",
 		Title: "Find files",
 		Description: "Find files or directories recursively by glob: base name without a slash (*.log, *.{yml,yaml}) or relative path with a slash (**/test/*.py). " +
 			"type limits to file or dir; sort mtime lists the most recently modified first.",
 		Annotations: readOnly(),
 	}, d.searchFiles)
-	add(s, d, &mcp.Tool{
-		Name:        "fs_manifest",
-		Title:       "File hashes",
-		Description: "List files under a directory with relative path, size and SHA-256. Compare with a local copy to transfer only files that differ, or verify a transfer.",
-		Annotations: readOnly(),
-	}, d.fsManifest)
 
-	// 特権実行 (Linux のみ)
-	if runtime.GOOS != "windows" {
-		add(s, d, &mcp.Tool{
-			Name:  "sudo_run",
-			Title: "Run as root",
-			Description: "Run a shell command with sudo -n (never prompts) as root or user. Needs a NOPASSWD sudoers rule for sh; " +
-				"if only specific commands are allowed, use exec_run with argv [\"sudo\", \"-n\", ...] instead.",
-			Annotations: destructive(),
-		}, d.sudoRun)
-	}
+	registerNet(s, d)
+	registerAdmin(s, d)
 
 	// 環境情報
-	add(s, d, &mcp.Tool{
+	add(s, d, groupCore, &mcp.Tool{
 		Name:  "sys_info",
 		Title: "Host information",
-		Description: "Get OS, architecture, hostname, user, home and working directory, path separator, default shell and default encodings of the remote host. " +
-			"Call it first to decide paths, shell syntax and encodings.",
+		Description: "Get OS, architecture, hostname, user, home and working directory, path separator, default shell, default encodings, " +
+			"enabled tool groups and restrictions of the remote host. Call it first to decide paths, shell syntax and encodings.",
 		Annotations: readOnly(),
 	}, d.sysInfo)
-	add(s, d, &mcp.Tool{
-		Name:        "sys_processes",
-		Title:       "List processes",
-		Description: "List running processes (ps on Linux, tasklist on Windows) as text, optionally filtered by a case-insensitive substring. The header line is always kept.",
-		Annotations: readOnly(),
-	}, d.sysProcesses)
 
-	registerHelp(s, d)
+	if s != nil {
+		registerHelp(s, d)
+	}
 }
 
-// add は操作ログの記録を挟んでツールを登録します。
-func add[In, Out any](s *mcp.Server, d *Deps, t *mcp.Tool, h mcp.ToolHandlerFor[In, Out]) {
+// add は方針の検査、利用者への確認、伏せ字の処理、操作ログの記録を挟んでツールを登録します。
+// 利用者の指定で公開しないツールは登録しません。
+func add[In, Out any](s *mcp.Server, d *Deps, group string, t *mcp.Tool, h mcp.ToolHandlerFor[In, Out]) {
+	if d.catalog != nil {
+		d.catalog[t.Name] = group
+		return
+	}
+	ro := t.Annotations != nil && t.Annotations.ReadOnlyHint
+	if group != groupCore {
+		if !d.Policy.Enabled(t.Name, group, ro) {
+			return
+		}
+		if d.Policy.ReadOnly && !ro && !readOnlyCapable[t.Name] {
+			return
+		}
+	}
+	d.enabled[t.Name] = group
+	confirm := d.Policy.NeedsConfirm(t.Name, group, ro)
 	mcp.AddTool(s, t, func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		start := time.Now()
-		res, out, err := h(ctx, req, in)
+		var (
+			res *mcp.CallToolResult
+			out Out
+			err = d.checkPolicy(in)
+		)
+		if err == nil && confirm {
+			var ask *mcp.CallToolResult
+			if ask, err = d.confirm(req, t.Name, in); ask != nil {
+				// 利用者への確認を求める。回答を付けたやり直しで、もう一度ここに来る。
+				d.Audit.Tool(t.Name+" (confirmation requested)", in, time.Since(start), false, nil)
+				return ask, out, nil
+			}
+		}
+		if err == nil {
+			res, out, err = h(ctx, req, in)
+			if d.Policy.Redacting() {
+				res, out = redactOutput(d, res, out)
+			}
+		}
+		if err == nil && ctx.Err() != nil {
+			err = fmt.Errorf("cancelled: %w", ctx.Err())
+		}
 		d.Audit.Tool(t.Name, in, time.Since(start), res != nil && res.IsError, err)
 		return res, out, err
 	})
@@ -224,3 +335,12 @@ func destructive() *mcp.ToolAnnotations {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// network は接続先の外 (ネットワークの先) に作用しうるツールの注釈です。
+func network(readOnlyHint bool) *mcp.ToolAnnotations {
+	a := &mcp.ToolAnnotations{ReadOnlyHint: readOnlyHint, OpenWorldHint: ptr(true)}
+	if !readOnlyHint {
+		a.DestructiveHint = ptr(true)
+	}
+	return a
+}

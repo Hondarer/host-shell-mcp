@@ -18,12 +18,13 @@ host-shell-mcp のリポジトリの中で使う場合は `.agents/skills/host-s
 | `scripts/` | 経路の確認、判定、配置、起動の確認のスクリプト (下記) |
 | `bin/host-shell-linux-amd64`、`bin/host-shell-linux-arm64` | Linux 用の実行ファイル |
 | `bin/host-shell-windows-amd64.exe`、`bin/host-shell-windows-arm64.exe` | Windows 用の実行ファイル |
+| `bin/host-shell-darwin-amd64`、`bin/host-shell-darwin-arm64` | macOS 用の実行ファイル (手元で `host-shell bridge` として使う) |
 | `bin/VERSION` | 実行ファイルのバージョン |
 
 Table: フォルダの構成
 
 `bin/` は、host-shell-mcp のリポジトリで `make dist` を実行すると作られます (`dist/` と同じものの複製)。  
-`bin/` がない場合や、利用者が新しい版を求めている場合は、リポジトリのルートで `make dist` を実行します (Go 1.25 以降が必要)。  
+`bin/` がない場合や、利用者が新しい版を求めている場合は、リポジトリのルートで `make dist` を実行します (Go 1.26 以降が必要)。  
 リポジトリがない環境では、GitHub の Release の `host-shell-connect-<tag>.zip` (または `.tar.gz`) を使います。`bin/` を含むこの skill のフォルダが入っています。用意は利用者に頼みます。
 
 ## スクリプト
@@ -54,9 +55,22 @@ Table: スクリプト
 | 経路 (`ROUTE`) | `hop1,target` | なし (必ず確かめる) |
 | 配置先 (`REMOTE_PATH`) | `/opt/host-shell/host-shell`、`C:/tools/host-shell.exe` | Linux は `/opt/host-shell/host-shell`、Windows は `C:/tools/host-shell.exe` |
 | 登録の名前 | `host-shell-target` | `host-shell-<接続先のホスト名>` |
-| host-shell のオプション | `--timeout 2m`、`--windows-shell cmd` | なし |
+| host-shell のオプション | `--timeout 2m`、`--windows-shell cmd`、制限 (下記) | なし (制限なし) |
+| bridge を使うか | 手元と接続先の間でファイルを送るなら使う | 使う |
 
 Table: 必要な情報
+
+利用者が制限を求めた場合は、次のオプションから選びます。求められなければ付けません (既定は制限なしで、何でもできます)。
+
+| 求め | オプション |
+|---|---|
+| 読むだけにしたい | `--read-only` |
+| 使うツールを絞りたい | `--tools files,search` (組は files、search、exec、net、admin。`all,-admin` のように除くこともできる) |
+| 操作できる場所を限りたい | `--allow-path /srv/app`、`--allow-read-path /var/log` |
+| 実行できるプログラムを限りたい | `--allow-command git,make,go` |
+| 変更の前に確認したい | `--confirm destructive` (クライアントが elicitation に対応している必要がある) |
+| 接続先を限りたい | `--allow-host localhost,10.0.0.0/8` |
+| 秘密を出力に出したくない | `--redact`、`--unset-env 'AWS_*,*TOKEN*'` |
 
 配置先は、空白と引用符を含まないパスにします。  
 Linux で `/opt` に書き込めないユーザーの場合は、ホーム ディレクトリからの相対パス (例: `.local/bin/host-shell`) を使います。sshd はホーム ディレクトリでコマンドを始めるため、相対パスのまま登録できます。`~` は手元のシェルが展開してしまうため使いません。
@@ -110,9 +124,19 @@ Linux で `/opt` に書き込めないユーザーの場合は、ホーム デ�
 
 エージェントへの登録の設定は、利用者が管理するものです。コマンドと設定を示し、実行するかどうかは利用者に任せます。利用者が実行を求めた場合だけ実行します。
 
-各段に `-T` を付けた ssh の入れ子を、そのまま MCP サーバーのコマンドにします。
+各段に `-T` を付けた ssh の入れ子が、接続先の host-shell を起動するコマンドです。
+既定では、その前に手元の `host-shell bridge` を置きます。bridge は接続先のツールをそのまま中継し、手元と接続先の間でファイルを送るツール (`transfer_push`、`transfer_pull`) を加えます。
 
-Claude Code:
+手元の実行ファイルは `$SKILL/bin/` のうち、手元の OS とアーキテクチャに合うものです (`uname -sm` で調べる。Linux x86_64 なら `host-shell-linux-amd64`、macOS arm64 なら `host-shell-darwin-arm64`、Windows なら `.exe`)。
+登録には絶対パスを使います。skill のフォルダを更新しても登録が変わらないよう、利用者が望めば `~/.local/bin/host-shell` などに複製してから使います。
+
+Claude Code (bridge を使う):
+
+```bash
+claude mcp add host-shell-target -- /path/to/host-shell bridge -- ssh -T -o BatchMode=yes hop1 ssh -T -o BatchMode=yes target /opt/host-shell/host-shell --mcp
+```
+
+Claude Code (bridge を使わない):
 
 ```bash
 claude mcp add host-shell-target -- ssh -T -o BatchMode=yes hop1 ssh -T -o BatchMode=yes target /opt/host-shell/host-shell --mcp
@@ -125,12 +149,14 @@ VS Code (`.vscode/mcp.json`) など、JSON で設定するエージェント:
   "servers": {
     "host-shell-target": {
       "type": "stdio",
-      "command": "ssh",
-      "args": ["-T", "-o", "BatchMode=yes", "hop1", "ssh", "-T", "-o", "BatchMode=yes", "target", "/opt/host-shell/host-shell", "--mcp"]
+      "command": "/path/to/host-shell",
+      "args": ["bridge", "--", "ssh", "-T", "-o", "BatchMode=yes", "hop1", "ssh", "-T", "-o", "BatchMode=yes", "target", "/opt/host-shell/host-shell", "--mcp"]
     }
   }
 }
 ```
+
+制限のオプションは、接続先の host-shell の `--mcp` の後ろに付けます。手元で転送してよい場所を限る場合は、`bridge` の後ろに `--allow-local-path DIR` を付けます。
 
 登録したあとは、エージェントが MCP サーバーを読み込み直す必要があります (Claude Code では `/mcp` で再接続するか、起動し直す)。  
 読み込まれたら、`sys_info` を呼んで、接続先のホスト名と OS が返ることを確かめるよう伝えます。
@@ -142,4 +168,4 @@ VS Code (`.vscode/mcp.json`) など、JSON で設定するエージェント:
 - 経路と接続先の種類
 - 配置先、版、SHA-256、送ったか (`deployed`) 既存のままか (`up to date`)
 - `probe.sh` の結果 (バージョンとツールの数)
-- 登録のコマンドと、読み込み直しが必要なこと
+- 登録のコマンド (bridge を使うか、付けた制限) と、読み込み直しが必要なこと

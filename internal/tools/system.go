@@ -35,7 +35,7 @@ func (in SudoRunInput) AuditArgs() any {
 // sudoRun は sudo -n (対話なし) でコマンドを実行します。
 // TODO(未決事項): パスワードを標準入力から渡す sudo -S に対応するか。
 // 対応する場合は、パスワードがツールの引数や操作ログに残らない受け渡し方法を設計する。
-func (d *Deps) sudoRun(ctx context.Context, _ *mcp.CallToolRequest, in SudoRunInput) (*mcp.CallToolResult, proc.Result, error) {
+func (d *Deps) sudoRun(ctx context.Context, req *mcp.CallToolRequest, in SudoRunInput) (*mcp.CallToolResult, proc.Result, error) {
 	if in.Command == "" {
 		return nil, proc.Result{}, errors.New("command is required")
 	}
@@ -48,33 +48,48 @@ func (d *Deps) sudoRun(ctx context.Context, _ *mcp.CallToolRequest, in SudoRunIn
 	if err != nil {
 		return nil, proc.Result{}, err
 	}
-	res, err := proc.Run(ctx, proc.Spec{Argv: argv, Dir: in.Cwd}, proc.Options{
+	tap, stop := watchOutput(newProgress(ctx, req))
+	defer stop()
+	res, err := proc.Run(ctx, d.procSpec(CommandSpec{Argv: argv, Cwd: in.Cwd}), proc.Options{
 		Stdin:     stdin,
 		Output:    output,
 		Timeout:   d.Cfg.ClampTimeout(in.TimeoutSec),
 		MaxOutput: d.Cfg.MaxOutputBytes,
+		OnOutput:  tap,
 	})
 	return nil, res, err
 }
 
+// PathArgs は作業ディレクトリを、読み取りの対象として方針の検査に渡します。
+func (in SudoRunInput) PathArgs() (read, write []string) {
+	return CommandSpec{Cwd: in.Cwd}.PathArgs()
+}
+
+// CommandArgs は sudo と、sudo が起動するシェルを方針の検査に渡します。
+func (in SudoRunInput) CommandArgs(string) (programs []string, text string) {
+	return []string{"sudo", "sh"}, in.Command
+}
+
 // SysInfoOutput は sys_info の出力です。
 type SysInfoOutput struct {
-	OS           string `json:"os"`
-	Arch         string `json:"arch"`
-	Hostname     string `json:"hostname"`
-	User         string `json:"user"`
-	UID          string `json:"uid"`
-	Home         string `json:"home"`
-	Cwd          string `json:"cwd"`
-	PathSep      string `json:"path_separator"`
-	DefaultShell string `json:"default_shell"`
-	ConsoleEnc   string `json:"console_encoding" jsonschema:"encoding used for command input/output by default (system for output_encoding/stdin_encoding)"`
-	FileEnc      string `json:"file_encoding" jsonschema:"encoding used for text files by default (system for charset)"`
-	NumCPU       int    `json:"num_cpu"`
-	PID          int    `json:"pid"`
-	Executable   string `json:"executable"`
-	Version      string `json:"version" jsonschema:"host-shell version"`
-	GoVersion    string `json:"go_version"`
+	OS           string   `json:"os"`
+	Arch         string   `json:"arch"`
+	Hostname     string   `json:"hostname"`
+	User         string   `json:"user"`
+	UID          string   `json:"uid"`
+	Home         string   `json:"home"`
+	Cwd          string   `json:"cwd"`
+	PathSep      string   `json:"path_separator"`
+	DefaultShell string   `json:"default_shell"`
+	ConsoleEnc   string   `json:"console_encoding" jsonschema:"encoding used for command input/output by default (system for output_encoding/stdin_encoding)"`
+	FileEnc      string   `json:"file_encoding" jsonschema:"encoding used for text files by default (system for charset)"`
+	NumCPU       int      `json:"num_cpu"`
+	PID          int      `json:"pid"`
+	Executable   string   `json:"executable"`
+	Version      string   `json:"version" jsonschema:"host-shell version"`
+	GoVersion    string   `json:"go_version"`
+	ToolGroups   []string `json:"tool_groups" jsonschema:"tool groups available in this session (see help)"`
+	Restrictions []string `json:"restrictions,omitempty" jsonschema:"restrictions set by the administrator of this host-shell; operations outside them fail"`
 }
 
 func (d *Deps) sysInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, SysInfoOutput, error) {
@@ -97,7 +112,22 @@ func (d *Deps) sysInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.Ca
 	if u, err := user.Current(); err == nil {
 		out.User, out.UID = u.Username, u.Uid
 	}
+	out.ToolGroups = d.enabledGroups()
+	for _, kv := range d.Policy.Summary() {
+		out.Restrictions = append(out.Restrictions, kv[0]+": "+kv[1])
+	}
 	return nil, out, nil
+}
+
+// enabledGroups は公開しているツールの組の名前を返します。
+func (d *Deps) enabledGroups() []string {
+	var out []string
+	for _, g := range Groups {
+		if d.groupEnabled(g[0]) {
+			out = append(out, g[0])
+		}
+	}
+	return out
 }
 
 // SysProcessesInput は sys_processes の入力です。

@@ -13,25 +13,36 @@ import (
 
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/config"
+	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
 // connect はメモリ上の通信路でサーバーとクライアントをつなぎます。
 func connect(t *testing.T) *mcp.ClientSession {
 	t.Helper()
+	return connectWith(t, policy.Options{}, nil)
+}
+
+// connectWith は制限とクライアントの設定を指定してつなぎます。
+func connectWith(t *testing.T, po policy.Options, copts *mcp.ClientOptions) *mcp.ClientSession {
+	t.Helper()
 	ctx := context.Background()
 	cfg := config.Default()
 	cfg.LogFile = filepath.Join(t.TempDir(), "audit.log")
+	cfg.Policy = po
 	al, err := audit.Open(cfg.LogFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, closeServer := New(cfg, al)
+	s, closeServer, err := New(cfg, al)
+	if err != nil {
+		t.Fatal(err)
+	}
 	st, ct := mcp.NewInMemoryTransports()
 	ss, err := s.Connect(ctx, st, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test"}, nil).Connect(ctx, ct, nil)
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test"}, copts).Connect(ctx, ct, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

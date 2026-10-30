@@ -2,7 +2,8 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X github.com/hondarer/host-shell-mcp/internal/version.Version=$(VERSION)
 GOBUILD := CGO_ENABLED=0 go build -trimpath -ldflags="$(LDFLAGS)"
 
-TARGETS := linux-amd64 linux-arm64 windows-amd64 windows-arm64
+# 接続先 (host-shell --mcp) は Linux と Windows。手元 (host-shell bridge) は macOS でも動かす。
+TARGETS := linux-amd64 linux-arm64 windows-amd64 windows-arm64 darwin-amd64 darwin-arm64
 
 # host-shell-connect skill が単独で使えるよう、配布用の実行ファイルを複製する場所
 SKILL_DIR := .agents/skills/host-shell-connect
@@ -47,6 +48,7 @@ test:
 vet:
 	go vet ./...
 	GOOS=windows go vet ./...
+	GOOS=darwin go vet ./...
 
 clean:
 	rm -rf dist $(SKILL_BIN)

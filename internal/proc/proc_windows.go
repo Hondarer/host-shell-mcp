@@ -8,12 +8,15 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"syscall"
+
+	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
 const createNoWindow = 0x08000000
 
-func shellCommand(ctx context.Context, sh, line string) (*exec.Cmd, error) {
+func shellCommand(ctx context.Context, sh, line string, interactive bool) (*exec.Cmd, error) {
 	switch sh {
 	case "cmd":
 		comspec := os.Getenv("ComSpec")
@@ -28,9 +31,9 @@ func shellCommand(ctx context.Context, sh, line string) (*exec.Cmd, error) {
 		}
 		return cmd, nil
 	case "powershell":
-		return exec.CommandContext(ctx, "powershell.exe", powershellArgs(line)...), nil
+		return exec.CommandContext(ctx, "powershell.exe", powershellArgs(line, interactive)...), nil
 	case "pwsh":
-		return exec.CommandContext(ctx, "pwsh.exe", powershellArgs(line)...), nil
+		return exec.CommandContext(ctx, "pwsh.exe", powershellArgs(line, interactive)...), nil
 	default:
 		return nil, fmt.Errorf("shell %q is not supported on this OS (use cmd, powershell or pwsh)", sh)
 	}
@@ -48,4 +51,24 @@ func setupProcess(cmd *exec.Cmd) {
 		_ = exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
 		return cmd.Process.Kill()
 	}
+}
+
+// SignalNames は Signal で使える名前です。Windows ではプロセスの強制終了だけです。
+const SignalNames = "kill"
+
+// Signal はプロセスを終了させます。Windows ではシグナルがないため、kill だけに対応します。
+// group の場合は、子孫のプロセスもまとめて終了させます。
+func Signal(pid int, name string, group bool) error {
+	if name != "kill" {
+		return fmt.Errorf("signal %q is not supported on Windows (only kill)", name)
+	}
+	args := []string{"/F", "/PID", strconv.Itoa(pid)}
+	if group {
+		args = append([]string{"/T"}, args...)
+	}
+	out, err := exec.Command("taskkill", args...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("taskkill: %v: %s", err, strings.TrimSpace(textenc.Console().Decode(out)))
+	}
+	return nil
 }

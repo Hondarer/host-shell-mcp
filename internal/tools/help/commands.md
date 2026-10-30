@@ -19,12 +19,17 @@ A non-zero exit code is a normal result, not a tool error.
 - Output beyond the limit keeps the head and tail with a marker in the middle and sets
   `stdout_truncated`. Reduce output (`| tail -n 100`, `--quiet`, redirect to a file and `fs_read` it).
 - Output is converted to UTF-8 (`output_encoding`, default `auto`). See topic `encoding`.
+- If your client sends a progress token, `exec_run` and `sudo_run` report progress every second
+  (elapsed time, output size, last line). If your client cancels the request, the process tree is
+  killed at once.
 
 ## sudo_run (Linux)
 
 `sudo -n -- sh -c <command>`, optionally `-u user`. It never prompts: without a matching NOPASSWD
 sudoers rule it fails with "a password is required". Narrow rules are often written for specific
 commands; then run `exec_run` with `argv: ["sudo", "-n", "/usr/bin/systemctl", "restart", "app"]`.
+If the user gives you the password, run `sudo` in a pty job and type it with `job_write`
+(the password is not written to the audit log).
 
 ## Choosing
 
@@ -32,5 +37,6 @@ commands; then run `exec_run` with `argv: ["sudo", "-n", "/usr/bin/systemctl", "
 |---|---|
 | Finishes within a minute, no input needed | `exec_run` |
 | Builds, test suites, downloads, servers, `tail -f` | `job_start` + `job_read` |
-| Prompts, REPLs, programs reading stdin interactively | `job_start` with `stdin_open` + `job_write` |
+| Programs reading stdin interactively | `job_start` with `stdin_open` + `job_write` |
+| Password prompts, REPLs, `ssh`, `top`, anything that needs a terminal | `job_start` with `pty` + `job_write` |
 | Reading or changing files | `fs_*` tools rather than `cat`, `sed -i`, `echo >` |

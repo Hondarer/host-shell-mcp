@@ -21,14 +21,14 @@ import (
 var helpFS embed.FS
 
 // helpTopics は help の topic の一覧です。表示の順に並べます。
-var helpTopics = []string{"overview", "files", "edit", "search", "commands", "jobs", "encoding", "windows", "limits"}
+var helpTopics = []string{"overview", "files", "edit", "search", "commands", "jobs", "network", "admin", "transfer", "encoding", "windows", "policy", "limits"}
 
 // helpResourcePrefix は help の topic を MCP のリソースとして公開するときの URI の接頭辞です。
 const helpResourcePrefix = "host-shell://help/"
 
 // HelpInput は help の入力です。
 type HelpInput struct {
-	Topic string `json:"topic,omitempty" jsonschema:"overview (default), files, edit, search, commands, jobs, encoding, windows, limits, or all"`
+	Topic string `json:"topic,omitempty" jsonschema:"overview (default), files, edit, search, commands, jobs, network, admin, transfer, encoding, windows, policy, limits, or all"`
 }
 
 func (d *Deps) help(_ context.Context, _ *mcp.CallToolRequest, in HelpInput) (*mcp.CallToolResult, any, error) {
@@ -101,31 +101,56 @@ func (d *Deps) hostSummary() string {
 		{"File encoding (system)", textenc.File().Name},
 		{"Output limit per call", formatBytes(d.Cfg.MaxOutputBytes)},
 		{"Command timeout (default / max)", fmt.Sprintf("%s / %s", d.Cfg.DefaultTimeout, d.Cfg.MaxTimeout)},
+		{"Tool groups", strings.Join(d.enabledGroups(), ", ")},
 	} {
 		fmt.Fprintf(&sb, "| %s | `%s` |\n", kv[0], kv[1])
+	}
+	if r := d.Policy.Summary(); len(r) > 0 {
+		sb.WriteString("\n## Restrictions\n\n| Rule | Value |\n|---|---|\n")
+		for _, kv := range r {
+			fmt.Fprintf(&sb, "| %s | `%s` |\n", kv[0], kv[1])
+		}
+	} else {
+		sb.WriteString("\nNo restrictions are set: every tool can do whatever the host user can.\n")
 	}
 	return strings.TrimSpace(sb.String())
 }
 
-// Instructions は初期化の応答でエージェントに渡す案内を返します。
+// Instructions は初期化の応答でエージェントに渡す案内を返します。公開しているツールの案内だけを含めます。
 func Instructions(d *Deps) string {
 	host, _ := os.Hostname()
 	cwd, _ := os.Getwd()
-	return fmt.Sprintf(`host-shell executes every operation on the remote host %q (%s/%s), not on your local machine. Paths, programs and environment are those of that host; working directory %q.
-Defaults: exec_run shell %q; console encoding %s; file encoding %s; output limit %s per call; command timeout %s (max %s).
-
-How to work:
-- Start with sys_info. Find files with search_files (globs such as **/*.py) and contents with search_grep (regex, context lines, output_mode files/count) rather than shell find/grep.
-- Read with fs_read: line_start + line_numbers for code, offset/length for large files, encoding base64 for binary.
-- Change files with fs_edit (exact old_string -> new_string; keeps encoding, BOM and line endings). Use fs_write for new files or full rewrites, and fs_mkdir/fs_move/fs_copy/fs_remove instead of shell commands.
-- Run commands with exec_run (argv avoids quoting issues). Each call is a fresh process: pass cwd and env instead of cd/export. stdin is empty, so prompts fail rather than hang.
-- Use job_start/job_read (wait_sec) for anything long-running, and stdin_open + job_write for programs that need input.
-- All text is UTF-8; host encodings are converted automatically. Results larger than the limit are truncated and flagged; narrow the request.
-Call the help tool (topics: %s) for details and examples.`,
-		host, runtime.GOOS, runtime.GOARCH, cwd,
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "host-shell executes every operation on the remote host %q (%s/%s), not on your local machine. Paths, programs, network and environment are those of that host; working directory %q.\n",
+		host, runtime.GOOS, runtime.GOARCH, cwd)
+	fmt.Fprintf(&sb, "Defaults: exec_run shell %q; console encoding %s; file encoding %s; output limit %s per call; command timeout %s (max %s).\n",
 		d.DefaultShell, textenc.Console().Name, textenc.File().Name,
-		formatBytes(d.Cfg.MaxOutputBytes), d.Cfg.DefaultTimeout, d.Cfg.MaxTimeout,
-		strings.Join(helpTopics, ", "))
+		formatBytes(d.Cfg.MaxOutputBytes), d.Cfg.DefaultTimeout, d.Cfg.MaxTimeout)
+	sb.WriteString("\nHow to work:\n- Start with sys_info.\n")
+	for _, l := range []struct {
+		tool, text string
+	}{
+		{"search_grep", "Find files with search_files (globs such as **/*.py) and contents with search_grep (regex, context lines, output_mode files/count) rather than shell find/grep."},
+		{"fs_read", "Read with fs_read: line_start + line_numbers for code, offset/length for large files (negative offset in job_read for tails), encoding base64 for binary."},
+		{"fs_edit", "Change files with fs_edit (exact old_string -> new_string; keeps encoding, BOM and line endings). Use fs_write for new files or full rewrites, and fs_mkdir/fs_move/fs_copy/fs_remove instead of shell commands."},
+		{"exec_run", "Run commands with exec_run (argv avoids quoting issues). Each call is a fresh process: pass cwd and env instead of cd/export. stdin is empty, so prompts fail rather than hang."},
+		{"job_start", "Use job_start/job_read (wait_sec with until or idle_ms) for anything long-running; stdin_open + job_write for programs that need input; pty for programs that need a terminal (password prompts, REPLs, ssh)."},
+		{"net_http", "Reach services from the host itself with net_http (e.g. http://localhost:8080; unix_socket for Docker), net_tcp for other protocols and net_check for DNS/ports/certificates. No port forwarding is needed."},
+		{"svc_control", "Inspect and control services with svc_list/svc_control, logs with log_query, processes with sys_processes/proc_kill, disks with sys_disks."},
+	} {
+		if d.Enabled(l.tool) {
+			sb.WriteString("- " + l.text + "\n")
+		}
+	}
+	sb.WriteString("- All text is UTF-8; host encodings are converted automatically. Results larger than the limit are truncated and flagged; narrow the request.\n")
+	if r := d.Policy.Summary(); len(r) > 0 {
+		sb.WriteString("\nRestrictions set by the administrator (calls outside them fail with a policy: error; do not work around them):\n")
+		for _, kv := range r {
+			fmt.Fprintf(&sb, "- %s: %s\n", kv[0], kv[1])
+		}
+	}
+	fmt.Fprintf(&sb, "\nCall the help tool (topics: %s) for details and examples.", strings.Join(helpTopics, ", "))
+	return sb.String()
 }
 
 func formatBytes(n int) string {

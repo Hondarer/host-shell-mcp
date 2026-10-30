@@ -8,7 +8,13 @@
 - **Input size.** One MCP message can carry about 16 MiB. Send large files in chunks.
 - **Errors.** Invalid arguments and failed operations return a tool error whose message explains what
   to change. A command that runs and exits non-zero is not an error: check `exit_code`.
-- **No terminal.** Commands run without a TTY. Full-screen and password-prompting programs do not work.
+- **Terminal.** `exec_run` and plain jobs run without a terminal. Use a job with `pty` for programs
+  that need one.
+- **Progress and cancellation.** Long `exec_run`, `sudo_run`, `net_http` downloads and bridge
+  transfers report progress when the client asks for it. Cancelling a request stops its work
+  (the process tree is killed).
+- **Restrictions.** The administrator may limit tools, paths, programs and network destinations;
+  `sys_info` lists them and topic `policy` explains them.
 - **Session.** Background jobs end with the MCP session. Nothing else is kept between sessions.
 - **Audit log.** Every tool call is logged on the host (file contents and stdin are not logged, only
   their size and hash).

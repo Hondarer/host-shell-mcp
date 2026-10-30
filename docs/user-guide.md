@@ -52,11 +52,38 @@ SFTP も使いません。
 - Windows と Linux の違い (シェル、引用符、パスの書き方) を `host-shell` が吸収するため、エージェントは同じツールを同じ形で呼べます。
 - 出力の上限、タイムアウト、操作ログを接続先で一元的に扱えます。
 
+### bridge を挟む構成
+
+手元のマシンで `host-shell bridge` を挟むと、手元と接続先の間でファイルを送れるようになります。
+
+```plantuml
+@startuml bridge を挟む構成
+    caption bridge を挟む構成
+    node "クライアント" {
+        component "エージェント" as agent
+        component "host-shell bridge" as bridge
+        component "ssh" as ssh0
+        folder "手元のファイル" as local
+    }
+    node "接続先 (Windows / Linux)" {
+        component "host-shell --mcp" as hs
+    }
+    agent --> bridge : stdio (MCP)
+    bridge --> ssh0 : stdio (MCP)
+    ssh0 --> hs : SSH セッション (多段でもよい)
+    bridge --> local : transfer_push、transfer_pull
+@enduml
+```
+
+bridge は、接続先の host-shell のツールをそのまま中継し、`transfer_push` (手元から接続先へ) と `transfer_pull` (接続先から手元へ) を加えます。  
+送る内容は bridge と接続先の host-shell の間で直接やり取りし、エージェントの文脈を通りません。そのため、大きなファイルやディレクトリの全体も送れます。  
+bridge は、接続先と同じ実行ファイルの `bridge` サブコマンドです。手元の OS (Linux、Windows、macOS) 用の実行ファイルを使います。
+
 ## 必要なもの
 
 | 場所 | 必要なもの |
 |---|---|
-| クライアント | MCP の stdio サーバーに対応したエージェント (Claude Code、VS Code の GitHub Copilot など) と、OpenSSH クライアント |
+| クライアント | MCP の stdio サーバーに対応したエージェント (Claude Code、VS Code の GitHub Copilot など) と、OpenSSH クライアント。bridge を使う場合は、手元の OS 用の `host-shell` (Linux、Windows、macOS 12 以降) |
 | 中継サーバー | OpenSSH のクライアントとサーバー。次の段へ接続するための認証手段 (鍵など) |
 | 接続先 | OpenSSH サーバー。Windows 10 / Windows Server 2016 以降、または Linux カーネル 3.2 以降 (amd64 または arm64) |
 
@@ -69,16 +96,19 @@ Table: 必要なもの
 
 OS とアーキテクチャごとに、依存のない実行ファイルが 1 つずつあります。
 
-| 接続先 | ファイル |
-|---|---|
-| Linux (x86_64) | `host-shell-linux-amd64` |
-| Linux (aarch64) | `host-shell-linux-arm64` |
-| Windows (x64) | `host-shell-windows-amd64.exe` |
-| Windows (ARM64) | `host-shell-windows-arm64.exe` |
+| OS とアーキテクチャ | ファイル | 使う場所 |
+|---|---|---|
+| Linux (x86_64) | `host-shell-linux-amd64` | 接続先、手元 (bridge) |
+| Linux (aarch64) | `host-shell-linux-arm64` | 接続先、手元 (bridge) |
+| Windows (x64) | `host-shell-windows-amd64.exe` | 接続先、手元 (bridge) |
+| Windows (ARM64) | `host-shell-windows-arm64.exe` | 接続先、手元 (bridge) |
+| macOS (Intel) | `host-shell-darwin-amd64` | 手元 (bridge) |
+| macOS (Apple シリコン) | `host-shell-darwin-arm64` | 手元 (bridge) |
 
 Table: 実行ファイル
 
-ソースからビルドする場合は、Go 1.25 以降で次を実行します。`dist/` に上の 4 つのファイルができます。
+同じ実行ファイルが、接続先では `--mcp` で MCP サーバーとして、手元では `bridge` サブコマンドで中継として動きます。  
+ソースからビルドする場合は、Go 1.26 以降で次を実行します。`dist/` に上の 6 つのファイルができます。
 
 ```bash
 make dist
@@ -214,9 +244,20 @@ C:/tools/host-shell.exe --mcp --windows-shell cmd
 
 ### Claude Code
 
+bridge を挟む場合 (推奨):
+
+```bash
+claude mcp add host-shell -- ~/.local/bin/host-shell bridge -- ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp
+```
+
+bridge を挟まない場合:
+
 ```bash
 claude mcp add host-shell -- ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp
 ```
+
+`~/.local/bin/host-shell` は、手元の OS 用の実行ファイル (例: macOS の Apple シリコンなら `host-shell-darwin-arm64`) を置いた場所です。  
+制限のオプション ([運用ガイド](operations.md#制限のオプション)) は、接続先の `--mcp` の後ろに付けます。手元で転送してよい場所を限る場合は、`bridge` の後ろに `--allow-local-path DIR` を付けます。
 
 接続用のスクリプトを使う場合:
 
@@ -237,6 +278,12 @@ Claude Code では、MCP のツールを初めて使うときに承認を求め�
       "mcp__host-shell__help",
       "mcp__host-shell__sys_info",
       "mcp__host-shell__sys_processes",
+      "mcp__host-shell__sys_disks",
+      "mcp__host-shell__svc_list",
+      "mcp__host-shell__log_query",
+      "mcp__host-shell__net_check",
+      "mcp__host-shell__net_listen",
+      "mcp__host-shell__net_interfaces",
       "mcp__host-shell__fs_list",
       "mcp__host-shell__fs_stat",
       "mcp__host-shell__fs_read",
@@ -257,19 +304,21 @@ Claude Code では、MCP のツールを初めて使うときに承認を求め�
   "servers": {
     "host-shell": {
       "type": "stdio",
-      "command": "ssh",
-      "args": ["-T", "hop1", "ssh", "-T", "target", "C:/tools/host-shell.exe", "--mcp"]
+      "command": "C:/tools/local/host-shell.exe",
+      "args": ["bridge", "--", "ssh", "-T", "hop1", "ssh", "-T", "target", "C:/tools/host-shell.exe", "--mcp"]
     }
   }
 }
 ```
+
+bridge を挟まない場合は、`command` を `ssh` にし、`args` を `["-T", "hop1", "ssh", "-T", "target", "C:/tools/host-shell.exe", "--mcp"]` にします。
 
 接続用のスクリプトを使う場合は、`command` にスクリプトのパスを指定し、`args` を空にします。
 
 ### そのほかのエージェント
 
 MCP の stdio サーバーに対応したエージェントなら、同じように「コマンドと引数」を登録すれば使えます。  
-登録するのは、手元で `ssh ... host-shell --mcp` を実行するコマンドです。
+登録するのは、手元で `host-shell bridge -- ssh ... host-shell --mcp` (または `ssh ... host-shell --mcp`) を実行するコマンドです。
 
 ## 動作の確認
 
@@ -309,7 +358,8 @@ npx @modelcontextprotocol/inspector ssh -T hop1 ssh -T target /opt/host-shell/ho
 
 - 初期化の応答の案内: 接続先のホスト、OS、既定のシェルと文字コード、出力の上限と、ツールの選び方。
 - ツールと引数の説明: 何をするか、いつ使うか、続きの読み方など。
-- `help` ツール: 作業の手順、引数の例、Windows での注意などを、主題 (`files`、`edit`、`search`、`jobs` など) ごとに返します。同じ内容を MCP のリソース `host-shell://help/<topic>` としても公開します。
+- `help` ツール: 作業の手順、引数の例、Windows での注意などを、主題 (`files`、`edit`、`search`、`jobs`、`network`、`admin`、`transfer`、`policy` など) ごとに返します。同じ内容を MCP のリソース `host-shell://help/<topic>` としても公開します。
+- 制限: 接続先で制限のオプションを指定している場合は、その内容を案内に含めます。エージェントは制限の範囲で作業します。
 
 エージェントの使い方がうまくいかないときは、「host-shell の help を読んでから作業して」と頼んでください。  
 Claude Code では、`@` でリソースを選んで会話に添付することもできます。
@@ -318,7 +368,11 @@ Claude Code では、`@` でリソースを選んで会話に添付すること�
 
 | 頼み方の例 | 主に使われるツール |
 |---|---|
-| 接続先の OS、ディスクの空き、動いているサービスを調べて | `sys_info`、`exec_run` |
+| 接続先の OS、ディスクの空き、動いているサービスを調べて | `sys_info`、`sys_disks`、`svc_list` |
+| nginx が 1 時間以内に出した警告を見せて | `log_query` (`unit`、`since`、`priority`) |
+| 接続先の localhost:8080 の /health を叩いて | `net_http` |
+| DB サーバーの 5432 番につながるか、証明書の期限はいつか調べて | `net_check` (`tls`) |
+| 8080 番を使っているプロセスはどれか | `net_listen` |
 | `/var/log/app` の中で、今日の ERROR を含む行を探して | `search_files` (`sort: mtime`)、`search_grep` |
 | `nginx.conf` の `server` ブロックを読んで説明して | `search_grep` (`context`)、`fs_read` |
 | このリポジトリで `connect(` を呼んでいる C のファイルを数えて | `search_grep` (`literal`、`output_mode: count`) |
@@ -348,7 +402,9 @@ Table: 調査の例
 |---|---|
 | 設定ファイルの `max_connections` を 200 に変えて | `fs_read`、`fs_edit` |
 | 関数の名前を、ソースの全体で置き換えて | `search_grep` (`output_mode: files`)、`fs_edit` (`replace_all`) |
-| サービスを再起動して、状態を確認して | `exec_run` (`sudo -n` を含む)、`sudo_run` |
+| サービスを再起動して、状態を確認して | `svc_control` (`restart`、Linux では `sudo`) |
+| 暴走しているプロセスを止めて | `sys_processes`、`proc_kill` |
+| レジストリの設定を変えて (Windows) | `reg_read`、`reg_write` |
 | このスクリプトを接続先の `/opt/tools/` に置いて、実行権限を付けて | `fs_mkdir`、`fs_write` (`perm`) |
 | 古いログを `archive` に移して、1 年前より古いものは消して | `search_files`、`fs_move`、`fs_remove` |
 
@@ -364,7 +420,8 @@ Table: 変更の例
 ### 時間のかかる処理
 
 ビルド、テスト、大きなファイルのコピーなど、数十秒以上かかる処理はジョブとして実行します。  
-エージェントに「ジョブとして実行して、終わるまで出力を追いかけて」と頼むと、`job_start` で開始し、`job_read` の `wait_sec` で出力を待ちながら読み進めます。
+エージェントに「ジョブとして実行して、終わるまで出力を追いかけて」と頼むと、`job_start` で開始し、`job_read` の `wait_sec` で出力を待ちながら読み進めます。  
+`exec_run` で実行した場合も、エージェントが対応していれば、実行中の進み具合 (経過時間と出力の最後の行) が通知され、取り消すとコマンドが止まります。
 
 ```text
 job_start   {"command": "make -C /srv/app test"}             -> {"id": "job-1", "running": true, ...}
@@ -373,14 +430,34 @@ job_read    {"id": "job-1", "offset": 4096, "wait_sec": 20}  -> {"output": "", "
 ```
 
 対話的に入力を求めるプログラムは、`job_start` の `stdin_open` で標準入力を開いたまま起動し、`job_write` で入力を送ります。  
-疑似端末は使わないため、端末でないと動かないプログラム (`vi`、`top` など) は使えません。
+端末でないと動かないプログラム (パスワードを尋ねる `sudo` や `ssh`、`python` や `psql` の REPL など) は、`pty` で疑似端末につないで起動します。エージェントは、`job_read` の `until` でプロンプトを待ってから入力を送ります。
+
+```text
+job_start  {"command": "psql -h db.internal app", "pty": true}       -> {"id": "job-2", "pty": true, ...}
+job_read   {"id": "job-2", "wait_sec": 20, "until": "Password.*: $"}  -> {"matched": true, ...}
+job_write  {"id": "job-2", "input": "********\n"}
+job_read   {"id": "job-2", "wait_sec": 20, "until": "app=> $"}        -> {"matched": true, ...}
+job_write  {"id": "job-2", "input": "select count(*) from users;\n"}
+job_read   {"id": "job-2", "wait_sec": 20, "idle_ms": 500}            -> {"output": " count \n-------\n  4213\n..."}
+```
+
+`job_stop` は、既定でジョブを強制終了します。Linux では `signal` に `interrupt` などを指定して穏やかに止められます。`pty` のジョブでは、`interrupt` で Ctrl-C を送ります。
 
 SSH が切断されると、実行中のジョブは停止します。  
 切断後も続けたい処理は、`nohup` や `systemd-run`、Windows のタスク スケジューラーなどで、OS の側で起動してください。
 
 ### ファイルを転送する
 
-ポート転送や SFTP が使えなくても、MCP のツールでファイルをやり取りできます。
+bridge を挟んで登録している場合は、エージェントに「手元の `dist/` を接続先の `/srv/app/dist` に送って」「接続先の `/var/log/app` を手元の `logs/` に持ってきて」と頼みます。`transfer_push`、`transfer_pull` が使われます。
+
+- 内容はエージェントの文脈を通らないため、大きなファイルやディレクトリの全体も送れます。1 MiB ずつ送り、SHA-256 で照合してから正しい名前にします。
+- 送り先に同じ内容のファイルがあれば送りません。繰り返し送ると、変わったファイルだけを送る同期になります。
+- 送り先に内容の違うファイルがある場合は、`overwrite` がないと置き換えません。`exclude` で `.git` や `node_modules` などを除けます。
+- 実行の権限 (Linux) は保ちます。
+
+接続先から届く場所にあるファイルは、`net_http` の `save_to` で接続先に直接ダウンロードすることもできます。
+
+bridge を挟んでいない場合も、MCP のツールでファイルをやり取りできます。ただし、内容がエージェントの文脈を通ります。
 
 - 取り出す: `fs_read` の `base64` で、`offset` を進めながら読みます。1 回に既定で 48 KiB です。
 - 送り込む: `fs_write` の `base64` で、各回の `offset` に書き込む位置を指定して書きます。
@@ -392,7 +469,7 @@ SSH が切断されると、実行中のジョブは停止します。
 
 エージェントに転送を頼むときは、最後に両側で SHA-256 を比べるよう指示してください。  
 `fs_manifest` または `exec_run` (`sha256sum`、`Get-FileHash`) で接続先のハッシュを確かめられます。  
-大量のデータの転送には向きません。目安として数 MB までにしてください。
+大量のデータの転送には向きません。目安として数 MB までにしてください。大きなデータは bridge を使ってください。
 
 ### 文字コードと改行
 
@@ -409,6 +486,8 @@ SSH が切断されると、実行中のジョブは停止します。
 - PowerShell のコマンドは引用符をそのまま書けます。SSH や cmd による引用符の解釈は `host-shell` が回避します。
 - cmd やネイティブ コマンドの Shift_JIS の出力は、自動で UTF-8 に変換して受け取れます。結果の `stdout_encoding` に、変換元の文字コードが入ります。
 - `sudo_run` はありません。管理者の権限が必要な操作は、管理者のアカウントで接続した `host-shell` で行います。
+- サービス (`svc_list`、`svc_control`)、イベント ログ (`log_query`)、レジストリ (`reg_read`、`reg_write`、`reg_delete`) を、ツールで直接扱えます。サービスの変更や HKLM への書き込みには、管理者の権限が必要です。
+- `pty` のジョブは ConPTY を使います (Windows 10 1809 / Windows Server 2019 以降)。
 
 ## トラブルシューティング
 
@@ -419,7 +498,11 @@ SSH が切断されると、実行中のジョブは停止します。
 | 接続が止まったまま応答しない | 途中の段でパスワードやホスト鍵の確認を待っている。手元で一度 `ssh hop1 ssh target` を実行してホスト鍵を登録し、`BatchMode=yes` を指定する |
 | 疑似端末に関する警告が出る、改行が崩れる | 各段に `-T` を指定する。`RequestTTY` の設定を確認する |
 | 起動直後に `open audit log` のエラーで終了する | 操作ログの保存先に書き込めない。`--log-file` で書き込める場所を指定する。記録が不要なら `--no-log` |
-| `sudo: a password is required` | sudoers に `NOPASSWD` の規則がない。[運用ガイド](operations.md#sudo-の設定) を参照 |
+| `sudo: a password is required` | sudoers に `NOPASSWD` の規則がない。[運用ガイド](operations.md#sudo-の設定) を参照。パスワードを入力するなら `pty` のジョブで `sudo` を起動する |
+| ツールが `policy:` で始まるエラーを返す | 接続先の制限のオプションで拒まれた。`sys_info` の `restrictions` で内容を確かめ、必要なら接続先の管理者に制限の変更を頼む |
+| `--confirm` の対象のツールが「cannot ask the user」で失敗する | エージェントが MCP の elicitation に対応していない。`--confirm` を外し、エージェント側の承認を使う |
+| `transfer_push`、`transfer_pull` が一覧にない | bridge を挟まずに登録している。または接続先で `files` の組を公開していない (bridge の起動時にエラーになる) |
+| bridge が「remote host-shell disconnected」で終了する | 接続先との SSH が切れた。bridge の標準エラー (エージェントの MCP のログ) に ssh のエラーが出ている |
 | コマンドが `timed_out` で止まる | `timeout_sec` を大きくするか、ジョブとして実行する。上限は `--max-timeout` |
 | 日本語が文字化けする | `sys_info` の `console_encoding` と `file_encoding` を確かめる。接続先の既定と違う文字コードの場合は、`output_encoding` や `charset` で明示する ([リファレンスの文字コードと改行](reference.md#文字コードと改行)) |
 | Windows で `host-shell.exe` が削除される、起動できない | ウイルス対策ソフトの誤検知の可能性がある。除外の設定またはコード署名を検討する |

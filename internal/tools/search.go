@@ -417,6 +417,7 @@ type FsManifestInput struct {
 type ManifestEntry struct {
 	Path   string `json:"path" jsonschema:"path relative to root, with forward slashes"`
 	Size   int64  `json:"size"`
+	Mode   string `json:"mode" jsonschema:"permission bits in octal, e.g. 0644"`
 	SHA256 string `json:"sha256"`
 }
 
@@ -449,7 +450,11 @@ func (d *Deps) fsManifest(ctx context.Context, _ *mcp.CallToolRequest, in FsMani
 			out.Skipped++
 			return nil
 		}
-		out.Files = append(out.Files, ManifestEntry{Path: rel, Size: size, SHA256: sum})
+		mode := ""
+		if info, err := de.Info(); err == nil {
+			mode = fmt.Sprintf("%04o", info.Mode().Perm())
+		}
+		out.Files = append(out.Files, ManifestEntry{Path: rel, Size: size, Mode: mode, SHA256: sum})
 		return nil
 	})
 	if err != nil {

@@ -6,6 +6,7 @@
 ## 目次
 
 - [起動](#起動)
+- [制限 (方針)](#制限-方針)
 - [MCP サーバーとしての振る舞い](#mcp-サーバーとしての振る舞い)
 - [全ツール共通の仕様](#全ツール共通の仕様)
 - [文字コードと改行](#文字コードと改行)
@@ -18,6 +19,10 @@
 - [差分の確認](#差分の確認)
 - [特権実行](#特権実行)
 - [環境情報](#環境情報)
+- [ネットワーク](#ネットワーク)
+- [管理](#管理)
+- [Windows のレジストリ](#windows-のレジストリ)
+- [手元との転送 (bridge)](#手元との転送-bridge)
 - [プロセスの起動と終了](#プロセスの起動と終了)
 - [操作ログ](#操作ログ)
 - [制限事項](#制限事項)
@@ -27,11 +32,13 @@
 ### 書式
 
 ```text
-host-shell --mcp [options]
+host-shell --mcp [options]                      (接続先で)
+host-shell bridge [bridge-options] -- COMMAND...  (手元で)
 host-shell --version
 ```
 
 `--mcp` を指定したときだけ、MCP サーバーとして標準入出力で待ち受けます。  
+`bridge` は、手元のマシンで動かして接続先の host-shell を中継するサブコマンドです。[手元との転送 (bridge)](#手元との転送-bridge) を参照してください。  
 `--mcp` も `--version` も指定しない場合は、使い方を標準エラーに出力し、終了コード 2 で終了します。
 
 ### オプション
@@ -46,12 +53,23 @@ host-shell --version
 | `--timeout` | 時間 (例: `90s`、`5m`) | `1m` | コマンドのタイムアウトの既定値 |
 | `--max-timeout` | 時間 | `30m` | ツールの引数で指定できるタイムアウトの上限。`--timeout` 以上にする |
 | `--windows-shell` | `cmd`、`powershell`、`pwsh` | `powershell` | Windows で `shell` を省略したときに使うシェル |
+| `--tools` | 組とツールの名前 (カンマ区切り) | `all` | 公開するツール。[制限 (方針)](#制限-方針) を参照 |
+| `--read-only` | なし | | 接続先を変更するツールを公開しない |
+| `--confirm` | 組とツールの名前、`destructive` | なし | 呼び出しの前に利用者の確認を求めるツール |
+| `--allow-path` | ディレクトリ (繰り返し可) | なし | ファイルのツールが読み書きできる場所 |
+| `--allow-read-path` | ディレクトリ (繰り返し可) | なし | ファイルのツールが読み取りだけできる場所 |
+| `--allow-command` | プログラム名の glob (カンマ区切り、繰り返し可) | なし | 実行できるプログラム |
+| `--deny-command` | 正規表現 (繰り返し可) | なし | 実行を拒むコマンド行 |
+| `--allow-host` | 宛先 (カンマ区切り、繰り返し可) | なし | ネットワークのツールが接続できる宛先 |
+| `--unset-env` | 環境変数の名前の glob (カンマ区切り、繰り返し可) | なし | コマンドに渡さない環境変数 |
+| `--redact` | なし | | 結果に含まれる秘密情報を伏せ字にする |
+| `--redact-pattern` | 正規表現 (繰り返し可) | なし | 伏せ字にする追加の形 |
 
 Table: 起動オプション
 
 オプションは `-mcp` のようにハイフン 1 つでも指定できます。  
 未知のオプションや、型の合わない値 (数値の位置に文字列など) を指定した場合は、使い方を標準エラーに出力し、終了コード 2 で終了します。  
-値の範囲が不正な場合 (`--max-output` が 1024 未満など) は、理由を標準エラーに出力し、終了コード 1 で終了します。
+値の範囲が不正な場合 (`--max-output` が 1024 未満、`--tools` に未知の名前、正規表現の誤りなど) は、理由を標準エラーに出力し、終了コード 1 で終了します。
 
 ### 入出力と終了
 
@@ -69,6 +87,125 @@ Table: 入出力と終了
 SSH の 1 つのセッションが 1 つの `host-shell` プロセスに対応します。  
 複数のエージェントから同時に接続した場合は、それぞれ独立したプロセスとして動き、ジョブなどの状態は共有しません。
 
+## 制限 (方針)
+
+制限のオプションを何も指定しない場合、`host-shell` は制限なしで動きます。すべてのツールを公開し、接続したユーザーにできることは何でもできます。  
+オプションで指定したものだけを制限します。指定した制限は、[`sys_info`](#sys_info) の `restrictions`、`help` の先頭の表、初期化の応答の `instructions` でエージェントに伝えます。  
+制限に反する呼び出しは、`policy:` で始まるエラーの説明を返し、実行しません。
+
+### ツールの選択 (--tools)
+
+ツールを次の組に分けています。`help` と `sys_info` (組 `core`) は常に公開します。
+
+| 組 | ツール |
+|---|---|
+| `files` | `fs_list`、`fs_stat`、`fs_read`、`fs_edit`、`fs_write`、`fs_mkdir`、`fs_move`、`fs_copy`、`fs_remove`、`fs_manifest` |
+| `search` | `search_grep`、`search_files` |
+| `exec` | `exec_run`、`sudo_run`、`job_start`、`job_read`、`job_write`、`job_stop`、`job_list` |
+| `net` | `net_http`、`net_tcp`、`net_check`、`net_listen`、`net_interfaces` |
+| `admin` | `sys_processes`、`proc_kill`、`svc_list`、`svc_control`、`log_query`、`sys_disks`、`reg_read`、`reg_write`、`reg_delete` |
+
+Table: ツールの組
+
+`--tools` は、組の名前、ツールの名前、`all` をカンマで区切って並べ、左から順に適用します。名前の前の `-` は除く、`+` (または何も付けない) は加えるという意味です。
+
+| 指定 | 公開するツール |
+|---|---|
+| `all` (既定) | すべて |
+| `files,search` | ファイルと検索のツールだけ |
+| `all,-admin,-sudo_run` | 管理のツールと `sudo_run` を除くすべて |
+| `files,exec,-fs_remove` | ファイルとコマンド実行のツールから `fs_remove` を除いたもの |
+
+Table: --tools の例
+
+`destructive` (接続先を変更しうるツール) と `readonly` (変更しないツール) も、組と同じように使えます。  
+OS に固有のツール (`sudo_run`、`reg_*`) の名前は、その OS でなくても指定できます (公開はされません)。
+
+### 読み取り専用 (--read-only)
+
+`readOnlyHint` の注釈がないツールを公開しません。ただし、`net_http` と `net_tcp` は次の制限付きで公開します。
+
+- `net_http`: `GET`、`HEAD`、`OPTIONS` だけ。`save_to` は使えない
+- `net_tcp`: `send` は使えない (相手が先に送る内容を読むだけ)
+
+### 利用者の確認 (--confirm)
+
+指定したツールを呼ぶたびに、MCP の elicitation で利用者に許可を求め、許可された場合だけ実行します。指定の書き方は `--tools` と同じで、`destructive` で変更を伴うすべてのツールを指定できます。
+
+- プロトコル バージョン `2026-07-28` のクライアントには、multi round-trip requests (SEP-2322) に従い、確認の問い合わせ (`inputRequests`) を結果として返します。クライアントが利用者の回答を付けて同じ呼び出しをやり直すと実行します。回答は、同じツールと同じ引数のやり直しにだけ有効です (サーバーの起動ごとの鍵で署名した `requestState` で結び付けます)。
+- それより前のバージョンのクライアントには、SDK が `elicitation/create` を送って回答を受け取り、やり直しを代わりに行います。
+- クライアントが elicitation に対応していない場合は、実行せずにエラーを返します。
+- 確認を求めたことは、操作ログに `<ツール名> (confirmation requested)` として記録します。
+
+### ファイルの場所 (--allow-path、--allow-read-path)
+
+ファイルを扱うツールの、パスの引数を検査します。
+
+| 対象 | 読み取りとして検査 | 書き込みとして検査 |
+|---|---|---|
+| ファイル操作 | `fs_list`、`fs_stat`、`fs_read`、`fs_manifest` の `path`、`fs_copy` の `source` | `fs_edit`、`fs_write`、`fs_mkdir`、`fs_remove` の `path`、`fs_move` の `source` と `destination`、`fs_copy` の `destination` |
+| 検索 | `search_grep`、`search_files` の `path` | |
+| コマンド実行 | `exec_run`、`job_start`、`sudo_run` の `cwd` | |
+| ネットワーク | `net_http` の `body_file`、`ca_cert`、`client_cert`、`client_key` | `net_http` の `save_to` |
+
+Table: 場所の検査の対象
+
+- 読み取りは、`--allow-path` と `--allow-read-path` のどちらかの下で許します。書き込みは、`--allow-path` の下だけで許します。
+- `--allow-read-path` だけを指定した場合、書き込みはどこにも許しません。
+- 判定の前に、パスを絶対パスにし、存在する部分のシンボリック リンクを解決します。許可した場所の中から外を指すリンクを通る操作は拒みます。
+- Windows では、大文字と小文字を区別せずに比べます。
+
+### コマンド (--allow-command、--deny-command)
+
+`exec_run`、`job_start`、`sudo_run` で起動するプログラムを検査します。
+
+- `--allow-command` を指定した場合は、起動するプログラムの名前 (パスの最後の要素。Windows では小文字にし、`.exe` などの拡張子を除く) が、いずれかの glob に一致する必要があります。
+- `command` (シェルのコマンド行) の場合は、シェル (`sh`、`bash`、`cmd`、`powershell`、`pwsh`) そのものが許可されている必要があります。シェルを許可すると、シェルの中では何でも実行できます。プログラムを絞る場合は、エージェントに `argv` を使わせます。
+- `sudo_run` は、`sudo` と `sh` の両方が許可されている必要があります。
+- `--deny-command` は、コマンド行 (`argv` の場合は空白でつないだもの) が正規表現に一致する呼び出しを拒みます。書き方を変えれば避けられるため、誤操作の防止のためのものです。
+
+### ネットワークの宛先 (--allow-host)
+
+`net_http` (リダイレクトの先も含む)、`net_tcp`、`net_check` の宛先を検査します。
+
+| 書き方 | 意味 |
+|---|---|
+| `localhost`、`*.internal` | ホスト名の glob (すべてのポート) |
+| `api.internal:443`、`*:80` | ホスト名とポート (ポートも glob) |
+| `10.0.0.0/8`、`10.0.0.0/8:5432` | アドレスの範囲。名前の場合は、解決したすべてのアドレスが範囲に入る必要がある |
+| `unix:/var/run/*.sock` | Unix ドメイン ソケットのパスの glob |
+
+Table: --allow-host の書き方
+
+### 環境変数 (--unset-env)
+
+`exec_run`、`job_start`、`sudo_run`、管理のツールが起動するプロセスに、名前が glob に一致する環境変数を渡しません (例: `--unset-env 'AWS_*,*TOKEN*'`)。  
+ツールの `env` で指定したものは渡します。
+
+### 伏せ字 (--redact、--redact-pattern)
+
+ツールの結果に含まれるすべての文字列 (`structuredContent` と `content`) について、秘密情報の形を `[REDACTED]` に置き換えます。
+
+| 形 | 例 |
+|---|---|
+| 秘密鍵の PEM | `-----BEGIN ... PRIVATE KEY-----` から `-----END ... PRIVATE KEY-----` まで (本文だけを伏せる) |
+| 認証のヘッダー | `Authorization: Bearer ...` |
+| 名前と値の組 | `password=...`、`api_key: ...`、`DB_PASSWORD=...`、`"token": "..."` (値だけを伏せる) |
+| URL の利用者情報 | `https://user:password@host` のパスワード |
+| 既知のトークン | AWS のアクセス キー ID、GitHub、Slack のトークン、`sk-...`、JWT |
+
+Table: 伏せ字にする形
+
+`--redact-pattern` で、一致した部分を伏せる正規表現を加えられます (`--redact` なしでも使えます)。  
+伏せ字にしたファイルの内容をそのまま `fs_write` で書き戻すと、`[REDACTED]` が書き込まれます。エージェントには、`help` の `policy` で注意を伝えています。
+
+### 制限の限界
+
+これらの制限は、ツールの引数に対する検査です。OS の権限の境界ではありません。
+
+- コマンドを実行できる場合 (`exec` の組を公開している場合)、コマンドはファイルやネットワークに自由に触れられます。場所や宛先を厳密に制限するには、`--tools` で `exec` を外すか、`--allow-command` で絞ります。
+- 確実な境界が必要な場合は、`host-shell` を権限の少ない専用のユーザーで動かします。[運用ガイド](operations.md) を参照してください。
+
 ## MCP サーバーとしての振る舞い
 
 | 項目 | 内容 |
@@ -77,6 +214,9 @@ SSH の 1 つのセッションが 1 つの `host-shell` プロセスに対応�
 | プロトコル バージョン | `2024-11-05`、`2025-03-26`、`2025-06-18`、`2025-11-25`、`2026-07-28`。クライアントの要求に合わせて選ぶ |
 | サーバー名 | `host-shell` |
 | 機能 (capabilities) | `tools`、`resources`、`logging` |
+| 進み具合の通知 | 要求に `progressToken` がある場合、`exec_run`、`sudo_run` は 1 秒ごとに、`net_http` の `save_to` は受信に合わせて `notifications/progress` を送る |
+| 要求の中止 | `notifications/cancelled` を受けると、その要求の処理を止める。コマンドはプロセス ツリーごと強制終了する |
+| 利用者への確認 | `--confirm` の対象のツールで elicitation を使う ([利用者の確認](#利用者の確認---confirm)) |
 | 受信メッセージの上限 | 1 メッセージ 16 MiB |
 | 実装 | [modelcontextprotocol/go-sdk](https://github.com/modelcontextprotocol/go-sdk) v1.8.0 |
 
@@ -88,7 +228,7 @@ Table: MCP サーバーの仕様
 
 | 層 | 内容 | エージェントが受け取る時点 |
 |---|---|---|
-| 初期化の応答の `instructions` | 接続先のホスト名、OS とアーキテクチャ、作業ディレクトリ、既定のシェルと文字コード、出力の上限とタイムアウト。ツールの選び方と、守るべき約束 (呼び出しごとに新しいプロセスであることなど) | 接続したとき |
+| 初期化の応答の `instructions` | 接続先のホスト名、OS とアーキテクチャ、作業ディレクトリ、既定のシェルと文字コード、出力の上限とタイムアウト。公開しているツールの選び方と、守るべき約束 (呼び出しごとに新しいプロセスであることなど)。制限がある場合はその内容 | 接続したとき |
 | ツールの `title` と `description` | 何をするか、いつ使うか、何と組み合わせるか | ツールの一覧を取得したとき |
 | 引数と出力のスキーマの `description` | 各引数の意味、既定値、続きの読み方 | ツールの一覧を取得したとき |
 | [`help`](#help) ツールとリソース | 作業の手順、ツールの選び方、引数の例、Windows での注意、上限 | 必要なときに呼ぶ |
@@ -139,6 +279,9 @@ Windows では、`C:/work/a.txt` と `C:\work\a.txt` のどちらの書き方も
 | `job_read` | 1 回の読み取り | `next_offset` から続きを読む |
 | `fs_read` | 1 回の読み取り | `truncated` を `true` にし、続きの位置を返す |
 | `sys_processes` | 出力全体 | 先頭と末尾を残して省略の印を入れる |
+| `net_http` | 本文 | 先頭だけを返し、`body_truncated` を `true` にする。`save_to` を使えば大きさに上限はない |
+| `net_tcp` | 受信 | 上限で受信をやめ、`truncated` を `true` にする |
+| `log_query` | 出力全体 | 古い項目から除き、`truncated` を `true` にする |
 | `fs_list`、`search_*`、`fs_manifest` | 件数 (引数で指定) | `truncated` を `true` にする |
 
 Table: 出力の上限
@@ -163,13 +306,13 @@ Table: 出力の上限
 
 | 注釈 | 対象のツール |
 |---|---|
-| `readOnlyHint: true` | `help`、`job_read`、`job_list`、`fs_list`、`fs_stat`、`fs_read`、`search_grep`、`search_files`、`fs_manifest`、`sys_info`、`sys_processes` |
+| `readOnlyHint: true` | `help`、`job_read`、`job_list`、`fs_list`、`fs_stat`、`fs_read`、`search_grep`、`search_files`、`fs_manifest`、`sys_info`、`sys_processes`、`net_check`、`net_listen`、`net_interfaces`、`svc_list`、`log_query`、`sys_disks`、`reg_read` |
 | `destructiveHint: false`、`idempotentHint: true` | `fs_mkdir` |
-| `destructiveHint: true` | `exec_run`、`job_start`、`job_write`、`job_stop`、`fs_edit`、`fs_write`、`fs_move`、`fs_copy`、`fs_remove`、`sudo_run` |
+| `destructiveHint: true` | `exec_run`、`job_start`、`job_write`、`job_stop`、`fs_edit`、`fs_write`、`fs_move`、`fs_copy`、`fs_remove`、`sudo_run`、`net_http`、`net_tcp`、`proc_kill`、`svc_control`、`reg_write`、`reg_delete` |
 
 Table: ツールの注釈
 
-すべてのツールで `openWorldHint` は `false` です。
+`openWorldHint` は、ネットワークの先に作用しうる `net_http`、`net_tcp`、`net_check` だけ `true` で、ほかは `false` です。
 
 ## 文字コードと改行
 
@@ -279,10 +422,27 @@ Table: 文字コードの変換の対象
 | | [`search_files`](#search_files) | ファイル名やパスの glob で検索する |
 | 差分の確認 | [`fs_manifest`](#fs_manifest) | ファイルのハッシュの一覧を取得する |
 | 特権実行 | [`sudo_run`](#sudo_run) | sudo でコマンドを実行する (Linux のみ) |
-| 環境情報 | [`sys_info`](#sys_info) | 接続先の環境を取得する |
-| | [`sys_processes`](#sys_processes) | プロセスの一覧を取得する |
+| 環境情報 | [`sys_info`](#sys_info) | 接続先の環境と、公開しているツールの組、制限を取得する |
+| ネットワーク | [`net_http`](#net_http) | 接続先から HTTP の要求を送る |
+| | [`net_tcp`](#net_tcp) | 接続先から TCP で送受信する |
+| | [`net_check`](#net_check) | 名前の解決、ポートへの接続、証明書を調べる |
+| | [`net_listen`](#net_listen) | 待ち受け中のポートを一覧する |
+| | [`net_interfaces`](#net_interfaces) | ネットワーク インターフェースを一覧する |
+| 管理 | [`sys_processes`](#sys_processes) | プロセスの一覧を取得する |
+| | [`proc_kill`](#proc_kill) | プロセスにシグナルを送る、終了させる |
+| | [`svc_list`](#svc_list) | サービスを一覧する |
+| | [`svc_control`](#svc_control) | サービスの状態を見る、起動、停止する |
+| | [`log_query`](#log_query) | システムのログを読む |
+| | [`sys_disks`](#sys_disks) | ディスクの使用量を取得する |
+| Windows のレジストリ | [`reg_read`](#reg_read) | レジストリを読む (Windows のみ) |
+| | [`reg_write`](#reg_write) | レジストリに書く (Windows のみ) |
+| | [`reg_delete`](#reg_delete) | レジストリから削除する (Windows のみ) |
+| 手元との転送 | [`transfer_push`](#transfer_push) | 手元から接続先へ送る (bridge 経由の場合だけ) |
+| | [`transfer_pull`](#transfer_pull) | 接続先から手元へ送る (bridge 経由の場合だけ) |
 
 Table: ツール一覧
+
+ツールは、[`--tools`](#ツールの選択---tools) と [`--read-only`](#読み取り専用---read-only) で公開されたものだけが一覧に出ます。
 
 以降の表で、「必須」の列が空の引数は省略できます。
 
@@ -305,14 +465,18 @@ Table: help の引数
 | `edit` | `fs_edit` の使い方と規則 |
 | `search` | glob の構文、`search_grep` の出力モード、`search_files` |
 | `commands` | `exec_run`、`sudo_run`、ツールの選び方 |
-| `jobs` | ジョブの使い方と、`job_write` による入力 |
+| `jobs` | ジョブの使い方、待ち方 (`until`、`idle_ms`)、入力、疑似端末、シグナル |
+| `network` | `net_*` の使い方と例 |
+| `admin` | プロセス、サービス、ログ、ディスク、レジストリ |
+| `transfer` | `transfer_push`、`transfer_pull` と、bridge がない場合の方法 |
 | `encoding` | 文字コードと改行 |
 | `windows` | Windows の接続先での注意 |
+| `policy` | 制限のオプションと、エージェントへの影響。先頭に接続先の情報を付ける |
 | `limits` | 出力の上限、タイムアウト、エラー、操作ログ。先頭に接続先の情報を付ける |
 
 Table: help の topic
 
-接続先の情報は、ホスト名、OS とアーキテクチャ、ユーザー、作業ディレクトリ、既定のシェル、既定の文字コード、出力の上限、タイムアウトの表です。  
+接続先の情報は、ホスト名、OS とアーキテクチャ、ユーザー、作業ディレクトリ、既定のシェル、既定の文字コード、出力の上限、タイムアウト、公開しているツールの組の表と、制限の表 (制限がない場合はその旨) です。  
 未知の `topic` を指定した場合は、指定できる値を示してエラーにします。
 
 各 topic は、リソース `host-shell://help/<topic>` としても読めます。内容は `help` の結果と同じです。
@@ -350,12 +514,16 @@ Table: exec_run の引数 (※ command と argv のどちらか一方が必須)
 | `stdout_encoding` | string | 標準出力を UTF-8 以外から変換した場合に、その文字コード |
 | `stderr_encoding` | string | 標準エラーを UTF-8 以外から変換した場合に、その文字コード |
 | `timed_out` | boolean | タイムアウトで停止した場合に `true` |
+| `cancelled` | boolean | クライアントが要求を取り消して停止した場合に `true` |
 | `duration_ms` | integer | 実行にかかった時間 (ミリ秒) |
 
 Table: exec_run の出力
 
 タイムアウトになると、コマンドを子孫のプロセスも含めて強制終了し、それまでの出力を返します。  
 このときの `exit_code` は OS によって異なります (Linux では -1)。`timed_out` で判断してください。
+
+要求に `progressToken` がある場合は、実行中に 1 秒ごとに `notifications/progress` を送ります。`progress` は経過秒数、`message` は経過時間、出力のバイト数、出力の最後の行です。  
+クライアントが要求を取り消した (`notifications/cancelled`) 場合は、すぐにプロセス ツリーを強制終了します。
 
 ```json
 {"command": "systemctl status nginx --no-pager", "timeout_sec": 10}
@@ -383,33 +551,54 @@ Table: exec_run の出力
 @startuml ジョブの状態
     caption ジョブの状態
     [*] --> running : job_start
+    running --> running : job_stop (kill 以外のシグナル)
     running --> ended : コマンドの終了
     running --> ended : job_stop、タイムアウト、host-shell の終了
-    ended --> [*] : host-shell の終了
+    ended --> [*] : 終了したジョブが 50 を超えた、host-shell の終了
 @enduml
 ```
 
 ジョブの仕様は次のとおりです。
 
 - 識別子は `job-1`、`job-2` のように、`host-shell` のプロセスごとに 1 から振ります。
+- 入出力は、パイプにつなぐ方式 (既定) と、疑似端末 (PTY) につなぐ方式 (`pty`) があります。
 - 標準出力と標準エラーは、1 つのストリームにまとめ、UTF-8 に変換してから保持します。`offset` や `output_bytes` は、変換後の UTF-8 のバイト数で数えます。
 - 出力は、直近の少なくとも `--max-output` の 4 倍 (既定で 256 KiB) を保持し、それより古い部分は破棄します。
-- 終了したジョブも、`host-shell` が終了するまで一覧に残ります。
+- 終了したジョブは、直近の 50 個まで一覧に残します。それを超えると、古いものから破棄します。
 - `host-shell` が終了する (SSH が切断される) と、実行中のジョブはすべて停止します。切断後も動かし続けたい処理には、`nohup` やサービスとしての登録など、OS の仕組みを使ってください。
 
 ### job_start
 
 コマンドをバックグラウンドで開始し、すぐにジョブの状態を返します。  
-引数は [`exec_run`](#exec_run) の引数に、次の 1 つを加えたものです。  
+引数は [`exec_run`](#exec_run) の引数に、次のものを加えたものです。  
 ただし、`timeout_sec` を省略した場合は時間制限なしで実行し、指定した場合も `--max-timeout` で制限しません。
 
 | 引数 | 型 | 必須 | 内容 |
 |---|---|---|---|
 | `stdin_open` | boolean | | 標準入力を開いたままにし、[`job_write`](#job_write) で後から送れるようにする。`stdin` を指定した場合は、それを最初に送る |
+| `pty` | boolean | | 疑似端末につないで起動する (下記) |
+| `cols` | integer | | `pty` の端末の幅。省略時は 120 |
+| `rows` | integer | | `pty` の端末の高さ。省略時は 40 |
 
 Table: job_start に固有の引数
 
-`stdin_open` を指定しない場合、標準入力は `exec_run` と同じく、`stdin` を渡したあとに閉じるか、空の入力です。
+`stdin_open` も `pty` も指定しない場合、標準入力は `exec_run` と同じく、`stdin` を渡したあとに閉じるか、空の入力です。
+
+#### 疑似端末 (pty)
+
+`pty` を指定すると、コマンドを疑似端末につないで起動します。端末でないと動かないプログラム (パスワードを尋ねる `sudo` や `ssh`、プロンプトを出す REPL、`top`、パイプでは出力をためこむプログラムなど) に使います。
+
+| 項目 | Linux | Windows |
+|---|---|---|
+| 仕組み | pty。新しいセッションを作り、端末を制御端末にする | ConPTY (Windows 10 1809 / Windows Server 2019 以降) |
+| 環境変数 | `TERM` がなければ `xterm-256color` を加える | 変更しない |
+| PowerShell | | `-NonInteractive` を付けずに起動する (`Read-Host` などが使える) |
+
+Table: 疑似端末
+
+- 標準出力と標準エラーは、端末の出力として 1 つにまとまります。入力は常に開いています。
+- 出力の文字コードは、パイプの場合と同じく自動判定で UTF-8 に変換します。
+- コマンドが終了したあとも子孫のプロセスが端末を開いている場合は、最大 2 秒待ってから端末を閉じます。
 
 出力は、後述の [ジョブの状態](#ジョブの状態) です。
 
@@ -420,15 +609,29 @@ Table: job_start に固有の引数
 | 引数 | 型 | 必須 | 内容 |
 |---|---|---|---|
 | `id` | string | ○ | ジョブの識別子 |
-| `offset` | integer | | 読み始める位置 (ジョブの開始からのバイト数)。前回の `next_offset` を指定する |
+| `offset` | integer | | 読み始める位置 (ジョブの開始からのバイト数)。前回の `next_offset` を指定する。負の値は、末尾からのバイト数 (`-4000` で最後の 4000 バイト) |
 | `max_bytes` | integer | | 読み取る最大のバイト数。省略時と、`--max-output` を超える場合は `--max-output` |
-| `wait_sec` | integer | | `offset` より後の出力が届くか、ジョブが終了するまで待つ秒数 (最大 30) |
+| `wait_sec` | integer | | 待つ最大の秒数 (最大 300)。何を待つかは `until` と `idle_ms` で決まる。ジョブが終了したら待つのをやめる |
+| `until` | string | | `offset` より後の出力が、この正規表現に一致するまで待つ (プロンプトや「Listening on」など) |
+| `idle_ms` | integer | | 出力が届き、その後この時間 (ミリ秒) 新しい出力がなくなるまで待つ |
+| `raw` | boolean | | `pty` のジョブで、端末の制御のシーケンスを除かずに返す |
 
 Table: job_read の引数
+
+`wait_sec` だけを指定した場合は、`offset` より後の出力が届いた時点で戻ります。  
+`until` は、`pty` のジョブでは制御のシーケンスを除いた出力と照合します。
+
+`pty` のジョブの出力は、既定で次のように整えてから返します。`raw` を指定すると、端末が受け取ったとおりに返します。
+
+- 色、カーソルの移動、ウィンドウのタイトルなどのエスケープ シーケンスを除く
+- CR LF を LF にし、行の途中の CR で上書きされた行 (進み具合の表示など) は、最後に書かれた内容だけを残す
+- バックスペースで直前の文字を消し、タブと改行以外の制御文字を除く
+- 末尾のエスケープ シーケンスが途中で切れている場合は、その手前までを返し、`next_offset` をシーケンスの先頭にする
 
 | 出力 | 型 | 内容 |
 |---|---|---|
 | `status` | object | [ジョブの状態](#ジョブの状態) |
+| `matched` | boolean | `until` が一致した場合に `true` |
 | `output` | string | 読み取った出力 |
 | `next_offset` | integer | 次に読み始める位置 |
 | `more` | boolean | `next_offset` より後の出力がすでにある場合に `true`。待たずに続けて読める |
@@ -441,15 +644,16 @@ Table: job_read の出力
 
 ### job_write
 
-`stdin_open` を指定して開始したジョブの標準入力に、テキストを送ります。標準入力を閉じることもできます。
+`stdin_open` か `pty` を指定して開始したジョブの入力に、テキストを送ります。入力を閉じることや、端末の大きさを変えることもできます。
 
 | 引数 | 型 | 必須 | 内容 |
 |---|---|---|---|
 | `id` | string | ○ | ジョブの識別子 |
 | `input` | string | | 送るテキスト。改行は自動では付けない。行を送るときは末尾に `\n` を含める |
-| `close` | boolean | | `input` を送ったあとに標準入力を閉じる (入力の終わりを伝える。端末の Ctrl-D に相当) |
+| `close` | boolean | | `input` を送ったあとに標準入力を閉じる (入力の終わりを伝える。端末の Ctrl-D に相当)。`pty` のジョブでは、Linux は Ctrl-D、Windows は Ctrl-Z と Enter を送る |
+| `cols`、`rows` | integer | | `pty` のジョブの端末の大きさを変える。両方を指定する |
 
-Table: job_write の引数 (input と close の少なくとも一方が必須)
+Table: job_write の引数 (input、close、cols と rows のいずれかが必須)
 
 | 出力 | 型 | 内容 |
 |---|---|---|
@@ -462,23 +666,39 @@ Table: job_write の出力
 子プロセスが入力を読まず、10 秒以内に送り終わらない場合はエラーを返します。送り残した分は裏で送り続けます。  
 標準入力が開いていない場合 (`stdin_open` を指定していない、閉じた、ジョブが終了した) はエラーにします。
 
-疑似端末を使わないため、端末でないと問い合わせをしないプログラムや、出力をためこむプログラムがあります。非対話のオプションがあればそちらを使ってください。
+パイプの場合、端末でないと問い合わせをしないプログラムや、出力をためこむプログラムがあります。その場合は `pty` で開始してください。  
+`pty` のジョブでは、制御のキーを文字として送ります。Ctrl-C は `\u0003`、Ctrl-D は `\u0004`、Esc は `\u001b`、上矢印は `\u001b[A` です。Enter に `\r` を求めるプログラムもあります。
 
 ```json
 {"id": "job-3", "input": "y\n"}
 ```
 
+```json
+{"id": "job-4", "input": "\u0003"}
+```
+
 ### job_stop
 
-ジョブを子孫のプロセスも含めて強制終了し、終了を最大 5 秒待ってから状態を返します。
+ジョブにシグナルを送るか、子孫のプロセスも含めて強制終了し、終了を待ってから状態を返します。
 
 | 引数 | 型 | 必須 | 内容 |
 |---|---|---|---|
 | `id` | string | ○ | ジョブの識別子 |
+| `signal` | string | | `kill` (既定)、または Linux で `interrupt`、`terminate`、`hangup`、`quit`、`stop`、`continue`、`usr1`、`usr2` |
+| `wait_sec` | integer | | 終了を待つ秒数。省略時は 5 |
 
 Table: job_stop の引数
 
-すでに終了したジョブに対して呼んでも、エラーにはなりません。
+| signal | 動作 |
+|---|---|
+| `kill` | 子孫のプロセスも含めて強制終了する ([終了のさせ方](#終了のさせ方)) |
+| `interrupt` (`pty` のジョブ) | 端末に Ctrl-C を送る。Windows でも使える |
+| その他 (Linux) | ジョブのプロセス グループにシグナルを送る |
+
+Table: job_stop のシグナル
+
+`kill` 以外は、ジョブが終了しないこともあります。返した状態の `running` で確かめてください。  
+`kill` で、すでに終了したジョブに対して呼んでも、エラーにはなりません。`kill` 以外のシグナルを、終了したジョブに送るとエラーになります。
 
 ### job_list
 
@@ -497,9 +717,11 @@ Table: job_list の出力
 | `id` | string | ジョブの識別子 |
 | `command` | string | 実行したコマンド (`argv` の場合は空白でつないだもの) |
 | `pid` | integer | プロセス ID |
+| `pty` | boolean | 疑似端末で動いている場合に `true` |
 | `running` | boolean | 実行中の場合に `true` |
-| `stdin_open` | boolean | 標準入力が開いていて、`job_write` で送れる場合に `true` |
+| `stdin_open` | boolean | 入力が開いていて、`job_write` で送れる場合に `true` |
 | `exit_code` | integer | 終了コード。終了した場合だけ含める |
+| `signal` | string | 最後に `job_stop` で送ったシグナル (`kill` を除く) |
 | `output_encoding` | string | 出力を UTF-8 以外から変換した場合に、その文字コード |
 | `error` | string | 終了を待つ処理で起きたエラー。通常は含めない |
 | `started_at` | string | 開始した時刻 (RFC 3339) |
@@ -970,14 +1192,14 @@ Table: search_files の出力
 
 ### fs_manifest
 
-ディレクトリの下の通常のファイルについて、相対パス、サイズ、SHA-256 の一覧を返します。  
+ディレクトリの下の通常のファイル (または 1 つのファイル) について、相対パス、サイズ、権限、SHA-256 の一覧を返します。  
 手元に同じ構成のソースがある場合に、ハッシュを比べて差分のあるファイルだけを `fs_read` で読むために使います。
 
 | 引数 | 型 | 必須 | 内容 |
 |---|---|---|---|
-| `path` | string | | 基準のディレクトリ。省略時は作業ディレクトリ |
+| `path` | string | | 基準のディレクトリ、または 1 つのファイル。省略時は作業ディレクトリ |
 | `include` | string | | 対象のファイルの [glob](#glob) (例: `*.c`、`src/**/*.h`) |
-| `exclude_dirs` | string[] | | 降りないディレクトリの名前 |
+| `exclude_dirs` | string[] | | 降りないディレクトリの名前。省略時は `.git`、`.hg`、`.svn`。空の配列を渡すと、すべてに降りる |
 | `max_files` | integer | | 返すファイルの最大数。省略時は 2000 |
 
 Table: fs_manifest の引数
@@ -985,7 +1207,7 @@ Table: fs_manifest の引数
 | 出力 | 型 | 内容 |
 |---|---|---|
 | `root` | string | 基準のディレクトリの絶対パス |
-| `files` | object[] | 各要素は `path` (基準からの相対パス。区切りは常に `/`)、`size`、`sha256` (16 進数の小文字) |
+| `files` | object[] | 各要素は `path` (基準からの相対パス。区切りは常に `/`。`path` がファイルの場合はその名前)、`size`、`mode` (権限の 8 進数。例: `0644`)、`sha256` (16 進数の小文字) |
 | `skipped` | integer | 読めなかった項目の数 |
 | `truncated` | boolean | `max_files` で打ち切った場合に `true` |
 
@@ -1029,6 +1251,8 @@ sudo -n [-u <user>] -- sh -c '<command>'
 
 `env` は指定できません。sudo は既定で環境変数を初期化します。
 
+利用者からパスワードを教えられた場合は、`job_start` の `pty` で `sudo` を起動し、パスワードの問い合わせに `job_write` で答えられます。`job_write` の `input` は操作ログに記録しません。
+
 ## 環境情報
 
 ### sys_info
@@ -1054,8 +1278,144 @@ sudo -n [-u <user>] -- sh -c '<command>'
 | `executable` | string | `host-shell` の実行ファイルのパス |
 | `version` | string | `host-shell` のバージョン |
 | `go_version` | string | ビルドに使った Go のバージョン |
+| `tool_groups` | string[] | 公開しているツールの組 |
+| `restrictions` | string[] | 制限の一覧 (`項目: 値`)。制限がない場合は含めない |
 
 Table: sys_info の出力
+
+## ネットワーク
+
+ネットワークのツールは、すべて接続先のマシンから接続します。`localhost` は接続先のマシン自身です。  
+接続先からしか届かないサービス (接続先の上の Web サービス、内部の API、データベースなど) を、ポート転送なしで確かめられます。  
+宛先は [`--allow-host`](#ネットワークの宛先---allow-host) で制限できます。
+
+### net_http
+
+HTTP または HTTPS の要求を送り、状態、ヘッダー、本文を返します。
+
+| 引数 | 型 | 必須 | 内容 |
+|---|---|---|---|
+| `url` | string | ○ | 要求の URL (`http` または `https`) |
+| `method` | string | | メソッド。省略時は `GET` |
+| `headers` | object | | 要求のヘッダー (名前と値の組)。`Host` も指定できる |
+| `body` | string | | 要求の本文 |
+| `body_encoding` | string | | `text` (既定。UTF-8 で送る) または `base64` |
+| `body_file` | string | | 接続先のこのファイルの内容を本文として送る。`body` とは同時に指定できない |
+| `unix_socket` | string | | URL のホストの代わりに、この Unix ドメイン ソケットに接続する (例: `/var/run/docker.sock`) |
+| `timeout_sec` | integer | | 全体のタイムアウト (秒)。省略時は `--timeout`、上限は `--max-timeout` |
+| `no_redirects` | boolean | | リダイレクトをたどらずに 3xx の応答を返す。既定では最大 10 回たどる |
+| `insecure` | boolean | | TLS の証明書を検証しない |
+| `ca_cert` | string | | 加えて信頼する CA 証明書 (PEM) の、接続先のパス |
+| `client_cert`、`client_key` | string | | クライアント証明書と秘密鍵 (PEM) の、接続先のパス |
+| `proxy` | string | | プロキシの URL、または `none`。省略時は接続先の環境変数 (`HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY`) に従う |
+| `response_encoding` | string | | `auto` (既定)、`text`、`base64` |
+| `max_bytes` | integer | | 返す本文の最大のバイト数。省略時と上限は `--max-output` |
+| `save_to` | string | | 本文を返さずに、接続先のこのファイルに書く。大きさに上限はない |
+
+Table: net_http の引数
+
+| 出力 | 型 | 内容 |
+|---|---|---|
+| `status`、`status_text` | integer、string | 状態コードとその名前 |
+| `proto` | string | `HTTP/1.1`、`HTTP/2.0` など |
+| `headers` | object | 応答のヘッダー。同じ名前の値は `, ` でつなぐ |
+| `body` | string | 本文 |
+| `body_encoding` | string | `text` または `base64` |
+| `body_charset` | string | 本文を UTF-8 以外の charset から変換した場合に、その文字コード |
+| `body_bytes` | integer | 受け取った本文のバイト数 |
+| `body_truncated` | boolean | 本文の一部だけを返した場合に `true` |
+| `saved_to` | string | `save_to` の絶対パス |
+| `final_url`、`redirects` | string、string[] | リダイレクトをたどった場合の、最後の URL とたどった URL |
+| `tls` | object | HTTPS の場合の TLS のバージョンと、相手の証明書 (`subject`、`issuer`、`dns_names`、`not_before`、`not_after`、`days_left`、`verified`、`verify_error`) |
+| `duration_ms` | integer | かかった時間 (ミリ秒) |
+
+Table: net_http の出力
+
+`response_encoding` が `auto` の場合は、Content-Type がテキストの種類 (`text/*`、JSON、XML など) か、Content-Type がなく UTF-8 として正しい場合にテキストとして返し、それ以外は base64 で返します。  
+Content-Type の charset が UTF-8 以外の場合は、UTF-8 に変換します。  
+`insecure` で検証を省いた場合も、`tls.verified` と `tls.verify_error` には、検証した場合の結果を入れます。  
+`save_to` の場合、要求に `progressToken` があれば、受信に合わせて進み具合 (受信したバイト数と、分かる場合は全体のバイト数) を送ります。
+
+```json
+{"url": "http://localhost:8080/health"}
+```
+
+```json
+{"url": "http://localhost/v1.43/containers/json", "unix_socket": "/var/run/docker.sock"}
+```
+
+### net_tcp
+
+TCP (または TLS、Unix ドメイン ソケット) で接続し、データを送って、返ってきたものを返します。HTTP 以外のプロトコルの確認に使います。
+
+| 引数 | 型 | 必須 | 内容 |
+|---|---|---|---|
+| `host` | string | | ホスト名または IP アドレス。省略時は `localhost` |
+| `port` | integer | ※ | ポート番号 |
+| `unix_socket` | string | ※ | `host` と `port` の代わりに、この Unix ドメイン ソケットに接続する |
+| `tls` | boolean | | TLS で接続する |
+| `insecure` | boolean | | TLS の証明書を検証しない |
+| `send` | string | | 接続したあとに送るデータ |
+| `send_encoding` | string | | `text` (既定) または `base64` |
+| `close_write` | boolean | | 送ったあとに送信側を閉じる (これ以上送らないことを相手に伝える) |
+| `until` | string | | 受信した内容がこの正規表現に一致したら受信をやめる |
+| `idle_ms` | integer | | この時間 (ミリ秒) 何も届かなければ受信をやめる。省略時は 1000 |
+| `timeout_sec` | integer | | 全体のタイムアウト (秒)。省略時は 10 |
+| `max_bytes` | integer | | 受信する最大のバイト数 |
+| `receive_encoding` | string | | `auto` (既定。UTF-8 として正しければテキスト、そうでなければ base64)、`text`、`base64` |
+
+Table: net_tcp の引数 (※ port と unix_socket のどちらかが必須)
+
+出力は、`remote_addr`、`sent_bytes`、`received`、`receive_encoding`、`received_bytes`、`matched` (`until` が一致した)、`closed_by_peer`、`truncated`、`tls`、`duration_ms` です。
+
+```json
+{"port": 6379, "send": "PING\r\n", "until": "\r\n"}
+```
+
+### net_check
+
+複数の宛先について、名前の解決、TCP の接続、TLS の証明書を並行して調べます。
+
+| 引数 | 型 | 必須 | 内容 |
+|---|---|---|---|
+| `targets` | string[] | ○ | 宛先 (最大 100)。`host:port` (解決と接続)、`host` (解決だけ)、URL (そのホストとポート。`https` は TLS も調べる)。IPv6 は `[::1]:443` |
+| `tls` | boolean | | すべての宛先で TLS の握手もして、証明書を返す |
+| `timeout_ms` | integer | | 宛先ごとのタイムアウト (ミリ秒)。省略時は 5000 |
+
+Table: net_check の引数
+
+出力の `results` の各要素は、`target`、`host`、`port`、`addresses` (解決したアドレス)、`dns_ms`、`connected` (接続できたか。解決だけの場合は含めない)、`connect_ms`、`tls` ([`net_http`](#net_http) と同じ)、`error` です。
+
+### net_listen
+
+待ち受け中の TCP と UDP のソケットを、所有するプロセスとともに返します。
+
+| 引数 | 型 | 必須 | 内容 |
+|---|---|---|---|
+| `port` | integer | | このポートだけ |
+| `protocol` | string | | `tcp` または `udp` |
+| `process` | string | | プロセスの名前にこの文字列を含むものだけ (大文字と小文字を区別しない) |
+
+Table: net_listen の引数
+
+出力の `listeners` の各要素は、`protocol` (`tcp`、`tcp6`、`udp`、`udp6`)、`address`、`port`、`pid`、`process` です。
+
+| OS | 取得の方法 |
+|---|---|
+| Linux | `/proc/net/{tcp,tcp6,udp,udp6}` を読み、`/proc/<pid>/fd` からプロセスを特定する。root でない場合、ほかのユーザーのプロセスは `pid` が空になる (`note` で示す) |
+| Windows | `netstat -ano` と `tasklist` の出力を読む |
+
+Table: net_listen の取得の方法
+
+### net_interfaces
+
+ネットワーク インターフェースの一覧を返します。引数はありません。  
+出力の `interfaces` の各要素は、`name`、`index`、`mtu`、`mac`、`flags`、`addresses` (プレフィックス長付きの IP アドレス) です。
+
+## 管理
+
+プロセス、サービス、システムのログ、ディスクを扱うツールです。組 `admin` に属します。  
+Linux と Windows の違いは、ツールの中で吸収し、同じ形の結果を返します。
 
 ### sys_processes
 
@@ -1082,6 +1442,285 @@ Table: sys_processes の出力
 Table: sys_processes のコマンド
 
 出力は、コマンドの出力と同じく自動判定で UTF-8 に変換します。
+
+### proc_kill
+
+プロセス ID を指定して、シグナルを送るか終了させます。`job_start` で開始したジョブには [`job_stop`](#job_stop) を使ってください。
+
+| 引数 | 型 | 必須 | 内容 |
+|---|---|---|---|
+| `pid` | integer | ○ | プロセス ID |
+| `signal` | string | | Linux: `terminate` (既定)、`kill`、`interrupt`、`hangup`、`quit`、`stop`、`continue`、`usr1`、`usr2`。Windows: `kill` (既定。これだけ) |
+| `tree` | boolean | | 子孫のプロセスにも送る |
+| `sudo` | boolean | | Linux: `sudo -n kill` で root として送る (ほかのユーザーのプロセス向け) |
+
+Table: proc_kill の引数
+
+| 出力 | 型 | 内容 |
+|---|---|---|
+| `signaled` | integer[] | シグナルを送ったプロセス ID |
+| `exited` | boolean | 3 秒以内にプロセスがなくなった場合に `true` |
+
+Table: proc_kill の出力
+
+Linux の `tree` は、`/proc` の親子関係から子孫をたどります。Windows の `tree` は `taskkill /T /F` です。
+
+### svc_list
+
+サービスの一覧を返します。
+
+| 引数 | 型 | 必須 | 内容 |
+|---|---|---|---|
+| `filter` | string | | 名前か説明にこの文字列を含むものだけ (大文字と小文字を区別しない) |
+| `state` | string | | `running`、`stopped`、`failed`、`all` (既定) |
+| `user` | boolean | | Linux: ユーザーの systemd ユニット (`systemctl --user`) |
+
+Table: svc_list の引数
+
+出力の `services` の各要素は、次のとおりです。最大 2000 件で、超えた場合は `truncated` を `true` にします。
+
+| 項目 | Linux | Windows |
+|---|---|---|
+| `name` | ユニットの名前 (`nginx.service`) | サービスの名前 |
+| `description` | ユニットの説明 | 表示名 |
+| `state` | `running`、`stopped`、`failed`、`starting`、`stopping` | `running`、`stopped`、`starting`、`stopping`、`paused` |
+| `sub_state` | systemd の SUB (`running`、`exited`、`dead` など) | |
+| `start_mode` | `enabled`、`disabled`、`static`、`masked` など | `auto`、`delayed-auto`、`manual`、`disabled` |
+| `pid` | | プロセス ID |
+
+Table: svc_list の項目
+
+Linux では `systemctl list-units --type=service --all` と `systemctl list-unit-files --type=service` の結果を合わせます。  
+Windows では、サービス コントロール マネージャーに、一覧と状態の取得に必要な権限だけで接続します (管理者でなくても使えます)。
+
+### svc_control
+
+1 つのサービスの状態を返すか、操作してから状態を返します。
+
+| 引数 | 型 | 必須 | 内容 |
+|---|---|---|---|
+| `name` | string | ○ | サービスの名前 (Windows では表示名ではなくサービスの名前) |
+| `action` | string | | `status` (既定)、`start`、`stop`、`restart`、`reload` (Linux のみ)、`enable`、`disable` |
+| `user` | boolean | | Linux: ユーザーのユニット |
+| `sudo` | boolean | | Linux: `sudo -n systemctl ...` で実行する (root でない場合のシステムのユニットの操作) |
+| `wait_sec` | integer | | Windows: 起動、停止の完了を待つ秒数。省略時は 30 |
+
+Table: svc_control の引数
+
+| 出力 | 型 | 内容 |
+|---|---|---|
+| `service` | object | [`svc_list`](#svc_list) と同じ形の状態 |
+| `properties` | object | 詳細。Linux は `systemctl show` の主な項目 (`FragmentPath`、`MainPID`、`ExecMainStartTimestamp`、`Result` など)。Windows は `BinaryPath`、`Account`、`Description`、`Dependencies`、`ExitCode` |
+| `status_text` | string | Linux: `systemctl status --lines=20` の出力 (直近のログを含む) |
+| `output` | string | Linux: 操作のコマンドの出力 |
+
+Table: svc_control の出力
+
+Windows の `enable` は起動の種類を自動にし (自動の遅延開始はそのまま)、`disable` は無効にします。`restart` は停止の完了を待ってから起動します。  
+`--read-only` では、`action` は `status` だけを使えます。
+
+### log_query
+
+システムのログを、構造化した項目で返します。新しい項目が最後です。
+
+| 引数 | 型 | 必須 | 内容 |
+|---|---|---|---|
+| `unit` | string | | Linux: systemd のユニット。Windows: イベントのプロバイダー (ソース) の名前 |
+| `log` | string | | Windows: ログの名前 (`System` (既定)、`Application`、`Security`、`Setup`、またはチャネルの名前)。Linux: `kernel` でカーネルのメッセージだけ |
+| `since`、`until` | string | | この時刻より新しい (古い) 項目だけ。`30m`、`2h`、`1d` のような経過時間か、`2026-10-30 09:00`、RFC 3339 の時刻 |
+| `priority` | string | | 最低の重要度。Linux: `emerg`、`alert`、`crit`、`err`、`warning`、`notice`、`info`、`debug`。Windows: `critical`、`error`、`warning`、`information`、`verbose` |
+| `event_id` | integer | | Windows: このイベント ID だけ |
+| `grep` | string | | メッセージがこの正規表現に一致する項目だけ (大文字と小文字を区別しない) |
+| `lines` | integer | | 最大の項目数 (新しいほうから)。省略時は 100、最大 2000 |
+| `user` | boolean | | Linux: ユーザーのジャーナル |
+| `sudo` | boolean | | Linux: `sudo -n journalctl` で読む |
+
+Table: log_query の引数
+
+出力の `entries` の各要素は、`time` (RFC 3339)、`priority`、`source` (ユニットか syslog の識別子、またはプロバイダー)、`pid`、`event_id` (Windows)、`message` です。出力の上限を超える場合は、古い項目から除き、`truncated` を `true` にします。
+
+| OS | 読み方 |
+|---|---|
+| Linux | `journalctl -o json`。`grep` は、多めに読んでから host-shell が絞り込む (`journalctl -g` に依存しない) |
+| Windows | `wevtutil qe <log> /q:<XPath> /f:RenderedXml`。条件は XPath にし、`grep` は読んでから絞り込む |
+
+Table: log_query の読み方
+
+Linux で、`systemd-journal` か `adm` のグループに属さないユーザーは、自分の項目だけを読めます。  
+ジャーナルのない環境では、エラーの説明で、`fs_read` や `search_grep` でログ ファイルを読むよう案内します。
+
+### sys_disks
+
+ファイル システム (Linux) またはドライブ (Windows) の使用量を返します。
+
+| 引数 | 型 | 必須 | 内容 |
+|---|---|---|---|
+| `all` | boolean | | Linux: 疑似ファイル システム (`proc`、`sysfs`、`cgroup` など) も含める |
+
+Table: sys_disks の引数
+
+出力の `disks` の各要素は、`mount`、`device` (Linux)、`type` (Linux はファイル システムの種類、Windows はドライブの種類とファイル システム)、`total_bytes`、`used_bytes`、`free_bytes` (現在のユーザーが使える量)、`used_percent`、`total`、`free` (読みやすい表記) です。
+
+## Windows のレジストリ
+
+Windows の接続先だけで公開するツールです。組 `admin` に属します。  
+キーは `HKLM\SOFTWARE\...` のように、ルート (`HKLM`、`HKCU`、`HKCR`、`HKU`、`HKCC`、または `HKEY_LOCAL_MACHINE` などの正式な名前) から書きます。区切りは `\` と `/` のどちらでも構いません。  
+`view` に `64` か `32` を指定すると、64 ビットの Windows で、そのビュー (WOW64) を使います。
+
+### reg_read
+
+| 引数 | 型 | 必須 | 内容 |
+|---|---|---|---|
+| `key` | string | ○ | キー |
+| `value` | string | | この値だけを読む (空文字列は既定の値)。省略すると、サブキーとすべての値を返す |
+| `view` | string | | `64` または `32` |
+
+Table: reg_read の引数
+
+| 出力 | 型 | 内容 |
+|---|---|---|
+| `key` | string | キー |
+| `subkeys` | string[] | サブキーの名前 |
+| `values` | object[] | 各要素は `name`、`type` (`REG_SZ` など)、`data`、`expanded` |
+
+Table: reg_read の出力
+
+| type | data の形 |
+|---|---|
+| `REG_SZ`、`REG_EXPAND_SZ` | 文字列。`REG_EXPAND_SZ` は、環境変数を展開したものを `expanded` に入れる |
+| `REG_MULTI_SZ` | 文字列の配列 |
+| `REG_DWORD`、`REG_QWORD` | 数値 |
+| その他 (`REG_BINARY` など) | base64 |
+
+Table: レジストリの値の形
+
+### reg_write
+
+値を作るか書き換えます。キーがなければ作ります。
+
+| 引数 | 型 | 必須 | 内容 |
+|---|---|---|---|
+| `key` | string | ○ | キー |
+| `value` | string | | 値の名前 (空文字列は既定の値)。省略すると、キーを作るだけ |
+| `type` | string | | `REG_SZ` (既定)、`REG_EXPAND_SZ`、`REG_MULTI_SZ`、`REG_DWORD`、`REG_QWORD`、`REG_BINARY` |
+| `data` | any | | 上の表の形の値 |
+| `view` | string | | `64` または `32` |
+
+Table: reg_write の引数
+
+出力は、`key`、`created_key` (キーを作った場合に `true`)、`value` (書いたあとの値) です。
+
+### reg_delete
+
+値かキーを削除します。
+
+| 引数 | 型 | 必須 | 内容 |
+|---|---|---|---|
+| `key` | string | ○ | キー |
+| `value` | string | | この値を削除する (空文字列は既定の値)。省略するとキーを削除する |
+| `recursive` | boolean | | サブキーを含めてキーを削除する。指定しない場合、サブキーのあるキーは削除しない |
+| `view` | string | | `64` または `32` |
+
+Table: reg_delete の引数
+
+ルートのキーそのものは削除しません。
+
+## 手元との転送 (bridge)
+
+`host-shell bridge` は、エージェントが動く手元のマシンで動かすサブコマンドです。  
+エージェントには MCP サーバーとして振る舞い、接続先の host-shell を子プロセス (ssh の入れ子) として起動して、その間を中継します。
+
+```plantuml
+@startuml bridge の構成
+    caption bridge の構成
+    rectangle "手元のマシン" {
+        component "エージェント" as agent
+        component "host-shell bridge" as bridge
+        folder "手元のファイル" as local
+    }
+    rectangle "接続先" {
+        component "host-shell --mcp" as remote
+        folder "接続先のファイル" as files
+    }
+    agent --> bridge : MCP (stdio)
+    bridge --> remote : MCP (ssh の入れ子の stdio)
+    bridge --> local : transfer_push、transfer_pull
+    remote --> files
+@enduml
+```
+
+### 書式
+
+```text
+host-shell bridge [options] -- COMMAND [ARGS...]
+```
+
+`COMMAND` は、接続先の host-shell を MCP サーバーとして起動するコマンドです (例: `ssh -T hop1 ssh -T target /opt/host-shell/host-shell --mcp`)。  
+`COMMAND` の標準エラーは、bridge の標準エラーにそのまま出します (ssh のエラーがエージェントのログに残ります)。
+
+| オプション | 値 | 内容 |
+|---|---|---|
+| `--allow-local-path` | ディレクトリ (繰り返し可) | 転送で、手元のこの場所の下だけを読み書きする |
+| `--allow-local-read-path` | ディレクトリ (繰り返し可) | `transfer_push` で読むことだけを許す手元の場所 |
+| `--no-transfer` | なし | 転送のツールを加えず、中継だけを行う |
+
+Table: bridge のオプション
+
+### 中継
+
+- 接続先のツールとリソースを、同じ名前、説明、スキーマでエージェントに見せ、呼び出しをそのまま中継します。接続先の制限も、そのまま効きます。
+- 初期化の応答の `instructions` は、接続先のものに、転送のツールの案内を加えたものです。
+- 進み具合の通知 (`_meta` の `progressToken`)、要求の取り消し、ログの通知を中継します。
+- 利用者の確認 (`--confirm`) の問い合わせは、エージェントにそのまま返し、エージェントが回答を付けてやり直した呼び出しを接続先に中継します。
+- 接続先との接続が切れた場合は、bridge も終了します。
+
+接続先には、クライアントの名前 `host-shell-bridge` で接続します。接続先の host-shell は、この名前のクライアントからの `fs_read` (`base64`) に限り、1 回に 1 MiB まで読みます (エージェントの文脈を通らないため)。
+
+### transfer_push
+
+手元のファイルかディレクトリを、接続先へ送ります。
+
+| 引数 | 型 | 必須 | 内容 |
+|---|---|---|---|
+| `local_path` | string | ○ | 手元のパス (相対パスは bridge の作業ディレクトリから) |
+| `remote_path` | string | ○ | 接続先のパス。送り先そのもののパス。ファイルを送る場合に、既存のディレクトリか `/` で終わるパスを指定すると、その中に同じ名前で置く |
+| `overwrite` | boolean | | 内容の違う既存のファイルを置き換える。同じ内容のファイルは常に送らない |
+| `exclude` | string[] | | 送らないファイルやディレクトリの名前の glob (例: `[".git", "node_modules", "*.pyc"]`)。どの階層でも一致する |
+| `dry_run` | boolean | | 送らずに、送るものを示す |
+
+Table: transfer_push の引数
+
+1 つのファイルは、次の手順で送ります。
+
+1. 接続先の `fs_manifest` で、既存のファイルの SHA-256 を調べる。同じなら送らない (`unchanged`)。違っていて `overwrite` がなければ送らない (`exists`)。
+2. `<送り先>.host-shell-part` に、1 MiB ずつ `fs_write` (`base64`、2 回目からは `offset`) で書く。最初の書き込みで、手元の権限 (`perm`) を付ける (手元が Windows の場合を除く)。
+3. `fs_manifest` で SHA-256 を照合する。
+4. `fs_move` で送り先の名前に変える。
+
+失敗した場合は、`.host-shell-part` を削除します。空のディレクトリとシンボリック リンクは送りません (リンクは `skipped`)。
+
+| 出力 | 型 | 内容 |
+|---|---|---|
+| `source`、`destination` | string | 送り元と送り先 |
+| `transferred` | integer | 送ったファイルの数 (`dry_run` では送るファイルの数) |
+| `unchanged` | integer | 同じ内容のため送らなかったファイルの数 |
+| `failed` | integer | `exists` と `error` のファイルの数 |
+| `bytes` | integer | 送ったバイト数 |
+| `files` | object[] | ファイルごとの `path` (送り元からの相対パス)、`bytes`、`status` (`sent`、`unchanged`、`exists`、`would-send`、`skipped`、`error`)、`error`。500 件を超える場合は `unchanged` を省き、`truncated` を `true` にする |
+| `duration_ms` | integer | かかった時間 (ミリ秒) |
+
+Table: transfer_push と transfer_pull の出力
+
+要求に `progressToken` がある場合は、送ったバイト数と全体のバイト数を、1 秒ごとに進み具合として送ります。
+
+### transfer_pull
+
+接続先のファイルかディレクトリを、手元へ送ります。引数と出力は [`transfer_push`](#transfer_push) と同じです。`local_path` が送り先です。
+
+1. 接続先の `fs_manifest` で、ファイルの一覧と SHA-256 を得る。
+2. 手元に同じ内容のファイルがあれば送らない。
+3. `fs_read` (`base64`) で 1 MiB ずつ読み、手元の `<送り先>.host-shell-part` に書く。
+4. SHA-256 を照合し、接続先の権限を付けて (手元が Windows の場合を除く)、送り先の名前に変える。
 
 ## プロセスの起動と終了
 
@@ -1127,16 +1766,17 @@ Windows では、各引数を Windows の標準の規則 (MSVC の規則) でエ
 `env` を指定すると、同じ名前の環境変数を上書きし、ない名前は追加します。Windows では、名前の大文字と小文字を区別しません。
 
 `stdin` を省略した場合、子プロセスの標準入力は空 (Linux の `/dev/null`、Windows の `NUL`) です。  
-`job_start` で `stdin_open` を指定した場合だけ、標準入力をパイプにして開いたままにします。  
+`job_start` で `stdin_open` を指定した場合は標準入力をパイプにして開いたままにし、`pty` を指定した場合は疑似端末につなぎます。  
+`--unset-env` を指定した場合は、一致する環境変数を除いてから `env` を加えます。  
 子プロセスが `host-shell` 自身の標準入出力 (MCP の通信路) を受け継ぐことはありません。
 
 ### 終了のさせ方
 
-タイムアウト、`job_stop`、`host-shell` の終了のときは、コマンドを子孫のプロセスも含めて強制終了します。
+タイムアウト、要求の取り消し、`job_stop` (`kill`)、`host-shell` の終了のときは、コマンドを子孫のプロセスも含めて強制終了します。
 
 | OS | 方法 | 終了させられないもの |
 |---|---|---|
-| Linux | コマンドを新しいプロセス グループで起動し、グループ全体に SIGKILL を送る | 自分で別のプロセス グループやセッションに移ったプロセス (`setsid`、デーモン化したプロセスなど) |
+| Linux | コマンドを新しいプロセス グループ (`pty` の場合は新しいセッション) で起動し、グループ全体に SIGKILL を送る | 自分で別のプロセス グループやセッションに移ったプロセス (`setsid`、デーモン化したプロセスなど) |
 | Windows | `taskkill /T /F` でプロセス ツリーを終了させる | 親プロセスがすでに終了していて、ツリーから外れた子孫のプロセス |
 
 Table: 終了のさせ方
@@ -1170,7 +1810,7 @@ Table: 操作ログの既定の保存先
 | msg | 記録する時点 | 項目 |
 |---|---|---|
 | `server_start` | 起動したとき | `version`、`pid` |
-| `tool_call` | ツールの呼び出しが終わったとき | `tool`、`args`、`duration_ms`、`is_error`、`error` (エラーの場合) |
+| `tool_call` | ツールの呼び出しが終わったとき。制限で拒んだ場合と、利用者の確認を求めた場合 (`tool` が `<名前> (confirmation requested)`) も記録する | `tool`、`args`、`duration_ms`、`is_error`、`error` (エラーの場合) |
 | `server_stop` | 終了するとき | `error` (正常な終了では `<nil>`) |
 
 Table: 操作ログの記録
@@ -1187,6 +1827,8 @@ Table: 操作ログの記録
 | `job_write` | `input` | `<N chars>` |
 | `fs_edit` | `old_string`、`new_string` (`edits` の中も) | `<N chars>` |
 | `fs_write` | `content` | `<N chars, sha256 ...>` (N は長さ、続けて内容の SHA-256) |
+| `net_http` | `body`、`headers` の `Authorization`、`Proxy-Authorization`、`Cookie`、`X-Api-Key` | `<N chars>` |
+| `net_tcp` | `send` | `<N chars>` |
 
 Table: 操作ログで置き換える値
 
@@ -1195,14 +1837,16 @@ Table: 操作ログで置き換える値
 
 ## 制限事項
 
-- 疑似端末を使わないため、端末を必要とするコマンド (パスワードの入力、`vi`、`top` など) は使えません。非対話のオプション (`-y`、`--batch` など) を指定するか、`stdin` か `job_write` で入力を渡してください。
+- 疑似端末は `job_start` の `pty` だけで使えます。`exec_run` は端末なしで動きます。全画面のプログラム (`vi`、`top` など) は動きますが、`job_read` は画面の状態ではなく出力の流れを返すため、内容を読み取りにくい場合があります。
 - `search_grep` と `search_files` は `.gitignore` を解釈しません。`node_modules` などは `exclude_dirs` で除外してください。
 - `search_grep` は行ごとに照合します。複数の行にまたがる正規表現は一致しません。
-- `sudo` は `-n` (パスワードなし) だけに対応します。`sudo -S` によるパスワードの受け渡しには対応しません。
+- `sudo_run` は `-n` (パスワードなし) だけに対応します。パスワードが必要な場合は、`pty` のジョブで `sudo` を起動して入力してください。
 - 文字コードの自動判定は、UTF-8 として正しいかどうかと BOM だけで行います。UTF-8 以外の文字コードどうし (Shift_JIS と EUC-JP など) は区別しません。接続先の既定と異なる文字コードのファイルは、`charset` で指定してください。
 - まれに、UTF-8 以外の短い文字列が、UTF-8 としても正しいバイト列になることがあります。その場合は UTF-8 とみなすため、文字化けします。`output_encoding` や `charset` を明示してください。
 - BOM のない UTF-16 は自動判定しません。`charset` に `utf-16le` などを指定してください。
 - `host-shell` は PowerShell の標準入力の文字コードを設定しません。日本語を `stdin` で PowerShell に渡して文字化けする場合は、`stdin_encoding` に `system` を指定してください。
-- 終了したジョブは、`host-shell` が終了するまで破棄しません。
+- `net_listen`、`svc_list`、`svc_control`、`log_query`、`sys_disks` は、Linux と Windows だけに対応します。Linux のサービスとログは systemd を前提にします。
+- 制限 (方針) は、ツールの引数に対する検査です。OS の権限の境界ではありません。[制限の限界](#制限の限界) を参照してください。
+- bridge の転送は、ファイルを 1 つずつ順に送ります。小さいファイルがとても多い場合は、接続先で `tar` などにまとめてから送るほうが速くなります。
 - 操作ログのローテーションは行いません。
-- 動作する OS は、Go 1.25 の要件により、Windows 10 / Windows Server 2016 以降と、Linux カーネル 3.2 以降です。
+- 動作する OS は、Go 1.26 の要件により、Windows 10 / Windows Server 2016 以降、Linux カーネル 3.2 以降、macOS 12 以降 (bridge) です。`pty` には、Windows 10 1809 / Windows Server 2019 以降が必要です。

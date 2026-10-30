@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"time"
+
+	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
 // Config は host-shell の実行時設定です。
@@ -28,6 +30,9 @@ type Config struct {
 	// LogFile は操作ログ (JSON Lines) の出力先です。空文字の場合は記録しません。
 	// TODO(未決事項): 保存先と保持期間 (ローテーション) を決める。
 	LogFile string
+
+	// Policy は利用者が指定した制限です。ゼロ値は制限なしです。
+	Policy policy.Options
 }
 
 // Default は既定の設定を返します。

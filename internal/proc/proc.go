@@ -9,9 +9,11 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -32,6 +34,10 @@ type Spec struct {
 	Dir string
 	// Env は既存の環境変数に追加、上書きする環境変数です。
 	Env map[string]string
+	// EnvFilter は、子プロセスに渡す前に環境変数を絞り込みます (利用者が指定した制限)。nil の場合は絞り込みません。
+	EnvFilter func([]string) []string
+	// Interactive は端末につないで対話的に使うことを示します。PowerShell の -NonInteractive を付けません。
+	Interactive bool
 }
 
 // waitDelay は、終了後も孫プロセスがパイプを握っている場合に待つ時間です。
@@ -51,15 +57,22 @@ func Command(ctx context.Context, spec Spec, defaultShell string) (*exec.Cmd, er
 			sh = defaultShell
 		}
 		var err error
-		if cmd, err = shellCommand(ctx, sh, spec.Command); err != nil {
+		if cmd, err = shellCommand(ctx, sh, spec.Command, spec.Interactive); err != nil {
 			return nil, err
 		}
 	default:
 		return nil, errors.New("either command or argv is required")
 	}
 	cmd.Dir = spec.Dir
+	if spec.EnvFilter != nil {
+		cmd.Env = spec.EnvFilter(os.Environ())
+	}
 	if len(spec.Env) > 0 {
-		cmd.Env = mergeEnv(os.Environ(), spec.Env)
+		base := cmd.Env
+		if base == nil {
+			base = os.Environ()
+		}
+		cmd.Env = mergeEnv(base, spec.Env)
 	}
 	setupProcess(cmd)
 	cmd.WaitDelay = waitDelay
@@ -76,6 +89,7 @@ type Result struct {
 	StdoutEncoding  string `json:"stdout_encoding,omitempty" jsonschema:"set when stdout was converted to UTF-8 from this encoding"`
 	StderrEncoding  string `json:"stderr_encoding,omitempty" jsonschema:"set when stderr was converted to UTF-8 from this encoding"`
 	TimedOut        bool   `json:"timed_out,omitempty"`
+	Cancelled       bool   `json:"cancelled,omitempty" jsonschema:"the client cancelled the request and the process tree was killed"`
 	DurationMs      int64  `json:"duration_ms"`
 }
 
@@ -88,12 +102,14 @@ type Options struct {
 	Output    textenc.Choice
 	Timeout   time.Duration
 	MaxOutput int
+	// OnOutput は、標準出力と標準エラーに書かれたバイト列 (変換前) を受け取ります。進み具合の通知に使います。
+	OnOutput func([]byte)
 }
 
 // Run はコマンドを実行し、終了を待って結果を返します。
 // 終了コードが 0 以外でもエラーにはしません。起動できなかった場合だけエラーを返します。
-func Run(ctx context.Context, spec Spec, opt Options) (Result, error) {
-	ctx, cancel := context.WithTimeout(ctx, opt.Timeout)
+func Run(parent context.Context, spec Spec, opt Options) (Result, error) {
+	ctx, cancel := context.WithTimeout(parent, opt.Timeout)
 	defer cancel()
 
 	cmd, err := Command(ctx, spec, opt.DefaultShell)
@@ -103,6 +119,10 @@ func Run(ctx context.Context, spec Spec, opt Options) (Result, error) {
 	stdoutBuf, stderrBuf := limit.NewBuffer(opt.MaxOutput), limit.NewBuffer(opt.MaxOutput)
 	stdout, stderr := textenc.NewWriter(stdoutBuf, opt.Output), textenc.NewWriter(stderrBuf, opt.Output)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
+	if opt.OnOutput != nil {
+		tap := writerFunc(func(p []byte) (int, error) { opt.OnOutput(p); return len(p), nil })
+		cmd.Stdout, cmd.Stderr = io.MultiWriter(stdout, tap), io.MultiWriter(stderr, tap)
+	}
 	if opt.Stdin != "" {
 		cmd.Stdin = strings.NewReader(opt.Stdin)
 	}
@@ -118,7 +138,8 @@ func Run(ctx context.Context, spec Spec, opt Options) (Result, error) {
 		StderrTruncated: stderrBuf.Truncated(),
 		StdoutEncoding:  stdout.Converted(),
 		StderrEncoding:  stderr.Converted(),
-		TimedOut:        errors.Is(ctx.Err(), context.DeadlineExceeded),
+		TimedOut:        errors.Is(ctx.Err(), context.DeadlineExceeded) && parent.Err() == nil,
+		Cancelled:       errors.Is(parent.Err(), context.Canceled),
 		DurationMs:      time.Since(start).Milliseconds(),
 	}
 	if cmd.ProcessState == nil {
@@ -137,7 +158,7 @@ func DefaultShell(windowsShell string) string {
 }
 
 // powershellArgs は、引用符の解釈の違いを避けるため、スクリプトを -EncodedCommand で渡す引数を作ります。
-func powershellArgs(script string) []string {
+func powershellArgs(script string, interactive bool) []string {
 	// 出力を UTF-8 にそろえ、ネイティブ コマンドの終了コードを引き継ぐ。
 	// TODO: スクリプトの途中で失敗したコマンドレットの扱い ($? の反映) を検討する。
 	script = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n" +
@@ -147,9 +168,16 @@ func powershellArgs(script string) []string {
 	for i, c := range u {
 		binary.LittleEndian.PutUint16(b[i*2:], c)
 	}
-	return []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-		"-EncodedCommand", base64.StdEncoding.EncodeToString(b)}
+	args := []string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", base64.StdEncoding.EncodeToString(b)}
+	if interactive {
+		args = slices.Delete(args, 1, 2)
+	}
+	return args
 }
+
+type writerFunc func([]byte) (int, error)
+
+func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
 
 func mergeEnv(base []string, add map[string]string) []string {
 	out := make([]string, 0, len(base)+len(add))
