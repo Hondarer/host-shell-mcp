@@ -156,6 +156,7 @@ func run(cfg config.Config) error {
 		defer target.Close()
 		cfg.Proxy = target
 		al.SetMask(target.Mask)
+		target.SetAudit(al)
 		target.Register(&channelOptions)
 	}
 	if cfg.ForwardLocal || cfg.ForwardRemote {
