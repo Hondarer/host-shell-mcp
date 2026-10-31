@@ -81,7 +81,9 @@ func (d *Deps) commandSpec(c CommandSpec, pty bool, stdin textenc.Encoding) proc
 // procSpec builds a proc.Spec with policy environment filtering applied.
 func (d *Deps) procSpec(c CommandSpec) proc.Spec {
 	spec := proc.Spec{Command: c.Command, Argv: c.Argv, Shell: c.Shell, Dir: c.Cwd, Env: c.Env}
-	if d.Policy.FiltersEnv() {
+	if d.Cfg.Proxy != nil {
+		spec.EnvFilter = func(base []string) []string { return d.Policy.FilterEnv(d.Cfg.Proxy.Environment(base)) }
+	} else if d.Policy.FiltersEnv() {
 		spec.EnvFilter = d.Policy.FilterEnv
 	}
 	return spec
@@ -114,7 +116,7 @@ func (d *Deps) execRun(ctx context.Context, req *mcp.CallToolRequest, in Command
 	if err != nil {
 		return nil, proc.Result{}, err
 	}
-	tap, stop := watchOutput(newProgress(ctx, req))
+	tap, stop := watchOutput(d.progress(ctx, req))
 	defer stop()
 	res, err := proc.Run(ctx, d.commandSpec(in, false, stdinEnc), proc.Options{
 		DefaultShell: d.DefaultShell,

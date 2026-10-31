@@ -527,6 +527,13 @@ func builtinRedactions() []redaction {
 	}
 }
 
+// AddSecret masks session credentials independently of optional redaction.
+func (p *Policy) AddSecret(secret string) {
+	if secret != "" {
+		p.redact = append(p.redact, redaction{re: regexp.MustCompile(regexp.QuoteMeta(secret)), repl: "[REDACTED]"})
+	}
+}
+
 // Redacting reports whether any redaction is configured.
 func (p *Policy) Redacting() bool { return len(p.redact) > 0 }
 

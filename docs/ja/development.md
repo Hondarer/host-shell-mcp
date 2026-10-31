@@ -190,3 +190,9 @@ Table: 動作する OS
 
 上記より古い OS はサポート対象外です ([Go MinimumRequirements](https://go.dev/wiki/MinimumRequirements) 参照)。  
 Windows 環境ではウイルス対策ソフトが Go 製バイナリを誤検知する場合があるため、配布時はコード署名の付与を検討してください。
+
+## プロキシ中継の構成
+
+[クライアント経由 HTTP プロキシ](client-proxy.md) に起動設定、制限、proxy_status、環境変数の優先順位、上限を記載しています。
+
+internal/clientproxy/ は版付きチャネル交渉、JSON/Base64 多重化、フロー制御、認証付き HTTP プロキシ、上流接続、診断を実装します。bridge と接続先の Connection ラッパーだけで独自通知を処理し、通常 MCP に渡しません。

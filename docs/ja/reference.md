@@ -1701,3 +1701,7 @@ Table: 操作ログで置き換える値
 - `net_list_listeners`、`svc_list`、`svc_control`、`log_query`、`disk_list` は Linux と Windows のみ対応です (Linux のサービス・ログ操作は systemd 環境を前提とします)。
 - 起動オプションによる制限 (ポリシー) はツール引数の検査であり、OS の権限境界ではありません ([制限の限界](#制限の限界) を参照)。
 - 対応 OS は Go 1.26 の要件に基づき Windows 10 / Windows Server 2016 以降 (`pty` は Windows 10 1809 / Windows Server 2019 以降)、Linux カーネル 3.2 以降、macOS 12 以降 (`bridge` のみ) です。
+
+## クライアントプロキシ
+
+[クライアント経由 HTTP プロキシ](client-proxy.md) に起動設定、制限、proxy_status、環境変数の優先順位、上限を記載しています。

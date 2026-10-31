@@ -1700,3 +1700,7 @@ Table: Values replaced in the audit log
 - `net_list_listeners`, `svc_list`, `svc_control`, `log_query` and `disk_list` support only Linux and Windows (service and log operations on Linux assume systemd).
 - Restrictions by startup options (policy) are checks on tool arguments, not OS permission boundaries (see [Limits of the restrictions](#limits-of-the-restrictions)).
 - Based on the requirements of Go 1.26, the supported operating systems are Windows 10 / Windows Server 2016 or later (`pty` needs Windows 10 1809 / Windows Server 2019 or later), Linux kernel 3.2 or later, and macOS 12 or later (`bridge` only).
+
+## Client proxy
+
+[HTTP proxy through the client](client-proxy.md) describes startup, restrictions, proxy_status, environment precedence, and limits.

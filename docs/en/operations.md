@@ -227,3 +227,7 @@ Written file contents (`content` in `fs_write`) log only character count and SHA
 - [ ] Passed `-T` to every SSH hop and verified that non-interactive shells produce no extra output on standard output
 - [ ] Configured pre-execution approval for mutating tools in the agent
 - [ ] Configured the audit log path and external log forwarding if long-term retention is required
+
+## Restricting client network access
+
+[HTTP proxy through the client](client-proxy.md) describes startup, restrictions, proxy_status, environment precedence, and limits.

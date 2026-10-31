@@ -43,3 +43,7 @@ Each entry returns `addresses`, `dns_ms`, `connected`, `connect_ms`, certificate
 
 `net_list_listeners` lists listening TCP and UDP sockets with `pid` and process name (filtered by `port`, `protocol`, or `process`). On Linux, processes owned by other users appear only when host-shell runs as root.
 `net_list_interfaces` lists network interfaces with IP addresses, MAC address, MTU, and flags.
+
+## Client proxy
+
+With target --client-proxy and bridge --proxy --proxy-allow-host HOST[:PORT], HTTP proxy aware programs can use the client network over existing SSH stdio. Both peers must enable the feature. HTTP and CONNECT are supported without TLS interception. Ordinary exec_run/job_start inherit the relay URL; per-call env and explicit net_request_http proxy/none take precedence, NO_PROXY remains effective, and sudo follows its own environment rules. Use bridge proxy_status to inspect denied host/port and reasons. sys_get_info reports only the credential URL file path; never paste its contents. Destination rules constrain requested host names, not resolved IP ranges.

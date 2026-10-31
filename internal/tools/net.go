@@ -163,6 +163,9 @@ func (d *Deps) netRequestHTTP(ctx context.Context, req *mcp.CallToolRequest, in 
 		return nil, NetRequestHTTPOutput{}, err
 	}
 	tr := &http.Transport{TLSClientConfig: tlsConf, Proxy: http.ProxyFromEnvironment, ForceAttemptHTTP2: true}
+	if d.Cfg.Proxy != nil {
+		tr.Proxy = d.Cfg.Proxy.Proxy
+	}
 	switch in.Proxy {
 	case "":
 	case "none":
@@ -244,7 +247,7 @@ func (d *Deps) netRequestHTTP(ctx context.Context, req *mcp.CallToolRequest, in 
 		out.TLS = tlsInfo(resp.TLS, resp.Request.URL.Hostname(), tlsConf)
 	}
 
-	pr := newProgress(ctx, req)
+	pr := d.progress(ctx, req)
 	if in.SaveTo != "" {
 		err = d.saveBody(resp, in.SaveTo, pr, &out)
 	} else {

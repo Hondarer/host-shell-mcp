@@ -8,11 +8,14 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/hondarer/host-shell-mcp/internal/clientproxy"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
 // Config holds host-shell's runtime settings.
 type Config struct {
+	ClientProxy bool
+	Proxy       *clientproxy.Target
 	// MaxOutputBytes caps individual output streams (stdout, stderr, file content, etc.);
 	// longer output is middle-truncated, keeping its head and tail.
 	MaxOutputBytes int

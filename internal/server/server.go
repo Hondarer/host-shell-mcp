@@ -22,6 +22,10 @@ func New(cfg config.Config, al *audit.Logger) (s *mcp.Server, close func(), err 
 	if err != nil {
 		return nil, nil, err
 	}
+	if cfg.Proxy != nil {
+		pol.AddSecret(cfg.Proxy.Secret())
+		al.SetMask(cfg.Proxy.Mask)
+	}
 	shell := proc.DefaultShell(cfg.WindowsShell)
 	jm := jobs.NewManager(shell, cfg.MaxOutputBytes*4)
 

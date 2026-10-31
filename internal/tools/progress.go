@@ -23,6 +23,7 @@ type progress struct {
 	mu    sync.Mutex
 	last  time.Time
 	count float64
+	mask  func(string) string
 }
 
 func newProgress(ctx context.Context, req *mcp.CallToolRequest) *progress {
@@ -34,6 +35,14 @@ func newProgress(ctx context.Context, req *mcp.CallToolRequest) *progress {
 		return nil
 	}
 	return &progress{ctx: ctx, ss: req.Session, token: token}
+}
+
+func (d *Deps) progress(ctx context.Context, req *mcp.CallToolRequest) *progress {
+	p := newProgress(ctx, req)
+	if p != nil && d.Cfg.Proxy != nil {
+		p.mask = d.Cfg.Proxy.Mask
+	}
+	return p
 }
 
 // report sends a progress notification, rate-limited to progressInterval unless force is true.
@@ -54,6 +63,9 @@ func (p *progress) report(value, total float64, msg string, force bool) {
 		value = p.count
 	}
 	p.mu.Unlock()
+	if p.mask != nil {
+		msg = p.mask(msg)
+	}
 	_ = p.ss.NotifyProgress(p.ctx, &mcp.ProgressNotificationParams{
 		ProgressToken: p.token, Progress: value, Total: total, Message: msg,
 	})
