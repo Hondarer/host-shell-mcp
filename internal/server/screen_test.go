@@ -34,15 +34,15 @@ func TestPTYScreen(t *testing.T) {
 		return
 	}
 
-	if _, err := exec.LookPath("top"); err == nil {
-		st := call[jobStatus](t, cs, "job_start", map[string]any{"pty": true, "cols": 80, "rows": 12, "argv": []string{"top"}})
-		lines := screen(st.ID, "PID")
-		stop(st.ID)
-		// The header row differs between systems (Linux "top - ...", macOS "Processes: ..."); the
-		// process table header is common. %q keeps the screen on one line in the CI log.
-		if s := strings.Join(lines, "\n"); len(lines) != 12 || !strings.Contains(s, "PID") || strings.Contains(s, "\x1b") {
-			t.Errorf("top screen (%d rows): %q", len(lines), s)
-		}
+	// A full-screen program: clear the screen, draw a header, and move the cursor to row 5. A
+	// script rather than top keeps the check independent of how and when each OS's top draws.
+	draw := `printf '\033[2J\033[H'; printf 'PID  COMMAND\n'; printf '\033[5;1Hrow five'; sleep 30`
+	st := call[jobStatus](t, cs, "job_start", map[string]any{"pty": true, "cols": 80, "rows": 12, "argv": []string{"sh", "-c", draw}})
+	lines := screen(st.ID, "row five")
+	stop(st.ID)
+	// %q keeps the screen on one line in the CI log.
+	if s := strings.Join(lines, "\n"); len(lines) != 12 || lines[0] != "PID  COMMAND" || !strings.HasPrefix(lines[4], "row five") || strings.Contains(s, "\x1b") {
+		t.Errorf("drawn screen (%d rows): %q", len(lines), s)
 	}
 	if _, err := exec.LookPath("vi"); err == nil {
 		file := filepath.Join(t.TempDir(), "sample.txt")
@@ -60,7 +60,7 @@ func TestPTYScreen(t *testing.T) {
 		}
 	}
 
-	st := call[jobStatus](t, cs, "job_start", map[string]any{"command": "echo plain"})
+	st = call[jobStatus](t, cs, "job_start", map[string]any{"command": "echo plain"})
 	if msg := callErr(t, cs, "job_read", map[string]any{"id": st.ID, "screen": true}); !strings.Contains(msg, "pty") {
 		t.Errorf("screen of a pipe job: %s", msg)
 	}
