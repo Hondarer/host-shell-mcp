@@ -22,6 +22,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/hondarer/host-shell-mcp/internal/clientproxy"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/tools"
 	"github.com/hondarer/host-shell-mcp/internal/version"
@@ -43,6 +44,8 @@ options:
 
 // Options configures the bridge.
 type Options struct {
+	Proxy           bool
+	ProxyAllowHosts []string
 	// Command starts host-shell on the target.
 	Command []string
 	// AllowLocalPaths restricts local read/write access to these directories (empty means unrestricted).
@@ -61,6 +64,8 @@ func Main(args []string) error {
 		fs.PrintDefaults()
 	}
 	var opt Options
+	fs.BoolVar(&opt.Proxy, "proxy", false, "enable target HTTP/HTTPS proxy over this session")
+	fs.Func("proxy-allow-host", "allow proxy destination host glob with optional :port (repeatable; required with --proxy)", func(v string) error { opt.ProxyAllowHosts = append(opt.ProxyAllowHosts, v); return nil })
 	fs.Func("allow-local-path", "restrict local file transfers (read/write) to this directory (repeatable)", func(v string) error {
 		opt.AllowLocalPaths = append(opt.AllowLocalPaths, v)
 		return nil
@@ -97,6 +102,17 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	var gateway *clientproxy.Gateway
+	if opt.Proxy {
+		var err error
+		gateway, err = clientproxy.NewGateway(opt.ProxyAllowHosts)
+		if err != nil {
+			return err
+		}
+		remote = clientproxy.Bridge(remote, gateway)
+	} else if len(opt.ProxyAllowHosts) > 0 {
+		return errors.New("--proxy-allow-host requires --proxy")
+	}
 	localPolicy, err := policy.New(policy.Options{AllowPaths: opt.AllowLocalPaths, AllowReadPaths: opt.AllowLocalReadPaths}, nil)
 	if err != nil {
 		return err
@@ -136,6 +152,9 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 	if init != nil {
 		instructions = init.Instructions
 	}
+	if gateway != nil {
+		instructions += "\nClient proxy enabled: use proxy_status to inspect allowed destinations and recent denials."
+	}
 	if !opt.NoTransfer {
 		instructions += "\n\n" + transferInstructions
 	}
@@ -144,6 +163,12 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 
 	if err := relayTools(ctx, cs, srv); err != nil {
 		return err
+	}
+	if gateway != nil {
+		mcp.AddTool(srv, &mcp.Tool{Name: "proxy_status", Title: "Client proxy status", Description: "Inspect client proxy state, destination rules and recent connection results. Use after_seq and limit to page through denied or failed destinations. No credentials or HTTP contents are returned.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(ctx context.Context, req *mcp.CallToolRequest, in clientproxy.StatusInput) (*mcp.CallToolResult, clientproxy.Status, error) {
+			out, err := gateway.Status(in)
+			return nil, out, err
+		})
 	}
 	if err := relayResources(ctx, cs, srv); err != nil {
 		return err

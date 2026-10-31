@@ -480,3 +480,7 @@ Even on Shift_JIS or EUC-JP targets, `host-shell` converts text to and from UTF-
 Table: Troubleshooting
 
 If the issue persists, inspect the failed tool call and error message in the target's audit log ([Audit log in the Reference](reference.md#audit-log)).
+
+## External access through the client
+
+[HTTP proxy through the client](client-proxy.md) describes startup, restrictions, proxy_status, environment precedence, and limits.

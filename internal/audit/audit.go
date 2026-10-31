@@ -3,6 +3,8 @@
 package audit
 
 import (
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -24,7 +26,8 @@ type Redactor interface {
 
 // Logger writes daily JSON Lines audit logs.
 type Logger struct {
-	l *slog.Logger
+	l    *slog.Logger
+	mask func(string) string
 }
 
 // Open creates a logger that appends to daily files derived from path (e.g., audit-2026-10-31.log
@@ -58,13 +61,31 @@ func (a *Logger) Close() error { return nil }
 
 // Event logs a lifecycle event such as server start or stop.
 func (a *Logger) Event(msg string, attrs ...any) {
+	if a.mask != nil {
+		msg = a.mask(msg)
+		for i, v := range attrs {
+			if text, ok := v.(string); ok {
+				attrs[i] = a.mask(text)
+			}
+		}
+	}
 	a.l.Info(msg, attrs...)
 }
+
+// SetMask removes per-session credentials from audit arguments and errors.
+func (a *Logger) SetMask(mask func(string) string) { a.mask = mask }
 
 // Tool logs a single tool invocation.
 func (a *Logger) Tool(name string, args any, d time.Duration, isError bool, err error) {
 	if r, ok := args.(Redactor); ok {
 		args = r.AuditArgs()
+	}
+	if a.mask != nil {
+		b, _ := json.Marshal(args)
+		args = json.RawMessage(a.mask(string(b)))
+		if err != nil {
+			err = fmt.Errorf("%s", a.mask(err.Error()))
+		}
 	}
 	attrs := []any{
 		slog.String("tool", name),

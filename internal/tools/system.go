@@ -62,7 +62,7 @@ func (d *Deps) execSudo(ctx context.Context, req *mcp.CallToolRequest, in ExecSu
 	if err != nil {
 		return nil, proc.Result{}, err
 	}
-	tap, stop := watchOutput(newProgress(ctx, req))
+	tap, stop := watchOutput(d.progress(ctx, req))
 	defer stop()
 	res, err := proc.Run(ctx, d.procSpec(CommandSpec{Argv: argv, Cwd: in.Cwd, Env: env}), proc.Options{
 		Stdin:     stdin,
@@ -91,6 +91,8 @@ func (in ExecSudoInput) CommandArgs(string) (programs []string, text string) {
 
 // SysGetInfoOutput is the output of sys_get_info.
 type SysGetInfoOutput struct {
+	ClientProxy  bool     `json:"client_proxy"`
+	ProxyURLFile string   `json:"proxy_url_file,omitempty"`
 	OS           string   `json:"os"`
 	Arch         string   `json:"arch"`
 	Hostname     string   `json:"hostname"`
@@ -123,6 +125,10 @@ func (d *Deps) sysGetInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp
 		PID:          os.Getpid(),
 		Version:      version.Version,
 		GoVersion:    runtime.Version(),
+	}
+	if d.Cfg.Proxy != nil {
+		out.ClientProxy = true
+		out.ProxyURLFile = d.Cfg.Proxy.File
 	}
 	out.Hostname, _ = os.Hostname()
 	out.Cwd, _ = os.Getwd()

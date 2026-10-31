@@ -193,3 +193,7 @@ When finished, report the following items together.
 - Installation path, version, SHA-256, and whether it was newly deployed (`deployed`) or unchanged (`up to date`)
 - `probe.sh` result (version and number of published tools)
 - Registration command (with or without `bridge` and any restriction options) and how to reload the MCP server
+
+## Optional client HTTP proxy
+
+For proxy-aware target applications requiring the local client network, see docs/en/client-proxy.md. Enable target --client-proxy and bridge --proxy with explicit --proxy-allow-host HOST[:PORT] rules. This shares SSH stdio and requires no SSH port forwarding. Use proxy_status to diagnose denials; do not broaden user-approved rules autonomously. sys_get_info reports the user-only credential URL file path. Do not print or paste its contents. Keep the feature disabled unless requested.

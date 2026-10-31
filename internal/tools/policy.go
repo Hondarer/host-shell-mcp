@@ -84,6 +84,9 @@ func (d *Deps) confirm(req *mcp.CallToolRequest, name string, in any) (ask *mcp.
 	}
 	b, _ := json.Marshal(args)
 	s := string(b)
+	if d.Cfg.Proxy != nil {
+		s = d.Cfg.Proxy.Mask(s)
+	}
 	if len(s) > 1000 {
 		s = s[:1000]
 		for !utf8.ValidString(s) {
@@ -126,6 +129,9 @@ func redactOutput[T any](d *Deps, res *mcp.CallToolResult, out T) (*mcp.CallTool
 		for _, c := range res.Content {
 			if tc, ok := c.(*mcp.TextContent); ok {
 				tc.Text = d.Policy.RedactString(tc.Text)
+				if d.Cfg.Proxy != nil {
+					tc.Text = d.Cfg.Proxy.Mask(tc.Text)
+				}
 			}
 		}
 	}
@@ -139,7 +145,11 @@ func redactValue(d *Deps, v reflect.Value) {
 	switch v.Kind() {
 	case reflect.String:
 		if v.CanSet() {
-			v.SetString(d.Policy.RedactString(v.String()))
+			s := d.Policy.RedactString(v.String())
+			if d.Cfg.Proxy != nil {
+				s = d.Cfg.Proxy.Mask(s)
+			}
+			v.SetString(s)
 		}
 	case reflect.Pointer, reflect.Interface:
 		if !v.IsNil() {

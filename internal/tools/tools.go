@@ -310,6 +310,9 @@ func add[In, Out any](s *mcp.Server, d *Deps, group string, t *mcp.Tool, h mcp.T
 				res, out = redactOutput(d, res, out)
 			}
 		}
+		if err != nil && d.Cfg.Proxy != nil {
+			err = fmt.Errorf("%s", d.Cfg.Proxy.Mask(err.Error()))
+		}
 		if err == nil && ctx.Err() != nil {
 			err = fmt.Errorf("cancelled: %w", ctx.Err())
 		}

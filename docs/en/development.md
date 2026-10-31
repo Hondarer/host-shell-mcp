@@ -190,3 +190,9 @@ Table: Supported operating systems
 
 Older OS versions are unsupported (see [Go MinimumRequirements](https://go.dev/wiki/MinimumRequirements)).  
 On Windows, antivirus software may falsely flag unsigned Go binaries; consider code signing when distributing executables.
+
+## Proxy relay structure
+
+[HTTP proxy through the client](client-proxy.md) describes startup, restrictions, proxy_status, environment precedence, and limits.
+
+internal/clientproxy/ implements versioned negotiation, JSON/Base64 multiplexing, flow control, authenticated HTTP proxying, upstream connections, and diagnostics. Connection wrappers consume private notifications without exposing them to ordinary MCP.

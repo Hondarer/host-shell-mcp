@@ -24,6 +24,7 @@ import (
 
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/bridge"
+	"github.com/hondarer/host-shell-mcp/internal/clientproxy"
 	"github.com/hondarer/host-shell-mcp/internal/config"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/proc"
@@ -53,14 +54,15 @@ func main() {
 	var (
 		allowPaths, allowReadPaths, allowCommands, denyCommands, allowHosts, unsetEnv, redactPatterns listFlag
 
-		mcpMode  = flag.Bool("mcp", false, "serve MCP over stdin/stdout")
-		showVer  = flag.Bool("version", false, "print version and exit")
-		noLog    = flag.Bool("no-log", false, "disable the audit log")
-		logFile  = flag.String("log-file", cfg.LogFile, "audit log file (JSON Lines)")
-		maxOut   = flag.Int("max-output", cfg.MaxOutputBytes, "maximum bytes per output stream")
-		timeout  = flag.Duration("timeout", cfg.DefaultTimeout, "default command timeout")
-		maxTime  = flag.Duration("max-timeout", cfg.MaxTimeout, "maximum client-requested command timeout")
-		winShell = flag.String("windows-shell", cfg.WindowsShell, "default Windows shell: cmd, powershell, or pwsh")
+		proxyMode = flag.Bool("client-proxy", false, "route HTTP/HTTPS through an explicitly enabled local bridge")
+		mcpMode   = flag.Bool("mcp", false, "serve MCP over stdin/stdout")
+		showVer   = flag.Bool("version", false, "print version and exit")
+		noLog     = flag.Bool("no-log", false, "disable the audit log")
+		logFile   = flag.String("log-file", cfg.LogFile, "audit log file (JSON Lines)")
+		maxOut    = flag.Int("max-output", cfg.MaxOutputBytes, "maximum bytes per output stream")
+		timeout   = flag.Duration("timeout", cfg.DefaultTimeout, "default command timeout")
+		maxTime   = flag.Duration("max-timeout", cfg.MaxTimeout, "maximum client-requested command timeout")
+		winShell  = flag.String("windows-shell", cfg.WindowsShell, "default Windows shell: cmd, powershell, or pwsh")
 
 		toolSel  = flag.String("tools", "all", "tools to expose: comma-separated groups (files, search, exec, net, admin) or names, applied left to right; -name excludes (e.g. all,-admin,-exec_sudo)")
 		readOnly = flag.Bool("read-only", false, "expose only non-modifying tools (limits net_request_http/net_exchange to read-only use)")
@@ -87,6 +89,7 @@ func main() {
 		os.Exit(2)
 	}
 
+	cfg.ClientProxy = *proxyMode
 	cfg.LogFile = *logFile
 	if *noLog {
 		cfg.LogFile = ""
@@ -130,6 +133,17 @@ func run(cfg config.Config) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	var transport mcp.Transport = &mcp.StdioTransport{}
+	if cfg.ClientProxy {
+		target, err := clientproxy.NewTarget()
+		if err != nil {
+			return err
+		}
+		defer target.Close()
+		cfg.Proxy = target
+		al.SetMask(target.Mask)
+		transport = clientproxy.Remote(transport, target)
+	}
 	s, closeServer, err := server.New(cfg, al)
 	if err != nil {
 		return err
@@ -138,7 +152,7 @@ func run(cfg config.Config) error {
 
 	al.Event("server_start", "version", version.Version, "pid", os.Getpid())
 	// Run returns when stdin closes (e.g., on SSH disconnect).
-	err = s.Run(ctx, &mcp.StdioTransport{})
+	err = s.Run(ctx, transport)
 	if ctx.Err() != nil {
 		err = nil
 	}

@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -89,4 +91,32 @@ func lines(t *testing.T, b []byte) []map[string]any {
 		out = append(out, m)
 	}
 	return out
+}
+
+func TestSessionSecretMask(t *testing.T) {
+	dir := t.TempDir()
+	l, e := Open(filepath.Join(dir, "audit.log"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	secret := "session-secret-value"
+	l.SetMask(func(s string) string { return strings.ReplaceAll(s, secret, "[REDACTED]") })
+	l.Tool("test", map[string]string{"proxy": secret}, 0, false, errors.New(secret))
+	l.Event("server_stop", "error", secret)
+	paths, _ := filepath.Glob(filepath.Join(dir, "audit-*.log"))
+	if len(paths) != 1 {
+		t.Fatal(paths)
+	}
+	b, e := os.ReadFile(paths[0])
+	if e != nil {
+		t.Fatal(e)
+	}
+	if bytes.Contains(b, []byte(secret)) || !bytes.Contains(b, []byte("[REDACTED]")) {
+		t.Fatalf("secret mask failed")
+	}
+	for _, line := range bytes.Split(bytes.TrimSpace(b), []byte("\n")) {
+		if !json.Valid(line) {
+			t.Fatal("invalid audit JSON")
+		}
+	}
 }

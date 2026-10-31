@@ -126,6 +126,9 @@ func Instructions(d *Deps) string {
 	fmt.Fprintf(&sb, "Defaults: exec_run shell %q; console encoding %s; file encoding %s; output limit %s per call; command timeout %s (max %s).\n",
 		d.DefaultShell, textenc.Console().Name, textenc.File().Name,
 		formatBytes(d.Cfg.MaxOutputBytes), d.Cfg.DefaultTimeout, d.Cfg.MaxTimeout)
+	if d.Cfg.Proxy != nil {
+		fmt.Fprintf(&sb, "\nClient proxy enabled; credential URL file: %s. Use proxy_status on the bridge to diagnose denied destinations.\n", d.Cfg.Proxy.File)
+	}
 	sb.WriteString("\nWorkflow:\n- Call sys_get_info first.\n")
 	for _, l := range []struct {
 		tool, text string
