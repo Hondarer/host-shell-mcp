@@ -51,11 +51,11 @@
     - ✅ 4.5. 単体・結合テストの追加 (internal/forward、internal/clientproxy、internal/jobs、cmd/host-shell)
     - ✅ 4.6. 日英正本文書・埋め込み help への反映 (docs/ja/、docs/en/ の port-forward.md、client-proxy.md、reference.md、operations.md、internal/tools/help/network.md)
     - ✅ 4.7. 元案件の残課題一覧の状態の更新 (BL-001 は容認、BL-002〜BL-004 は解消) ([Q-003](#q-003-元案件の残課題一覧の扱い)、[Q-015](#q-015-元の残課題一覧が-past-へ移された場合の更新))
-    - 🔄 4.8. make、6 ターゲットのクロスビルド、main 向けドラフト PR の作成と全 OS CI の実行 ([Q-017](#q-017-本件の-pr-の作成)) ← **CURRENT**
-    - ⏸️ 4.9. 受入条件への適合確認 (全完確認)
-    - ⏸️ 4.10. 残課題一覧 (`261031-forward-followup-backlog.md`) の再構築と整理 (残渣がなければ作成しない)
-    - ⏸️ 4.11. 本件の検討記録の `docs/prompts/past/` への移動 ([Q-022](#q-022-本件の検討記録の-past-への移動)、[Q-023](#q-023-本件の検討記録の移動と第-3-ゲートの記録の時機))
-    - ⏸️ 4.12. 全 OS の CI の成功の確認と、本件の PR のドラフトの解除、main へのマージ (マージ コミット) ([Q-018](#q-018-本件の-pr-のマージの時機)〜[Q-020](#q-020-本件の-pr-のマージの方式))
+    - ✅ 4.8. make、6 ターゲットのクロスビルド、main 向けドラフト PR の作成と全 OS CI の実行 ([Q-017](#q-017-本件の-pr-の作成)、PR #3、CI run 41251391118 は全 OS 成功)
+    - ✅ 4.9. 受入条件への適合確認 (全完確認)
+    - ✅ 4.10. 残課題一覧 (`261031-forward-followup-backlog.md`) の再構築と整理 (残渣なしのため作成しない)
+    - ✅ 4.11. 本件の検討記録の `docs/prompts/past/` への移動 ([Q-022](#q-022-本件の検討記録の-past-への移動)、[Q-023](#q-023-本件の検討記録の移動と第-3-ゲートの記録の時機))
+    - 🔄 4.12. 全 OS の CI の成功の確認と、本件の PR のドラフトの解除、main へのマージ (マージ コミット) ([Q-018](#q-018-本件の-pr-のマージの時機)〜[Q-020](#q-020-本件の-pr-のマージの方式)) ← **CURRENT**
 - ⏸️ 5. 成果物の承認の受付 (第 3 ゲート)
     - ⏸️ 5.1. 成果物・検証結果・残課題の提示
     - ⏸️ 5.2. 対話セッションにおける成果物の承認の受付 (「承認」または「完了」の受領によるスキル完了)
@@ -67,15 +67,15 @@
 
 今回の対象範囲: BL-002、BL-003、BL-004 の対策と、BL-001 の完了扱い ([Q-001](#q-001-依頼の解釈))。
 
-書き込み可能な検討用 Markdown: この文書 (`docs/prompts/261031-forward-followup-discussion.md`)
+書き込み可能な検討用 Markdown: この文書 (`docs/prompts/past/261031-forward-followup-discussion.md`)
 
 参照資料と版: ブランチ claude/port-forward のコミット 32e3ace (PR #2、ドラフト、main 未マージ) を調査基準とします。作業は PR #2 の main へのマージ後に main から分岐して行います ([Q-002](#q-002-作業ブランチと-pr))。
 
-- [docs/prompts/past/261031-port-forward-backlog.md](past/261031-port-forward-backlog.md): 対象の残課題一覧 (整理済み、BL-001〜BL-004)。PR #2 のマージ前に `past/` へ移しました。
-- [internal/forward/target.go](../../internal/forward/target.go): 接続先のリモート転送の待ち受け (`listen`)。待ち受けのポート番号は検査していません。
-- [internal/clientproxy/target.go](../../internal/clientproxy/target.go): 接続先の HTTP プロキシ。HTTP の要求ごと、または CONNECT ごとに 1 本のストリームを開きます (`DisableKeepAlives`)。監査ログへの記録はありません。
-- [internal/jobs/jobs.go](../../internal/jobs/jobs.go): job_start の初期入力 (`stdin`) を別の goroutine で書き込みます (`go j.write(opt.Stdin)`)。
-- [internal/server/screen_test.go](../../internal/server/screen_test.go): TestPTYScreen は `top` を `pty` ジョブで起動し、20 秒以内に `PID` が画面に現れることを確認します。
+- [docs/prompts/past/261031-port-forward-backlog.md](261031-port-forward-backlog.md): 対象の残課題一覧 (整理済み、BL-001〜BL-004)。PR #2 のマージ前に `past/` へ移しました。
+- [internal/forward/target.go](../../../internal/forward/target.go): 接続先のリモート転送の待ち受け (`listen`)。待ち受けのポート番号は検査していません。
+- [internal/clientproxy/target.go](../../../internal/clientproxy/target.go): 接続先の HTTP プロキシ。HTTP の要求ごと、または CONNECT ごとに 1 本のストリームを開きます (`DisableKeepAlives`)。監査ログへの記録はありません。
+- [internal/jobs/jobs.go](../../../internal/jobs/jobs.go): job_start の初期入力 (`stdin`) を別の goroutine で書き込みます (`go j.write(opt.Stdin)`)。
+- [internal/server/screen_test.go](../../../internal/server/screen_test.go): TestPTYScreen は `top` を `pty` ジョブで起動し、20 秒以内に `PID` が画面に現れることを確認します。
 - main の CI 履歴: 直近 20 件のうち 6 件が失敗しています。失敗した run のうち 3 件は macOS の TestPTYScreen を含みます (run 41113393290、41113325906、41112979679)。
 
 ## ユーザーが明示した要求
@@ -1339,7 +1339,7 @@ A の単一選択を確認しました。本件の検討記録は、マージ前
 
 ## 対象成果物と合意版
 
-最終決定事項 (最終仕様) の設計書: `docs/prompts/261031-forward-followup-design.md`
+最終決定事項 (最終仕様) の設計書: `docs/prompts/past/261031-forward-followup-design.md`
 
 検討用 Markdown の合意版 (第 1 ゲート): 版 5 (2026-11-01、[Q-001](#q-001-依頼の解釈)〜[Q-023](#q-023-本件の検討記録の移動と第-3-ゲートの記録の時機) がすべて解決済み)
 
@@ -1351,4 +1351,33 @@ A の単一選択を確認しました。本件の検討記録は、マージ前
 
 ## 反映と検証の記録
 
-未着手。
+作業ブランチ claude/forward-followup (PR #3) のコミットは次のとおりです。
+
+| コミット | 内容 |
+| --- | --- |
+| c6e75ac | 本件の検討用 Markdown と最終仕様の追加 |
+| dcb6c28 | BL-002: `--allow-forward-remote-port` |
+| ae3eb84 | BL-003: `proxy_connect` と `proxy_auth_failed` |
+| 98b2ed6 | BL-004: job_start の初期入力の順序と TestPTYScreen |
+| 54ad18d | 日英正本文書と埋め込み help |
+| 7859057 | 元の残課題一覧の状態の更新 |
+
+Table: 作業ブランチのコミット
+
+PR #2 は、検討記録の `past/` への移動 (コミット f84d21a) の CI (run 41250351378) が全 OS で成功したため、BL-004 の事象の確認を要さずにマージしました (マージ コミット 72536d1)。移動では、最終仕様に記載した 7 件に加えて `../ja/` で始まる 5 件の相対リンクも直しました。`internal/clientproxy/channel.go` へのリンク 2 件は移動前から存在しないファイルを指しており、過去の記録としてそのままにしています。
+
+### 受入条件の照合
+
+| 受入条件 | 結果 | 根拠 |
+| --- | --- | --- |
+| 1. BL-002 | 適合 | TestParsePorts (書式と範囲の検証)、TestRemotePortRanges (使用中のポートを飛ばしたポート 0 の割当、範囲内に空きがない場合の `address in use`、範囲外の拒否とエラーの文言、範囲内の明示指定、拒否の監査記録)、TestPersistentRemotePortNotAllowed (常設の起動エラーの文言)、TestForwardStdioPermissions (`--allow-forward-remote` なしと書式誤りの起動エラー、sys_get_info の restrictions)、TestForwardStdio (未指定時に restrictions に現れないこと)、既存の転送テスト (未指定時の無制限) |
+| 2. BL-003 | 適合 | TestAuditProxyConnect (HTTP と CONNECT の許可、拒否、CONNECT の上流失敗、HTTP の確立後の 502 が `allowed` となること、上限・確立待ち超過・その他の失敗の対応、パス・クエリー・ヘッダー・資格情報を記録しないこと)、TestAuditAuthFailures (時計を注入した 1 分ごとの集約、件数 0 の期間で集約を終えること、セッション終了時の記録、宛先を記録しないこと) |
+| 3. BL-004 | 適合 | TestInitialStdinOrder (50 回の繰り返し。修正前のコードでは 3 回目に出力が `second\n` だけになり失敗することを確認)、TestPTYScreen (sh のスクリプトで描画した画面の 12 行、1 行目、5 行目、エスケープ シーケンスなし) |
+| 4. 既存のテストの維持 | 適合 | `make` の全テスト、`go test -race ./...` |
+| 5. ビルドと CI | 適合 | `make` (linux/windows/darwin の vet、全テスト、ビルド)、`make dist` (6 ターゲット)、CI run 41250996514 (dcb6c28) と 41251391118 (7859057) が全 OS で成功 |
+
+Table: 受入条件の照合
+
+### 残課題
+
+作業中に見送った事項や範囲外の気付きはありません。残課題一覧 (`261031-forward-followup-backlog.md`) は作成していません。
