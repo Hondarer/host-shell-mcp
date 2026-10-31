@@ -24,11 +24,14 @@ type TargetInfo struct {
 	Local          bool
 	Remote         bool
 	RemoteForwards []RemoteForward
+	// RemotePorts limits the ports remote forwards listen on; nil permits any port.
+	RemotePorts Ports
 }
 
 // Target is the target side: it connects local forwards and SOCKS, and listens remote forwards.
 type Target struct {
 	local, remote bool
+	ports         Ports
 	policy        *policy.Policy
 	audit         *audit.Logger
 	dial          func(ctx context.Context, network, addr string) (net.Conn, error)
@@ -46,6 +49,9 @@ type targetListener struct {
 func NewTarget(local, remote bool, pol *policy.Policy, al *audit.Logger) *Target {
 	return &Target{local: local, remote: remote, policy: pol, audit: al, dial: (&net.Dialer{}).DialContext, timeout: establishTimeout, listeners: map[uint64]*targetListener{}}
 }
+
+// RestrictRemotePorts limits the ports remote forwards listen on (--allow-forward-remote-port).
+func (t *Target) RestrictRemotePorts(p Ports) { t.ports = p }
 
 // Register permits the directions on the target's channel options.
 func (t *Target) Register(o *channel.Options) {
@@ -104,7 +110,11 @@ func (t *Target) open(ctx context.Context, in *channel.Incoming) {
 
 func (t *Target) listen(c *channel.Conn, id uint64, bind string, port int) (int, error) {
 	addr := net.JoinHostPort(bind, strconv.Itoa(port))
-	l, err := net.Listen("tcp", addr)
+	if port != 0 && !t.ports.Contains(port) {
+		t.event("forward_listen", "forward_id", id, "address", addr, "result", "denied", "reason", "listen port not allowed")
+		return 0, &channel.Error{Code: channel.CodeNotAllowed}
+	}
+	l, err := t.bind(bind, port)
 	if err != nil {
 		code := listenCode(err)
 		t.event("forward_listen", "forward_id", id, "address", addr, "result", "failed", "reason", reason(code))
@@ -129,6 +139,25 @@ func (t *Target) listen(c *channel.Conn, id uint64, bind string, port int) (int,
 		}
 	}()
 	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+// bind listens on port. With permitted ranges, port 0 takes the first free port in them, in the
+// order given, so that the bridge's default of port 0 still works without knowing the ranges.
+// Only busy ports are skipped; any other failure ends the search.
+func (t *Target) bind(host string, port int) (net.Listener, error) {
+	if port != 0 || t.ports == nil {
+		return net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(port)))
+	}
+	var err error
+	for _, r := range t.ports {
+		for p := r.Lo; p <= r.Hi; p++ {
+			var l net.Listener
+			if l, err = net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(p))); err == nil || listenCode(err) != channel.CodeInUse {
+				return l, err
+			}
+		}
+	}
+	return nil, err
 }
 
 // serve hands a connection accepted on a remote forward to the bridge, which picks the destination.
@@ -163,7 +192,7 @@ func (t *Target) unlisten(id uint64) {
 func (t *Target) Info() TargetInfo {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	info := TargetInfo{Local: t.local, Remote: t.remote, RemoteForwards: []RemoteForward{}}
+	info := TargetInfo{Local: t.local, Remote: t.remote, RemoteForwards: []RemoteForward{}, RemotePorts: t.ports}
 	for id, tl := range t.listeners {
 		info.RemoteForwards = append(info.RemoteForwards, RemoteForward{ForwardID: id, Address: tl.addr})
 	}

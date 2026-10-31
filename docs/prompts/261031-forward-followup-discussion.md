@@ -45,8 +45,8 @@
         - ✅ 4.1.2. PR #2 の CI の失敗が BL-004 の既知の事象だけであることの確認と、ドラフトの解除、main へのマージ (マージ コミット) ([Q-013](#q-013-pr-2-のマージの実施者)、[Q-014](#q-014-pr-2-のマージ時の-ci-失敗の扱い)、CI run 41250351378 は全 OS 成功、マージ コミット 72536d1)
         - ✅ 4.1.3. マージ後の main と調査基準 (コミット 32e3ace) との内容の一致の確認 (差分は記録 3 件の移動とリンクの修正だけ)
         - ✅ 4.1.4. main からの作業ブランチ `claude/forward-followup` の作成 ([Q-016](#q-016-作業ブランチの名前))
-    - 🔄 4.2. BL-002: 接続先の待ち受けポートの許可範囲 (cmd/host-shell/main.go、internal/config/config.go、internal/forward/target.go、internal/tools/system.go) ← **CURRENT**
-    - ⏸️ 4.3. BL-003: HTTP プロキシの接続の接続先監査ログへの記録 (internal/clientproxy/target.go、cmd/host-shell/main.go)
+    - ✅ 4.2. BL-002: 接続先の待ち受けポートの許可範囲 (cmd/host-shell/main.go、internal/config/config.go、internal/forward/spec.go、internal/forward/target.go、internal/forward/bridge.go、internal/tools/system.go)
+    - 🔄 4.3. BL-003: HTTP プロキシの接続の接続先監査ログへの記録 (internal/clientproxy/target.go、cmd/host-shell/main.go) ← **CURRENT**
     - ⏸️ 4.4. BL-004: job_start の初期入力の順序の修正と TestPTYScreen の見直し (internal/jobs/jobs.go、internal/server/screen_test.go)
     - ⏸️ 4.5. 単体・結合テストの追加 (internal/forward、internal/clientproxy、internal/jobs、cmd/host-shell)
     - ⏸️ 4.6. 日英正本文書・埋め込み help への反映 (docs/ja/、docs/en/ の port-forward.md、client-proxy.md、reference.md、operations.md、internal/tools/help/network.md)

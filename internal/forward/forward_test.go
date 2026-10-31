@@ -71,8 +71,11 @@ type sessionOptions struct {
 	allowLocal, allowRemote []string
 	local, remote           bool
 	allowHost               []string
+	remotePorts             Ports
 	timeout                 time.Duration
 	targetDial              func(ctx context.Context, network, addr string) (net.Conn, error)
+	// negotiation receives the bridge's connect error instead of failing the test.
+	negotiation *error
 }
 
 func start(t *testing.T, o sessionOptions) *session {
@@ -94,6 +97,7 @@ func start(t *testing.T, o sessionOptions) *session {
 		t.Fatal(err)
 	}
 	tg := NewTarget(o.local, o.remote, pol, al)
+	tg.RestrictRemotePorts(o.remotePorts)
 	if o.timeout != 0 {
 		m.timeout, tg.timeout = o.timeout, o.timeout
 	}
@@ -113,6 +117,13 @@ func start(t *testing.T, o sessionOptions) *session {
 	go func() { targetConn, te = channel.Target(a, to).Connect(ctx); close(done) }()
 	bridgeConn, be := channel.Client(b, bo).Connect(ctx)
 	<-done
+	if o.negotiation != nil {
+		*o.negotiation = be
+		if be != nil {
+			t.Cleanup(func() { m.Close(); tg.Close() })
+			return nil
+		}
+	}
 	if be != nil || te != nil {
 		t.Fatalf("negotiation: %v %v", be, te)
 	}
@@ -553,4 +564,81 @@ func TestSOCKSTimeout(t *testing.T) {
 		t.Fatalf("timeout reply %d", code)
 	}
 	s.waitEvent(t, "connection timeout")
+}
+
+func TestParsePorts(t *testing.T) {
+	p, err := ParsePorts([]string{"15432, 20000-20099", "8080"})
+	if err != nil || p.String() != "15432, 20000-20099, 8080" {
+		t.Fatalf("%v %v", p, err)
+	}
+	if !p.Contains(20050) || !p.Contains(8080) || p.Contains(20100) || p.Contains(0) {
+		t.Fatalf("contains %v", p)
+	}
+	if p, err = ParsePorts(nil); p != nil || err != nil || !p.Contains(1) {
+		t.Fatalf("no ranges: %v %v", p, err)
+	}
+	for _, v := range []string{"0", "65536", "20-10", "a", "", "1-", "-5", "080", "1-2-3"} {
+		if _, err := ParsePorts([]string{v}); err == nil || !strings.Contains(err.Error(), "--allow-forward-remote-port") {
+			t.Errorf("%q: %v", v, err)
+		}
+	}
+}
+
+func freePort(t *testing.T) int {
+	t.Helper()
+	l, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+func TestRemotePortRanges(t *testing.T) {
+	port := echoServer(t, "tcp4", "127.0.0.1:0")
+	busy, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer busy.Close()
+	taken, free, outside := busy.Addr().(*net.TCPAddr).Port, freePort(t), freePort(t)
+	ranges := Ports{{taken, taken}, {free, free}}
+	s := start(t, sessionOptions{allowRemote: []string{"127.0.0.1:" + strconv.Itoa(port)}, remote: true, remotePorts: ranges})
+	ctx := context.Background()
+	// Port 0 skips the busy port and takes the next free one in the ranges.
+	f, err := s.manager.Open(ctx, OpenInput{Direction: Remote, Host: "127.0.0.1", Port: port})
+	if err != nil || f.ListenPort != free {
+		t.Fatalf("port 0: %+v %v (want %d)", f, err, free)
+	}
+	roundTrip(t, dial(t, "127.0.0.1", f.ListenPort))
+	// No free port is left in the ranges.
+	if _, err = s.manager.Open(ctx, OpenInput{Direction: Remote, Host: "127.0.0.1", Port: port}); err == nil || !strings.Contains(err.Error(), "address in use") {
+		t.Fatalf("ranges exhausted: %v", err)
+	}
+	_, err = s.manager.Open(ctx, OpenInput{Direction: Remote, ListenPort: outside, Host: "127.0.0.1", Port: port})
+	if err == nil || !strings.Contains(err.Error(), "listen port not allowed by target (see sys_get_info restrictions)") {
+		t.Fatalf("port outside the ranges: %v", err)
+	}
+	// An explicit port in the ranges is accepted.
+	s.manager.CloseForward(f.ForwardID)
+	waitFor(t, func() bool { return len(s.target.Info().RemoteForwards) == 0 })
+	if f, err = s.manager.Open(ctx, OpenInput{Direction: Remote, ListenPort: free, Host: "127.0.0.1", Port: port}); err != nil || f.ListenPort != free {
+		t.Fatalf("port in the ranges: %+v %v", f, err)
+	}
+	if got := s.target.Info().RemotePorts.String(); got != ranges.String() {
+		t.Fatalf("info ports %q", got)
+	}
+	b, _ := os.ReadFile(auditFile(t, s.log))
+	if !strings.Contains(string(b), `"address":"127.0.0.1:`+strconv.Itoa(outside)+`","result":"denied","reason":"listen port not allowed"`) {
+		t.Fatalf("audit lacks the refusal: %s", b)
+	}
+}
+
+func TestPersistentRemotePortNotAllowed(t *testing.T) {
+	free, outside := freePort(t), freePort(t)
+	var err error
+	start(t, sessionOptions{specs: []Spec{{Remote, "127.0.0.1", outside, "127.0.0.1", 1}}, remote: true, remotePorts: Ports{{free, free}}, negotiation: &err})
+	if err == nil || !strings.Contains(err.Error(), "--forward-remote on target 127.0.0.1:"+strconv.Itoa(outside)+": listen failed: listen port not allowed by target (see sys_get_info restrictions)") {
+		t.Fatalf("persistent forward outside the ranges: %v", err)
+	}
 }

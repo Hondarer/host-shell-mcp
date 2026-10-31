@@ -222,7 +222,7 @@ func (m *Manager) setup(ctx context.Context, c *channel.Conn) error {
 		}
 		port, err := c.Listen(ctx, f.id, f.spec.Bind, f.spec.Port)
 		if err != nil {
-			return fmt.Errorf("--forward-remote on target %s: listen failed: %v", f.spec.Address(), err)
+			return fmt.Errorf("--forward-remote on target %s: listen failed: %s", f.spec.Address(), listenError(err))
 		}
 		f.spec.Port = port
 	}
@@ -435,7 +435,7 @@ func (m *Manager) Open(ctx context.Context, in OpenInput) (Info, error) {
 		f.id = m.allocate()
 		port, err := conn.Listen(ctx, f.id, s.Bind, s.Port)
 		if err != nil {
-			return Info{}, fmt.Errorf("listen on target %s: %v", s.Address(), err)
+			return Info{}, fmt.Errorf("listen on target %s: %s", s.Address(), listenError(err))
 		}
 		f.spec.Port = port
 	} else {
@@ -459,6 +459,15 @@ func (m *Manager) Open(ctx context.Context, in OpenInput) (Info, error) {
 		go m.accept(f)
 	}
 	return f.info(), nil
+}
+
+// listenError describes a target's listen failure. The bridge does not know the target's
+// permitted ports, so a refusal points to where they are reported.
+func listenError(err error) string {
+	if channel.Code(err) == channel.CodeNotAllowed {
+		return "listen port not allowed by target (see sys_get_info restrictions)"
+	}
+	return err.Error()
 }
 
 func bracket(h string) string {
