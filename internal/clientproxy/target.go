@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/channel"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
@@ -31,6 +32,8 @@ type Target struct {
 	mux         *channel.Conn
 	dir         string
 	once        sync.Once
+	audit       *audit.Logger
+	authFailed  authFailures
 }
 
 func NewTarget() (*Target, error) {
@@ -67,6 +70,12 @@ func NewTarget() (*Target, error) {
 	return t, nil
 }
 
+// SetAudit records the proxy's streams and authentication failures in the target's audit log.
+func (t *Target) SetAudit(al *audit.Logger) {
+	t.audit = al
+	t.authFailed.record = func(count int) { al.Event("proxy_auth_failed", "count", count) }
+}
+
 // Register permits the HTTP proxy on the target's channel options.
 func (t *Target) Register(o *channel.Options) {
 	o.Enable(channel.HTTPProxy)
@@ -89,12 +98,14 @@ func (t *Target) Close() {
 		if t.dir != "" {
 			os.RemoveAll(t.dir)
 		}
+		t.authFailed.close()
 	})
 }
 func (t *Target) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Proxy-Authorization")), []byte(t.auth)) != 1 {
 		// Authentication failures do not reveal the requested host or credentials.
 		t.mux.Report("auth_failed", channel.Frame{})
+		t.authFailed.add()
 		w.Header().Set("Proxy-Authenticate", `Basic realm="host-shell"`)
 		http.Error(w, "proxy authentication required", 407)
 		return
@@ -132,6 +143,7 @@ func (t *Target) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	c, e := t.mux.Dial(ctx, kind, host, port, 0)
 	cancel()
+	t.connect(kind, host, port, e)
 	if e != nil {
 		code := 502
 		switch channel.Code(e) {
@@ -189,6 +201,98 @@ func (t *Target) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(resp.StatusCode)
 	io.Copy(&responseWriter{ResponseWriter: w, rc: rc}, &idleBody{ReadCloser: resp.Body, c: c})
+}
+
+// connect records the stream opened for one proxy request (one HTTP request or CONNECT, as the
+// proxy does not reuse streams). Only the destination and the result are recorded, never paths,
+// queries, headers, bodies or credentials. A 502 from the bridge's upstream after the stream is
+// established looks like any response here, so the record shows only the stream's result.
+func (t *Target) connect(kind, host string, port int, err error) {
+	if t.audit == nil {
+		return
+	}
+	result, reason := "allowed", "connection established"
+	if err != nil {
+		result, reason = "failed", "upstream connection failed"
+		switch channel.Code(err) {
+		case channel.CodeNotAllowed:
+			result, reason = "denied", "destination not allowed"
+		case channel.CodeLimit:
+			result, reason = "denied", "connection limit reached"
+		case channel.CodeTimeout:
+			result, reason = "failed", "connection timeout"
+		}
+	}
+	t.audit.Event("proxy_connect", "kind", kind, "host", host, "port", port, "result", result, "reason", reason)
+}
+
+// authFailures aggregates proxy authentication failures for the audit log. A process on this
+// host without the proxy URL can fail repeatedly, so only the first failure is recorded at once;
+// later ones are counted and recorded once a minute, and the rest when the session ends.
+// The requested destination is not recorded, as a request that fails authentication is untrusted.
+type authFailures struct {
+	mu      sync.Mutex
+	record  func(count int) // nil disables recording
+	after   func(d time.Duration, f func()) (stop func() bool)
+	stop    func() bool
+	pending int
+	window  bool // a one-minute window is counting failures
+	closed  bool
+}
+
+func (a *authFailures) add() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.record == nil || a.closed {
+		return
+	}
+	if a.window {
+		a.pending++
+		return
+	}
+	a.record(1)
+	a.open()
+}
+
+func (a *authFailures) open() {
+	after := a.after
+	if after == nil {
+		after = func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop }
+	}
+	a.window = true
+	a.stop = after(time.Minute, a.tick)
+}
+
+// tick ends a window: it records the failures counted in it and opens the next window, or
+// closes the window when there were none, so that the next failure is recorded at once.
+func (a *authFailures) tick() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return
+	}
+	if a.pending == 0 {
+		a.window = false
+		return
+	}
+	a.record(a.pending)
+	a.pending = 0
+	a.open()
+}
+
+func (a *authFailures) close() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.closed {
+		return
+	}
+	a.closed = true
+	if a.stop != nil {
+		a.stop()
+	}
+	if a.pending > 0 {
+		a.record(a.pending)
+	}
 }
 
 func (t *Target) Secret() string { return t.token }

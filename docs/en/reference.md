@@ -70,6 +70,7 @@ If none of `--mcp`, `bridge` and `--version` is given, it prints the usage to st
 | `--client-proxy` | None | | With the bridge's `--proxy`, enables the [HTTP proxy through the client](client-proxy.md) |
 | `--allow-forward-local` | None | | Permits the bridge's local forwards and SOCKS5 to connect from the target ([Port forwarding](port-forward.md)) |
 | `--allow-forward-remote` | None | | Permits the bridge's remote forwards to listen on the target's loopback ([Port forwarding](port-forward.md)) |
+| `--allow-forward-remote-port` | `PORT` or `PORT-PORT` (comma-separated, can be repeated) | None (unrestricted) | Limits the ports remote forwards listen on. Requires `--allow-forward-remote` ([Port forwarding](port-forward.md)) |
 
 Table: Startup options
 

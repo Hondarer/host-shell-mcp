@@ -19,7 +19,9 @@ type Config struct {
 	Proxy       *clientproxy.Target
 	// ForwardLocal and ForwardRemote permit the bridge's port forwards (--allow-forward-local/--allow-forward-remote).
 	ForwardLocal, ForwardRemote bool
-	Forward                     *forward.Target
+	// ForwardRemotePorts limits the ports remote forwards listen on (--allow-forward-remote-port); nil permits any port.
+	ForwardRemotePorts forward.Ports
+	Forward            *forward.Target
 	// MaxOutputBytes caps individual output streams (stdout, stderr, file content, etc.);
 	// longer output is middle-truncated, keeping its head and tail.
 	MaxOutputBytes int
@@ -61,6 +63,9 @@ func (c Config) Validate() error {
 	}
 	if c.DefaultTimeout <= 0 || c.MaxTimeout < c.DefaultTimeout {
 		return fmt.Errorf("invalid timeout: default=%s max=%s", c.DefaultTimeout, c.MaxTimeout)
+	}
+	if c.ForwardRemotePorts != nil && !c.ForwardRemote {
+		return fmt.Errorf("--allow-forward-remote-port requires --allow-forward-remote")
 	}
 	switch c.WindowsShell {
 	case "cmd", "powershell", "pwsh":

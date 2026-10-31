@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"os/exec"
@@ -93,6 +94,9 @@ func TestForwardStdio(t *testing.T) {
 	if info["client_proxy"] != true || info["forward_local"] != true || len(info["remote_forwards"].([]any)) != 1 {
 		t.Fatalf("sys_get_info %v", info)
 	}
+	if strings.Contains(fmt.Sprint(info["restrictions"]), "remote forward ports") {
+		t.Fatalf("listen ports restricted without --allow-forward-remote-port: %v", info["restrictions"])
+	}
 	// Ordinary tools keep working beside forwarded traffic.
 	if out := callTool(t, cs, "fs_list", map[string]any{"path": "."}); out == nil {
 		t.Fatal("fs_list")
@@ -110,14 +114,31 @@ func TestForwardStdioPermissions(t *testing.T) {
 	if e := cmd.Run(); e == nil || !strings.Contains(stderr.String(), "--allow-forward-remote") {
 		t.Fatalf("missing permission: %v: %s", e, stderr.String())
 	}
+	// --allow-forward-remote-port only restricts; it neither permits nor accepts malformed ranges.
+	for args, want := range map[string]string{
+		"--allow-forward-remote-port 15432":                        "--allow-forward-remote-port requires --allow-forward-remote",
+		"--allow-forward-remote --allow-forward-remote-port 20-10": `invalid --allow-forward-remote-port "20-10"`,
+	} {
+		stderr.Reset()
+		cmd = exec.CommandContext(ctx, binary, append([]string{"--mcp", "--no-log"}, strings.Fields(args)...)...)
+		cmd.Stderr = &stderr
+		cmd.Stdin = strings.NewReader("")
+		if e := cmd.Run(); e == nil || !strings.Contains(stderr.String(), want) {
+			t.Fatalf("%s: %v: %s", args, e, stderr.String())
+		}
+	}
 	// A target that permits forwarding still serves a bridge that requests nothing.
-	cmd = exec.CommandContext(ctx, binary, "bridge", "--", binary, "--mcp", "--no-log", "--allow-forward-local", "--allow-forward-remote")
+	cmd = exec.CommandContext(ctx, binary, "bridge", "--", binary, "--mcp", "--no-log", "--allow-forward-local", "--allow-forward-remote", "--allow-forward-remote-port", "20000-20099,15432")
 	cs, e := mcp.NewClient(&mcp.Implementation{Name: "stdio-plain-test"}, nil).Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
 	if e != nil {
 		t.Fatal(e)
 	}
 	defer cs.Close()
-	if callTool(t, cs, "sys_get_info", nil)["forward_remote"] != true {
+	info := callTool(t, cs, "sys_get_info", nil)
+	if info["forward_remote"] != true {
 		t.Fatal("permission not reported")
+	}
+	if !strings.Contains(fmt.Sprint(info["restrictions"]), "Allowed remote forward ports: 20000-20099, 15432") {
+		t.Fatalf("restrictions %v", info["restrictions"])
 	}
 }

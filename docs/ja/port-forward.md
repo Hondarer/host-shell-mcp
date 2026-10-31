@@ -69,11 +69,17 @@ Table: bridge の転送オプション (すべて複数指定可)
 | --- | --- |
 | `--allow-forward-local` | ローカル転送と SOCKS5 (接続先からの発信) を許可します。値は取りません |
 | `--allow-forward-remote` | リモート転送 (接続先のループバックでの待ち受け) を許可します。値は取りません |
+| `--allow-forward-remote-port PORT[-PORT]` | リモート転送で接続先が待ち受けるポート番号を、指定した範囲に限ります (ssh の `PermitListen` に相当)。複数指定とカンマ区切りができます。`--allow-forward-remote` が必要です |
 
 Table: 接続先の許可オプション
 
 - 接続先から発信する宛先には `--allow-host` を適用します。未指定時は接続先側では宛先を制限しません。
-- 接続先で待ち受けるポート番号は制限しません。
+- 接続先で待ち受けるポート番号は、`--allow-forward-remote-port` を指定しない場合は制限しません。指定した場合、範囲外のポートの待ち受けは拒否します (常設のリモート転送は起動エラー、forward_open はエラー)。ポート 0 (自動割当) の要求には、指定した順の範囲で小さい番号から空きポートを探して待ち受けます。範囲内に空きがなければ失敗します。許可範囲は sys_get_info の `restrictions` で確認できます。
+
+  ```sh
+  host-shell --mcp --allow-forward-remote --allow-forward-remote-port 15432,20000-20099
+  ```
+
 - `--read-only` と `--tools` は転送を制限しません。`--read-only` の接続先でも、許可オプションを指定するとローカル転送で接続先のサービス (DB など) へ書き込めます。`--read-only` を厳格な境界として運用する場合は許可オプションを指定しないでください。
 - 許可オプションは `--client-proxy` と独立です。
 
@@ -142,7 +148,7 @@ Table: forward_status の reason
 - 待ち受けは両側ともループバックだけです。待ち受けポートへの接続は認証しないため、同じホストのほかのユーザーのプロセスも接続できます。これは ssh の `-L`、`-R`、`-D` と同じ性質です。
 - 本機能は sshd の転送機能を使わないため、sshd の `no-port-forwarding` や `AllowTcpForwarding no` では止められません。接続先の管理者は許可オプションで本機能を許可し、`command=` に許可オプションを書かないことで禁止できます。
 - リモート転送で bridge は宛先へ直接接続し、HTTP_PROXY/HTTPS_PROXY は使いません。
-- 接続先の操作ログに、リモート転送の待ち受けの開始・終了 (`forward_listen`、`forward_unlisten`) と、ローカル転送・SOCKS5 の発信 (`forward_connect`: 方向、宛先、結果) を記録します。
+- 接続先の操作ログに、リモート転送の待ち受けの開始・終了・拒否 (`forward_listen`、`forward_unlisten`) と、ローカル転送・SOCKS5 の発信 (`forward_connect`: 方向、宛先、結果) を記録します。
 - sys_get_info は、許可された方向 (`forward_local`、`forward_remote`) と、接続先で待ち受け中のリモート転送 (`remote_forwards`) を返します。
 
 ## 上限と終了

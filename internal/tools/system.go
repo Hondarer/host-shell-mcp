@@ -150,6 +150,11 @@ func (d *Deps) sysGetInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp
 	for _, kv := range d.Policy.Summary() {
 		out.Restrictions = append(out.Restrictions, kv[0]+": "+kv[1])
 	}
+	if d.Cfg.Forward != nil {
+		if p := d.Cfg.Forward.Info().RemotePorts; p != nil {
+			out.Restrictions = append(out.Restrictions, "Allowed remote forward ports: "+p.String())
+		}
+	}
 	return nil, out, nil
 }
 

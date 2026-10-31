@@ -54,7 +54,7 @@ func main() {
 
 	cfg := config.Default()
 	var (
-		allowPaths, allowReadPaths, allowCommands, denyCommands, allowHosts, unsetEnv, redactPatterns listFlag
+		allowPaths, allowReadPaths, allowCommands, denyCommands, allowHosts, unsetEnv, redactPatterns, remotePorts listFlag
 
 		proxyMode = flag.Bool("client-proxy", false, "route HTTP/HTTPS through an explicitly enabled local bridge")
 		fwdLocal  = flag.Bool("allow-forward-local", false, "permit the bridge's local forwards and SOCKS5 to connect from this host (takes no value; destinations follow --allow-host)")
@@ -73,6 +73,7 @@ func main() {
 		confirm  = flag.String("confirm", "", "tools requiring user confirmation (MCP elicitation) per call: groups, tool names, or destructive (e.g. destructive or exec,fs_remove)")
 		redact   = flag.Bool("redact", false, "replace secrets (private keys, tokens, passwords) in tool output with [REDACTED]")
 	)
+	flag.Var(&remotePorts, "allow-forward-remote-port", "limit the ports remote forwards listen on to PORT or PORT-PORT (comma-separated or repeatable; requires --allow-forward-remote)")
 	flag.Var(&allowPaths, "allow-path", "restrict file read/write access to this directory (repeatable)")
 	flag.Var(&allowReadPaths, "allow-read-path", "allow read-only file access under this directory (repeatable)")
 	flag.Var(&allowCommands, "allow-command", "allow only matching program names (comma-separated globs or repeatable); shell commands require the shell itself")
@@ -96,6 +97,11 @@ func main() {
 	cfg.ClientProxy = *proxyMode
 	cfg.ForwardLocal = *fwdLocal
 	cfg.ForwardRemote = *fwdRemote
+	ports, err := forward.ParsePorts(remotePorts)
+	if err != nil {
+		log.Fatal(err)
+	}
+	cfg.ForwardRemotePorts = ports
 	cfg.LogFile = *logFile
 	if *noLog {
 		cfg.LogFile = ""
@@ -150,6 +156,7 @@ func run(cfg config.Config) error {
 		defer target.Close()
 		cfg.Proxy = target
 		al.SetMask(target.Mask)
+		target.SetAudit(al)
 		target.Register(&channelOptions)
 	}
 	if cfg.ForwardLocal || cfg.ForwardRemote {
@@ -158,6 +165,7 @@ func run(cfg config.Config) error {
 			return err
 		}
 		cfg.Forward = forward.NewTarget(cfg.ForwardLocal, cfg.ForwardRemote, pol, al)
+		cfg.Forward.RestrictRemotePorts(cfg.ForwardRemotePorts)
 		defer cfg.Forward.Close()
 		cfg.Forward.Register(&channelOptions)
 	}

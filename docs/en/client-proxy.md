@@ -38,6 +38,11 @@ The URL file has user-only permissions and is removed on normal termination or d
 
 Use the bridge's read-only proxy_status tool to inspect denied destinations and reasons.
 
+The target's audit log records:
+
+- `proxy_connect`: one record per HTTP request or CONNECT, with the kind (`http`, `connect`), destination host and port, result (`allowed`, `denied`, `failed`) and reason. URL paths and queries, headers, bodies, and credentials are not recorded. The result is that of opening the relay to the bridge, so an HTTP request whose upstream connection later fails on the bridge (HTTP 502) is still `allowed`.
+- `proxy_auth_failed`: the number of proxy authentication failures (HTTP 407). The first failure is recorded at once; later failures are counted and recorded once a minute, and any still counted when the session ends. Destinations of unauthenticated requests are not recorded.
+
     {"after_seq": 0, "limit": 20}
 
 Inputs are after_seq (nonnegative, default 0) and limit (1–100, default 20). Outputs are enabled, state, allow_hosts, active_connections, events, next_seq, and truncated.

@@ -72,11 +72,17 @@ Table: Bridge forward options (all repeatable)
 | --- | --- |
 | `--allow-forward-local` | Permits local forwards and SOCKS5 (connections from the target). Takes no value |
 | `--allow-forward-remote` | Permits remote forwards (listeners on the target's loopback). Takes no value |
+| `--allow-forward-remote-port PORT[-PORT]` | Limits the ports remote forwards listen on to the given ranges (like ssh `PermitListen`). Can be repeated or comma-separated. Requires `--allow-forward-remote` |
 
 Table: Target permission options
 
 - Destinations connected from the target follow `--allow-host`. Without it, the target does not restrict destinations.
-- Ports the target listens on are not restricted.
+- Ports the target listens on are not restricted unless `--allow-forward-remote-port` is given. With it, a port outside the ranges is refused (a persistent remote forward fails at startup; forward_open returns an error). A request for port 0 (automatic) takes the first free port, trying the ranges in the order given and each from its lowest port, and fails if none is free. sys_get_info reports the ranges under `restrictions`.
+
+  ```sh
+  host-shell --mcp --allow-forward-remote --allow-forward-remote-port 15432,20000-20099
+  ```
+
 - `--read-only` and `--tools` do not restrict forwarding. With a permission option, a local forward can write to a service on a `--read-only` target (such as a database). If `--read-only` is a strict boundary, do not give the permission options.
 - The permission options are independent of `--client-proxy`.
 
@@ -145,7 +151,7 @@ The same records go to the bridge's stderr. Forwarded data is never recorded.
 - Both sides listen on loopback only. Listeners do not authenticate connections, so processes of other users on the same host can connect, as with ssh `-L`, `-R`, and `-D`.
 - The feature does not use sshd forwarding, so sshd `no-port-forwarding` or `AllowTcpForwarding no` cannot stop it. Target administrators permit it with the permission options, and forbid it by leaving them out of `command=`.
 - For remote forwards, the bridge connects to destinations directly without HTTP_PROXY/HTTPS_PROXY.
-- The target's audit log records remote forward listeners starting and stopping (`forward_listen`, `forward_unlisten`) and connections for local forwards and SOCKS5 (`forward_connect`: direction, destination, result).
+- The target's audit log records remote forward listeners starting, stopping and being refused (`forward_listen`, `forward_unlisten`) and connections for local forwards and SOCKS5 (`forward_connect`: direction, destination, result).
 - sys_get_info returns the permitted directions (`forward_local`, `forward_remote`) and the remote forwards listening on the target (`remote_forwards`).
 
 ## Limits and shutdown

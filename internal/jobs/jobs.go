@@ -143,7 +143,14 @@ func (m *Manager) Start(spec proc.Spec, opt StartOptions) (*Job, error) {
 	m.mu.Unlock()
 
 	if opt.Stdin != "" && j.stdin != nil {
-		go j.write(opt.Stdin)
+		// Take the stdin lock before returning, so that a following Write or CloseStdin waits for
+		// the initial input instead of overtaking it. The write itself runs in the background in
+		// case the process does not read its input yet.
+		j.stdinMu.Lock()
+		go func() {
+			defer j.stdinMu.Unlock()
+			io.WriteString(j.stdin, opt.Stdin)
+		}()
 	}
 	go func() {
 		code, err := wait()

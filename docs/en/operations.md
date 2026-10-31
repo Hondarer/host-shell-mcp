@@ -109,8 +109,8 @@ command="/opt/host-shell/host-shell --mcp --read-only --redact",no-pty,no-port-f
 `no-pty` disables PTY allocation for the SSH session itself without affecting pseudo-terminals created by `host-shell` for `pty` jobs.  
 Without restriction options, `host-shell` can run arbitrary commands with the connecting user's permissions. Enforce upper privilege bounds via the OS user and `sudoers`.
 
-```{.text caption="~hsagent/.ssh/authorized_keys (permitting remote forwards only)"}
-command="/opt/host-shell/host-shell --mcp --allow-forward-remote",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA... host-shell agent
+```{.text caption="~hsagent/.ssh/authorized_keys (permitting remote forwards only, listening on port 15432)"}
+command="/opt/host-shell/host-shell --mcp --allow-forward-remote --allow-forward-remote-port 15432",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA... host-shell agent
 ```
 
 To pin the command per user in `sshd_config`, use `ForceCommand`.

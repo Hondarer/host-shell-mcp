@@ -109,8 +109,8 @@ command="/opt/host-shell/host-shell --mcp --read-only --redact",no-pty,no-port-f
 `no-pty` は SSH セッションへの PTY 割り当てを禁止する指定であり、`host-shell` が `pty` ジョブ用に作成する疑似端末には影響しません。  
 なお、制限オプションを付けない場合、`host-shell` 自身は接続ユーザーの権限で任意のコマンドを実行できます。権限の上限は OS ユーザーと sudoers で制御してください。
 
-```{.text caption="~hsagent/.ssh/authorized_keys (リモート転送だけを許可する例)"}
-command="/opt/host-shell/host-shell --mcp --allow-forward-remote",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA... host-shell agent
+```{.text caption="~hsagent/.ssh/authorized_keys (リモート転送だけを、待ち受けポート 15432 に限って許可する例)"}
+command="/opt/host-shell/host-shell --mcp --allow-forward-remote --allow-forward-remote-port 15432",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA... host-shell agent
 ```
 
 ユーザー単位で固定する場合は `sshd_config` の `ForceCommand` も使用できます。
