@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/channel"
@@ -31,6 +32,7 @@ type Target struct {
 	policy        *policy.Policy
 	audit         *audit.Logger
 	dial          func(ctx context.Context, network, addr string) (net.Conn, error)
+	timeout       time.Duration
 	mu            sync.Mutex
 	listeners     map[uint64]*targetListener
 }
@@ -42,7 +44,7 @@ type targetListener struct {
 
 // NewTarget permits the given directions. pol applies --allow-host to destinations.
 func NewTarget(local, remote bool, pol *policy.Policy, al *audit.Logger) *Target {
-	return &Target{local: local, remote: remote, policy: pol, audit: al, dial: (&net.Dialer{Timeout: establishTimeout}).DialContext, listeners: map[uint64]*targetListener{}}
+	return &Target{local: local, remote: remote, policy: pol, audit: al, dial: (&net.Dialer{}).DialContext, timeout: establishTimeout, listeners: map[uint64]*targetListener{}}
 }
 
 // Register permits the directions on the target's channel options.
@@ -81,7 +83,7 @@ func (t *Target) open(ctx context.Context, in *channel.Incoming) {
 			return
 		}
 	}
-	dialCtx, cancel := context.WithTimeout(ctx, establishTimeout)
+	dialCtx, cancel := context.WithTimeout(ctx, t.timeout)
 	defer cancel()
 	external, err := t.dial(dialCtx, "tcp", net.JoinHostPort(in.Host, strconv.Itoa(in.Port)))
 	if err != nil {
@@ -133,7 +135,7 @@ func (t *Target) listen(c *channel.Conn, id uint64, bind string, port int) (int,
 func (t *Target) serve(c *channel.Conn, id uint64, conn net.Conn) {
 	defer conn.Close()
 	// The bridge answers within its own 30 second connect timeout; this only bounds a stalled peer.
-	ctx, cancel := context.WithTimeout(context.Background(), 2*establishTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*t.timeout)
 	stream, err := c.Dial(ctx, channel.KindForward, "", 0, id)
 	cancel()
 	if err != nil {

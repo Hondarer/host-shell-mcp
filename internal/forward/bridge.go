@@ -15,6 +15,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
+// establishTimeout bounds connecting a forwarded connection.
 const establishTimeout = 30 * time.Second
 
 // Event is a connection result in forward_status.
@@ -125,7 +126,8 @@ type Manager struct {
 	allowLocal, allowRemote policy.NameRules
 	history                 channel.History[Event]
 	// dial connects remote forwards to their destinations on this machine, never through a proxy.
-	dial func(ctx context.Context, network, addr string) (net.Conn, error)
+	dial    func(ctx context.Context, network, addr string) (net.Conn, error)
+	timeout time.Duration
 
 	listenMu sync.Mutex // keeps remote forward IDs increasing in listen order
 	mu       sync.Mutex
@@ -150,7 +152,7 @@ func NewManager(specs []Spec, allowLocal, allowRemote []string) (*Manager, error
 	if len(specs) > channel.MaxForwards {
 		return nil, fmt.Errorf("at most %d forwards per session", channel.MaxForwards)
 	}
-	m := &Manager{allowLocal: local, allowRemote: remote, forwards: map[uint64]*forward{}, dial: (&net.Dialer{Timeout: establishTimeout}).DialContext}
+	m := &Manager{allowLocal: local, allowRemote: remote, forwards: map[uint64]*forward{}, dial: (&net.Dialer{}).DialContext, timeout: establishTimeout}
 	for _, s := range specs {
 		if s.Direction == SOCKS && len(local) == 0 {
 			return nil, errors.New("--forward-socks requires --forward-allow-local (use '*' to allow every destination)")
@@ -339,7 +341,7 @@ func (m *Manager) open(f *forward, kind, host string, port int) (net.Conn, error
 	if conn == nil {
 		return nil, &channel.Error{Code: channel.CodeClosed}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), establishTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), m.timeout)
 	defer cancel()
 	return conn.Dial(ctx, kind, host, port, f.id)
 }
@@ -352,7 +354,7 @@ func (m *Manager) openRemote(ctx context.Context, in *channel.Incoming) {
 		return
 	}
 	id := m.connection()
-	dialCtx, cancel := context.WithTimeout(ctx, establishTimeout)
+	dialCtx, cancel := context.WithTimeout(ctx, m.timeout)
 	defer cancel()
 	external, err := m.dial(dialCtx, "tcp", f.spec.destination())
 	if err != nil {

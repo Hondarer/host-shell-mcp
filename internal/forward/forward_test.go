@@ -71,6 +71,8 @@ type sessionOptions struct {
 	allowLocal, allowRemote []string
 	local, remote           bool
 	allowHost               []string
+	timeout                 time.Duration
+	targetDial              func(ctx context.Context, network, addr string) (net.Conn, error)
 }
 
 func start(t *testing.T, o sessionOptions) *session {
@@ -92,6 +94,12 @@ func start(t *testing.T, o sessionOptions) *session {
 		t.Fatal(err)
 	}
 	tg := NewTarget(o.local, o.remote, pol, al)
+	if o.timeout != 0 {
+		m.timeout, tg.timeout = o.timeout, o.timeout
+	}
+	if o.targetDial != nil {
+		tg.dial = o.targetDial
+	}
 	var bo, to channel.Options
 	m.Register(&bo)
 	tg.Register(&to)
@@ -475,4 +483,74 @@ func TestStatusPaging(t *testing.T) {
 	if _, err = m.Status(StatusInput{Limit: 101}); err == nil {
 		t.Fatal("limit accepted")
 	}
+}
+
+func TestSOCKSFailuresAndIPv6Bind(t *testing.T) {
+	if l, err := net.Listen("tcp6", "[::1]:0"); err != nil {
+		t.Skip("no IPv6 loopback")
+	} else {
+		l.Close()
+	}
+	port := echoServer(t, "tcp4", "127.0.0.1:0")
+	s := start(t, sessionOptions{
+		specs:      []Spec{{SOCKS, "::1", 0, "", 0}, {Local, "::1", 0, "denied.example", 80}},
+		allowLocal: []string{"*"},
+		local:      true,
+		allowHost:  []string{"127.0.0.1", "*.invalid"},
+	})
+	sp := s.forward(t, 1).ListenPort
+	c, err := net.DialTimeout("tcp", net.JoinHostPort("::1", strconv.Itoa(sp)), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Close()
+	socks6 := func(atyp byte, addr []byte, dport int) byte {
+		c := dial(t, "::1", sp)
+		defer c.Close()
+		c.SetDeadline(time.Now().Add(10 * time.Second))
+		c.Write([]byte{5, 1, 0})
+		io.ReadFull(c, make([]byte, 2))
+		req := []byte{5, 1, 0, atyp}
+		if atyp == 3 {
+			req = append(req, byte(len(addr)))
+		}
+		req = binary.BigEndian.AppendUint16(append(req, addr...), uint16(dport))
+		c.Write(req)
+		reply := make([]byte, 10)
+		if _, err := io.ReadFull(c, reply[:2]); err != nil {
+			t.Fatal(err)
+		}
+		return reply[1]
+	}
+	if code := socks6(1, []byte{127, 0, 0, 1}, port); code != socksSucceeded {
+		t.Fatalf("over [::1]: %d", code)
+	}
+	if code := socks6(3, []byte("host-shell-test.invalid"), 80); code != socksHostUnreachable {
+		t.Fatalf("unresolvable: %d", code)
+	}
+	if code := socks6(9, nil, 80); code != socksAddressUnsupport {
+		t.Fatalf("address type: %d", code)
+	}
+	// A local forward to a destination outside the target's --allow-host is closed.
+	lc := dial(t, "::1", s.forward(t, 2).ListenPort)
+	lc.SetDeadline(time.Now().Add(5 * time.Second))
+	if _, err := lc.Read(make([]byte, 1)); err == nil {
+		t.Fatal("denied destination connected")
+	}
+	lc.Close()
+	s.waitEvent(t, "destination not allowed by target")
+}
+
+func TestSOCKSTimeout(t *testing.T) {
+	// A destination that never answers ends with the timeout reply.
+	s := start(t, sessionOptions{
+		specs: []Spec{{SOCKS, "127.0.0.1", 0, "", 0}}, allowLocal: []string{"*"}, local: true, timeout: 200 * time.Millisecond,
+		targetDial: func(ctx context.Context, network, addr string) (net.Conn, error) { <-ctx.Done(); return nil, ctx.Err() },
+	})
+	c, code := socksConnect(t, s.forward(t, 1).ListenPort, 1, []byte{192, 0, 2, 1}, 80, 1)
+	c.Close()
+	if code != socksTTLExpired {
+		t.Fatalf("timeout reply %d", code)
+	}
+	s.waitEvent(t, "connection timeout")
 }

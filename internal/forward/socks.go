@@ -36,11 +36,12 @@ func socksReply(code string) byte {
 
 // socks serves one SOCKS5 CONNECT without authentication; the target resolves domain names.
 func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
-	c.SetDeadline(time.Now().Add(establishTimeout))
+	c.SetDeadline(time.Now().Add(m.timeout))
 	unsupported := func(host string, port int) {
 		m.record(f, id, host, port, "denied", "unsupported SOCKS request")
 	}
 	reply := func(code byte) error {
+		c.SetWriteDeadline(time.Now().Add(m.timeout))
 		_, err := c.Write([]byte{5, code, 0, 1, 0, 0, 0, 0, 0, 0})
 		return err
 	}
@@ -125,6 +126,8 @@ func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
 		m.record(f, id, host, port, "denied", "destination not allowed")
 		return
 	}
+	// The handshake deadline must not cut the connect wait short, or a timeout could not be replied.
+	c.SetDeadline(time.Time{})
 	remote, err := m.open(f, channel.KindSOCKS, host, port)
 	if err != nil {
 		code := channel.Code(err)
