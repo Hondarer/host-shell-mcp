@@ -65,16 +65,16 @@
 
 参照資料と版: ブランチ codex/client-http-proxy のコミット b85d95652ede3f0b1b0666893e09f744fc24acf4 を調査基準とします。成果物の作成は PR #1 のマージ後の main を基準とします ([Q-013](#q-013-作業ブランチと-pr))。
 
-- [internal/clientproxy/channel.go](../../internal/clientproxy/channel.go): MCP の Connection をラップし、`host-shell/proxy/*` 通知 (hello、ready、open、open_result、data、window、half_close、close) で TCP 相当のストリームを多重化します。データは Base64、16KiB/フレーム、片方向 64KiB のウィンドウ、最大 32 接続です。
+- [internal/clientproxy/channel.go](../../../internal/clientproxy/channel.go): MCP の Connection をラップし、`host-shell/proxy/*` 通知 (hello、ready、open、open_result、data、window、half_close、close) で TCP 相当のストリームを多重化します。データは Base64、16KiB/フレーム、片方向 64KiB のウィンドウ、最大 32 接続です。
     - `open` は接続先 (target) だけが送信し、bridge だけが受理します (`handle` は `c.remote` のとき `open` を拒否)。接続 ID の採番も接続先側 (`c.next`) だけです。ストリームの向きが一方向に固定されています。
     - hello/ready は版番号だけを交換し、機能の一覧を持ちません。チャネルは bridge の `--proxy` と接続先の `--client-proxy` の両方が指定された場合だけ構成されます。
-- [internal/clientproxy/gateway.go](../../internal/clientproxy/gateway.go): bridge 側で宛先許可 (ホスト glob と任意のポート)、HTTP 転送、CONNECT による TCP 中継、上流プロキシ、診断リング (proxy_status) を担当します。CONNECT 中継 (`tunnel`) には通信無進行 5 分のタイムアウトがあります。接続先の監査ログへの記録はありません。
-- [internal/clientproxy/target.go](../../internal/clientproxy/target.go): 接続先側で 127.0.0.1 の認証付き HTTP プロキシを待ち受けます。
-- [internal/bridge/bridge.go](../../internal/bridge/bridge.go): `--proxy`、`--proxy-allow-host` と proxy_status ツールを提供します。
-- [internal/policy/policy.go](../../internal/policy/policy.go): 接続先の `--allow-host` (`CheckHost`) はネットワーク ツールの宛先制限です。
-- [docs/ja/client-proxy.md](../ja/client-proxy.md): 既存 HTTP プロキシの正本文書です。
-- [docs/ja/operations.md](../ja/operations.md): `authorized_keys` の `command=` と `no-port-forwarding` で、host-shell を介さないポート転送を防ぐ運用を案内しています。
-- [docs/ja/user-guide.md](../ja/user-guide.md): 「ポート転送 (`-L`、`-R`、`-D`、`ProxyJump`、`-W`) や SFTP は使用しません」と記載しています。
+- [internal/clientproxy/gateway.go](../../../internal/clientproxy/gateway.go): bridge 側で宛先許可 (ホスト glob と任意のポート)、HTTP 転送、CONNECT による TCP 中継、上流プロキシ、診断リング (proxy_status) を担当します。CONNECT 中継 (`tunnel`) には通信無進行 5 分のタイムアウトがあります。接続先の監査ログへの記録はありません。
+- [internal/clientproxy/target.go](../../../internal/clientproxy/target.go): 接続先側で 127.0.0.1 の認証付き HTTP プロキシを待ち受けます。
+- [internal/bridge/bridge.go](../../../internal/bridge/bridge.go): `--proxy`、`--proxy-allow-host` と proxy_status ツールを提供します。
+- [internal/policy/policy.go](../../../internal/policy/policy.go): 接続先の `--allow-host` (`CheckHost`) はネットワーク ツールの宛先制限です。
+- [docs/ja/client-proxy.md](../../ja/client-proxy.md): 既存 HTTP プロキシの正本文書です。
+- [docs/ja/operations.md](../../ja/operations.md): `authorized_keys` の `command=` と `no-port-forwarding` で、host-shell を介さないポート転送を防ぐ運用を案内しています。
+- [docs/ja/user-guide.md](../../ja/user-guide.md): 「ポート転送 (`-L`、`-R`、`-D`、`ProxyJump`、`-W`) や SFTP は使用しません」と記載しています。
 - PR #1 (ドラフト、codex/client-http-proxy): HTTP プロキシ機能は main 未マージかつ未リリースです。2026-10-31 09:58 JST 時点でドラフトのまま未マージであり、別案件 (261031-client-proxy) の成果物の受入承認待ちです。
 
 ## ユーザーが明示した要求
@@ -408,7 +408,7 @@ C の単一選択を確認しました。起動オプションの書式、許可
 
 **Context**
 
-既存 HTTP プロキシは、接続先の `--client-proxy` と bridge の `--proxy` の両方を必要とします。接続先の管理者は `authorized_keys` の `command=` に記述するオプションで機能を許可・固定できます ([docs/ja/operations.md](../ja/operations.md))。
+既存 HTTP プロキシは、接続先の `--client-proxy` と bridge の `--proxy` の両方を必要とします。接続先の管理者は `authorized_keys` の `command=` に記述するオプションで機能を許可・固定できます ([docs/ja/operations.md](../../ja/operations.md))。
 
 方向によって接続先にとっての意味が異なります。
 
@@ -458,7 +458,7 @@ A の単一選択を確認しました。オプション名は [Q-019](#q-019-�
 
 **Context**
 
-ローカル転送では接続先側から宛先へ TCP 接続します。接続先の `--allow-host` (ホスト glob または CIDR と任意のポート) は現在ネットワーク ツール (net_request_http など) の宛先制限であり、未指定時は無制限です ([internal/policy/policy.go](../../internal/policy/policy.go) の `CheckHost`)。
+ローカル転送では接続先側から宛先へ TCP 接続します。接続先の `--allow-host` (ホスト glob または CIDR と任意のポート) は現在ネットワーク ツール (net_request_http など) の宛先制限であり、未指定時は無制限です ([internal/policy/policy.go](../../../internal/policy/policy.go) の `CheckHost`)。
 
 - 適用する場合: 接続先の管理者が `command=` で固定した宛先制限が転送にも及び、ツールと転送で制限の意味がそろいます。
 - 専用オプションを設ける場合: ネットワーク ツールと転送で別の宛先を許可できますが、オプションが増えます。
@@ -645,7 +645,7 @@ A の単一選択を確認しました。ポート転送の無認証接続を ss
 
 **Context**
 
-[docs/ja/operations.md](../ja/operations.md) は、`authorized_keys` の `command=` と `no-port-forwarding` により「host-shell を介さないポート転送を防ぐ」運用を案内しています。本機能は sshd の転送機能を使わずに同等の経路を提供するため、sshd の設定では止められません。host-shell から sshd の設定を確実に検出する方法もありません (ForceCommand や Match の評価結果は接続先プロセスから参照できません)。
+[docs/ja/operations.md](../../ja/operations.md) は、`authorized_keys` の `command=` と `no-port-forwarding` により「host-shell を介さないポート転送を防ぐ」運用を案内しています。本機能は sshd の転送機能を使わずに同等の経路を提供するため、sshd の設定では止められません。host-shell から sshd の設定を確実に検出する方法もありません (ForceCommand や Match の評価結果は接続先プロセスから参照できません)。
 
 既存 HTTP プロキシも同じ性質ですが、現在の文書はこの関係を明記していません。
 
@@ -689,7 +689,7 @@ A の単一選択を確認しました。sshd の設定は検出せず、HTTP �
 
 **Context**
 
-[internal/clientproxy/channel.go](../../internal/clientproxy/channel.go) の多重化 (接続管理、Base64 フレーム、ウィンドウ、優先キュー、終了処理) は HTTP プロキシ専用の名前と構造です。
+[internal/clientproxy/channel.go](../../../internal/clientproxy/channel.go) の多重化 (接続管理、Base64 フレーム、ウィンドウ、優先キュー、終了処理) は HTTP プロキシ専用の名前と構造です。
 
 - `open` の送信元が接続先に固定されています。ローカル転送では bridge 側から開始する必要があり、双方から採番しても衝突しない接続 ID (例: 開始側ごとに奇数・偶数を割り当てる) が必要です。
 - `open` の種別は `http`/`connect` だけで、宛先の処理は bridge の `Gateway` に直結しています。
