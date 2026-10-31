@@ -197,3 +197,7 @@ When finished, report the following items together.
 ## Optional client HTTP proxy
 
 For proxy-aware target applications requiring the local client network, see docs/en/client-proxy.md. Enable target --client-proxy and bridge --proxy with explicit --proxy-allow-host HOST[:PORT] rules. This shares SSH stdio and requires no SSH port forwarding. Use proxy_status to diagnose denials; do not broaden user-approved rules autonomously. sys_get_info reports the user-only credential URL file path. Do not print or paste its contents. Keep the feature disabled unless requested.
+
+## Optional port forwarding
+
+When the user asks for port forwarding where SSH forwarding is unavailable, see docs/en/port-forward.md. Add bridge --forward-local [BIND:]PORT:HOST:HOSTPORT (listen locally, connect from the target), --forward-remote (listen on the target, connect from here), or --forward-socks [BIND:]PORT with --forward-allow-local rules; add --forward-allow-local/--forward-allow-remote HOST[:PORT] only if the user wants the agent to create forwards with forward_open. The target must permit each direction with --allow-forward-local or --allow-forward-remote. Listeners are loopback only and unauthenticated. Use forward_status to diagnose; do not broaden user-approved rules autonomously. Keep forwarding disabled unless requested.

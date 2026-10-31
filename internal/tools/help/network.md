@@ -47,3 +47,13 @@ Each entry returns `addresses`, `dns_ms`, `connected`, `connect_ms`, certificate
 ## Client proxy
 
 With target --client-proxy and bridge --proxy --proxy-allow-host HOST[:PORT], HTTP proxy aware programs can use the client network over existing SSH stdio. Both peers must enable the feature. HTTP and CONNECT are supported without TLS interception. Ordinary exec_run/job_start inherit the relay URL; per-call env and explicit net_request_http proxy/none take precedence, NO_PROXY remains effective, and sudo follows its own environment rules. Use bridge proxy_status to inspect denied host/port and reasons. sys_get_info reports only the credential URL file path; never paste its contents. Destination rules constrain requested host names, not resolved IP ranges.
+
+## Port forwarding
+
+The bridge can forward TCP ports over the same SSH stdio session when SSH port forwarding is unavailable. Listeners are loopback only (127.0.0.1 or ::1) and do not authenticate connections, like ssh -L/-R/-D.
+
+- Local forward (bridge --forward-local, or forward_open direction local): listens on the agent's machine and connects from this host, for example to show a dev server running here in the user's browser.
+- Remote forward (bridge --forward-remote, or forward_open direction remote): listens on this host and connects from the agent's machine directly, without proxies. Programs here connect to the address listed in sys_get_info remote_forwards.
+- SOCKS5 (bridge --forward-socks, or forward_open direction socks): CONNECT only, no authentication; use socks5h:// so this host resolves names.
+
+This host must permit the direction with --allow-forward-local (local forwards and SOCKS5) or --allow-forward-remote; sys_get_info reports forward_local and forward_remote. Destinations connected from this host follow --allow-host; --read-only and --tools do not restrict forwarding. forward_open and forward_close exist only when the bridge has --forward-allow-local/--forward-allow-remote rules. Use bridge forward_status to list forwards and inspect denied or failed connections. Sessions carry at most 64 connections (shared with the client proxy) and 16 forwards.

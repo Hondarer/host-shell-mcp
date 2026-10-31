@@ -6,7 +6,6 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -18,6 +17,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/hondarer/host-shell-mcp/internal/channel"
+	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
 type Target struct {
@@ -26,7 +28,7 @@ type Target struct {
 	token, auth string
 	listener    net.Listener
 	server      *http.Server
-	mux         *channel
+	mux         *channel.Conn
 	dir         string
 	once        sync.Once
 }
@@ -44,7 +46,7 @@ func NewTarget() (*Target, error) {
 	}
 	t.listener = &limitedListener{Listener: l, reject: func() {
 		if t.mux != nil {
-			t.mux.emit("limit", frame{})
+			t.mux.Report("limit", channel.Frame{})
 		}
 	}}
 	t.URL = "http://host-shell:" + t.token + "@" + l.Addr().String()
@@ -64,11 +66,17 @@ func NewTarget() (*Target, error) {
 	}
 	return t, nil
 }
-func (t *Target) attach(c *channel) {
+
+// Register permits the HTTP proxy on the target's channel options.
+func (t *Target) Register(o *channel.Options) {
+	o.Enable(channel.HTTPProxy)
+	o.OnAttach(t.attach)
+}
+func (t *Target) attach(c *channel.Conn) {
 	t.mux = c
 	t.server = &http.Server{Handler: t, ReadHeaderTimeout: 30 * time.Second, IdleTimeout: 5 * time.Minute, MaxHeaderBytes: 32 * 1024}
 	go func() { t.server.Serve(t.listener) }()
-	go func() { <-c.ctx.Done(); t.Close() }()
+	go func() { <-c.Done(); t.Close() }()
 }
 func (t *Target) Close() {
 	t.once.Do(func() {
@@ -86,7 +94,7 @@ func (t *Target) Close() {
 func (t *Target) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Proxy-Authorization")), []byte(t.auth)) != 1 {
 		// Authentication failures do not reveal the requested host or credentials.
-		t.mux.send("auth_failed", frame{})
+		t.mux.Report("auth_failed", channel.Frame{})
 		w.Header().Set("Proxy-Authenticate", `Basic realm="host-shell"`)
 		http.Error(w, "proxy authentication required", 407)
 		return
@@ -118,22 +126,24 @@ func (t *Target) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-	kind := "http"
+	kind := channel.KindHTTP
 	if r.Method == "CONNECT" {
-		kind = "connect"
+		kind = channel.KindConnect
 	}
-	c, e := t.mux.dial(ctx, host, port, kind)
+	c, e := t.mux.Dial(ctx, kind, host, port, 0)
 	cancel()
 	if e != nil {
 		code := 502
-		if strings.Contains(e.Error(), "not allowed") {
+		switch channel.Code(e) {
+		case channel.CodeNotAllowed:
 			code = 403
-		}
-		if strings.Contains(e.Error(), "limit") {
-			t.mux.emit("limit", frame{Host: host, Port: port})
+		case channel.CodeLimit:
+			if e == channel.ErrLimit {
+				// A limit reached on the bridge is already recorded there.
+				t.mux.Report("limit", channel.Frame{Host: host, Port: port})
+			}
 			code = 503
-		}
-		if errors.Is(e, context.DeadlineExceeded) {
+		case channel.CodeTimeout:
 			code = 504
 		}
 		http.Error(w, http.StatusText(code), code)
@@ -245,7 +255,7 @@ func bypass(u *url.URL, list string) bool {
 			}
 			continue
 		}
-		rh, rp := splitRule(r)
+		rh, rp := policy.SplitNameRule(r)
 		port := u.Port()
 		if port == "" {
 			port = "80"

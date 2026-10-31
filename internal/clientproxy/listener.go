@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/hondarer/host-shell-mcp/internal/channel"
 )
 
 // limitedListener also bounds unauthenticated and idle HTTP connections.
@@ -21,7 +23,7 @@ func (l *limitedListener) Accept() (net.Conn, error) {
 		if e != nil {
 			return nil, e
 		}
-		if l.active.Add(1) > maxStreams {
+		if l.active.Add(1) > channel.MaxStreams {
 			l.active.Add(-1)
 			c.SetWriteDeadline(time.Now().Add(time.Second))
 			io.WriteString(c, "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")

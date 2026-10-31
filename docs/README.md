@@ -12,6 +12,8 @@
 | Operations Guide | [en/operations.md](en/operations.md) | [ja/operations.md](ja/operations.md) | Security model, restriction options, dedicated user and key, pinning the startup command, sudo configuration, audit log management |
 | Reference | [en/reference.md](en/reference.md) | [ja/reference.md](ja/reference.md) | Startup options, policy restrictions, MCP specification, tool inputs and outputs, bridge, process management, audit log format, limitations |
 | Development Guide | [en/development.md](en/development.md) | [ja/development.md](ja/development.md) | Building, source layout, design rules, adding tools, testing, releases |
+| HTTP proxy through the client | [en/client-proxy.md](en/client-proxy.md) | [ja/client-proxy.md](ja/client-proxy.md) | Routing target HTTP/HTTPS through the bridge's network |
+| Port forwarding | [en/port-forward.md](en/port-forward.md) | [ja/port-forward.md](ja/port-forward.md) | Local forwards, remote forwards and SOCKS5 over SSH stdio |
 
 Table: Documents
 
@@ -27,6 +29,8 @@ When updating documentation, edit the Japanese version first and update the Engl
 | 運用ガイド | [ja/operations.md](ja/operations.md) | [en/operations.md](en/operations.md) | セキュリティ設計、制限オプション、専用ユーザーと鍵、起動コマンドの固定、sudo 設定、操作ログ管理 |
 | リファレンス | [ja/reference.md](ja/reference.md) | [en/reference.md](en/reference.md) | 起動オプション、制限 (方針)、MCP 仕様、各ツールの入出力、bridge、プロセス管理、操作ログ形式、制限事項 |
 | 開発ガイド | [ja/development.md](ja/development.md) | [en/development.md](en/development.md) | ビルド、ソース構成、設計規約、ツールの追加手順、テスト、リリース |
+| クライアント経由 HTTP プロキシ | [ja/client-proxy.md](ja/client-proxy.md) | [en/client-proxy.md](en/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |
+| ポート転送 | [ja/port-forward.md](ja/port-forward.md) | [en/port-forward.md](en/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
 
 Table: 文書
 
