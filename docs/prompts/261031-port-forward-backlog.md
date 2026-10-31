@@ -23,7 +23,7 @@
 | BL-001 | Unix ドメイン ソケットと UDP の転送 | 検討時見送り | 低 | 未着手 |
 | BL-002 | 接続先で待ち受けるポート番号の許可範囲 | 検討時見送り | 低 | 未着手 |
 | BL-003 | HTTP プロキシの接続の接続先監査ログへの記録 | 検討時見送り | 低 | 未着手 |
-| BL-004 | macOS の CI で TestPTYScreen と TestJobStdin が断続的に失敗する | 作業中摘出 | 中 | 未着手 |
+| BL-004 | CI で TestPTYScreen と TestJobStdin が断続的に失敗する | 作業中摘出 | 中 | 未着手 |
 
 ## BL-001 Unix ドメイン ソケットと UDP の転送
 
@@ -91,11 +91,11 @@
 - **恒久対応案**: 接続先の HTTP プロキシで、要求ごとまたは CONNECT ごとに `proxy_connect` イベント (宛先の host・port、HTTP/CONNECT の区分、bridge の結果の理由コード) を記録します。URL のパス・クエリーと資格情報は記録しません。認証失敗は件数を集約して記録量を抑えます。
 - **参考情報**: 検討用 Markdown の Q-035、internal/forward/target.go の `forward_connect` の記録。
 
-## BL-004 macOS の CI で TestPTYScreen と TestJobStdin が断続的に失敗する
+## BL-004 CI で TestPTYScreen と TestJobStdin が断続的に失敗する
 
 ### 概要と問題点
 
-- **現状の事象**: PR #2 の CI (run 41157336808) の macOS ジョブで、internal/server の 2 つのテストが失敗しました。再実行 (attempt 2) では TestPTYScreen だけが再び失敗し、次のコミットの CI (run 41157609819) ではどちらも成功しています。
+- **現状の事象**: PR #2 の CI (run 41157336808) の macOS ジョブで、internal/server の 2 つのテストが失敗しました。再実行 (attempt 2) では TestPTYScreen だけが再び失敗し、次のコミットの CI (run 41157609819) ではどちらも成功しました。文書だけを変更したコミットの CI (run 41158029817) でも、macOS の TestPTYScreen と ubuntu の TestJobStdin が失敗しており、TestJobStdin は Linux でも起きます。
     - TestPTYScreen: `pty` ジョブで起動した `top` の画面に 20 秒以内に `PID` が現れず、画面が空のままでした (`screen_test.go:39`)。
     - TestJobStdin: `stdin` で渡した `first\n` が出力に現れず、`job_write` の `second\n` だけが出力されました (`tools_test.go:223`)。
 - **本来あるべき姿**: CI がコードの変更と無関係に失敗しないこと。TestJobStdin の失敗が実装の競合 (job_start の初期入力が `cat` に渡る前に失われる) によるものであれば、初期入力が確実に渡ること。
@@ -108,9 +108,9 @@
 ### 影響範囲とリスク
 
 - **影響対象**: internal/server/screen_test.go、internal/server/tools_test.go、および TestJobStdin の失敗が実装起因の場合は internal/jobs の初期入力 (`stdin` と `stdin_open`) の処理。
-- **放置した場合のリスク**: CI の失敗が変更と無関係に起き、再実行が必要になります。TestJobStdin の失敗が実装起因であれば、macOS で job_start の `stdin` の内容が失われる場合があります。
+- **放置した場合のリスク**: CI の失敗が変更と無関係に起き、再実行が必要になります。TestJobStdin の失敗が実装起因であれば、job_start の `stdin` の内容が失われる場合があります。
 
 ### 推奨される対応策
 
-- **恒久対応案**: TestJobStdin は、macOS で `job_start` の `stdin` の書き込みと `stdin_open` の維持の順序を確認し、初期入力が失われる経路があれば修正します。TestPTYScreen は、macOS の runner で `top` が描画を始めるまでの待ち時間や端末設定 (TERM) を確認し、待機条件を見直すか、`top` に依存しない対象に置き換えます。
-- **参考情報**: https://github.com/Hondarer/host-shell-mcp/actions/runs/41157336808 (attempt 1、2)、https://github.com/Hondarer/host-shell-mcp/actions/runs/41157609819
+- **恒久対応案**: TestJobStdin は、`job_start` の `stdin` の書き込みと `stdin_open` の維持の順序を確認し、初期入力が失われる経路があれば修正します。TestPTYScreen は、macOS の runner で `top` が描画を始めるまでの待ち時間や端末設定 (TERM) を確認し、待機条件を見直すか、`top` に依存しない対象に置き換えます。
+- **参考情報**: https://github.com/Hondarer/host-shell-mcp/actions/runs/41157336808 (attempt 1、2)、https://github.com/Hondarer/host-shell-mcp/actions/runs/41157609819、https://github.com/Hondarer/host-shell-mcp/actions/runs/41158029817
