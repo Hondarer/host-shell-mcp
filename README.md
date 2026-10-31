@@ -34,6 +34,7 @@ Table: Comparison with client-side SSH MCP servers
 - **Network diagnostics and requests**: Supports HTTP requests from the target (`net_request_http`, including the Docker API over Unix sockets), TCP send/receive (`net_exchange`), DNS/connectivity/certificate checks (`net_check`), and listening port inspection (`net_list_listeners`).
 - **Unified OS administration**: Manages services (systemd / Windows services), system logs (journald / Event Log), process termination, disk usage, and the Windows registry through a consistent interface.
 - **Direct file transfer**: With local `host-shell bridge`, transfers files and directories directly without passing through the agent context (`transfer_push`, `transfer_pull`), verifying SHA-256 hashes and skipping unchanged files.
+- **Port forwarding without SSH forwarding**: `host-shell bridge` can forward TCP ports both ways and serve SOCKS5 over the same SSH session, when the target permits it (`--forward-local`, `--forward-remote`, `--forward-socks`, `forward_open`).
 - **Progress notifications and cancellation**: Reports progress for long commands, downloads, and file transfers via MCP notifications, and terminates execution when the agent cancels a request.
 - **Policy restrictions via startup options**: Runs with the connecting user's permissions by default; startup options can restrict published tool groups, enforce read-only mode, limit allowed paths/commands/hosts, require user confirmation, and mask secrets.
 - **Self-describing agent guidance**: Initialize instructions, tool descriptions, and the `help_get` tool allow agents to choose appropriate tools without user instructions.
@@ -57,6 +58,7 @@ Table: Comparison with client-side SSH MCP servers
 | Administration | `proc_list`, `proc_kill`, `svc_list`, `svc_control`, `log_query`, `disk_list` |
 | Windows registry | `reg_read`, `reg_write`, `reg_delete` (Windows only) |
 | File transfer | `transfer_push`, `transfer_pull` (via `host-shell bridge`) |
+| Client network | `proxy_status`, `forward_status`, `forward_open`, `forward_close` (via `host-shell bridge`, when enabled) |
 
 Table: Tools provided
 
@@ -105,10 +107,14 @@ See [`docs/`](docs/README.md). **The Japanese documents (`docs/ja/`) are the mas
 | [Operations Guide](docs/en/operations.md) | Security model, restriction options, dedicated user and key, pinning the startup command, sudo configuration, audit log management |
 | [Reference](docs/en/reference.md) | Startup options, policy restrictions, MCP specification, tool inputs and outputs, bridge, process management, audit log format, limitations |
 | [Development Guide](docs/en/development.md) | Building, source layout, design rules, adding tools, testing |
+| [HTTP proxy through the client](docs/en/client-proxy.md) | Routing target HTTP/HTTPS through the bridge's network |
+| [Port forwarding](docs/en/port-forward.md) | Local forwards, remote forwards and SOCKS5 over SSH stdio |
 
 Table: Documentation
 
 For HTTP proxy aware target applications, an optional [client proxy](docs/en/client-proxy.md) routes HTTP/HTTPS through the bridge over the same SSH session. Both peers must enable it explicitly, and the bridge requires destination allow rules.
+
+Optional [port forwarding](docs/en/port-forward.md) provides local forwards, remote forwards and SOCKS5 over the same session. The target permits each direction with `--allow-forward-local` or `--allow-forward-remote`. Neither feature uses sshd forwarding, so sshd's `no-port-forwarding` does not stop them; leave the target options out of `command=` to forbid them.
 
 ### Security
 
@@ -148,6 +154,7 @@ Table: クライアント側の SSH 系 MCP との違い
 - **ネットワーク診断・通信ツール**: 接続先からの HTTP リクエスト (`net_request_http`、Unix ソケットの Docker API を含む)、TCP 送受信 (`net_exchange`)、名前解決・疎通・証明書確認 (`net_check`)、待ち受けポート一覧 (`net_list_listeners`) を提供します。
 - **OS 管理の統一インターフェイス**: サービス (systemd / Windows サービス)、システム ログ (journald / イベント ログ)、プロセス停止、ディスク使用量、Windows レジストリを共通の形式で操作できます。
 - **ローカル・接続先間のファイル転送**: ローカル側に `host-shell bridge` を挟むと、エージェントのコンテキストを経由せずにファイルやディレクトリを直接転送できます (`transfer_push`、`transfer_pull`)。SHA-256 で照合し、同一内容のファイルは転送を省略します。
+- **SSH の転送を使わないポート転送**: 接続先が許可すると、`host-shell bridge` が同じ SSH セッションで双方向の TCP ポート転送と SOCKS5 を提供します (`--forward-local`、`--forward-remote`、`--forward-socks`、`forward_open`)。
 - **進捗通知とキャンセル**: 長時間コマンド、ダウンロード、ファイル転送の進捗を MCP 通知で送り、エージェントが要求をキャンセルすると処理を停止します。
 - **起動オプションによるポリシー制限**: 既定では接続ユーザーの全権限で動作し、必要に応じて公開ツール グループ、読み取り専用、許可パス、許可コマンド、接続先ホスト、事前確認、機密情報の伏せ字化を起動オプションで制限できます。
 - **エージェント向けの自己記述案内**: 初期化応答、ツール説明、`help_get` ツールにより、利用者が手順を指示しなくてもエージェント自身が適切なツールを選択できます。
@@ -171,6 +178,7 @@ Table: クライアント側の SSH 系 MCP との違い
 | 管理 | `proc_list`、`proc_kill`、`svc_list`、`svc_control`、`log_query`、`disk_list` |
 | Windows レジストリ | `reg_read`、`reg_write`、`reg_delete` (Windows のみ) |
 | ファイル転送 | `transfer_push`、`transfer_pull` (`host-shell bridge` 経由時) |
+| クライアント側の通信 | `proxy_status`、`forward_status`、`forward_open`、`forward_close` (`host-shell bridge` で有効にした場合) |
 
 Table: 提供するツール
 
@@ -219,10 +227,14 @@ GitHub Release には、タグ名の先頭の `v` を残したアーカイブ (`
 | [運用ガイド](docs/ja/operations.md) | セキュリティ設計、制限オプション、専用ユーザーと鍵、起動コマンドの固定、sudo 設定、操作ログ管理 |
 | [リファレンス](docs/ja/reference.md) | 起動オプション、制限 (方針)、MCP 仕様、各ツールの入出力、bridge、プロセス管理、操作ログ形式、制限事項 |
 | [開発ガイド](docs/ja/development.md) | ビルド、ソース構成、設計規約、ツールの追加手順、テスト |
+| [クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |
+| [ポート転送](docs/ja/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
 
 Table: ドキュメント
 
 接続先の HTTP プロキシ対応アプリには、同じ SSH セッションを通じて bridge のネットワークを利用する [クライアントプロキシ](docs/ja/client-proxy.md) も用意しています。両端の明示有効化と、bridge 側の宛先許可リストが必要です。
+
+同じセッションでローカル転送・リモート転送・SOCKS5 を行う [ポート転送](docs/ja/port-forward.md) も用意しています。接続先は `--allow-forward-local`、`--allow-forward-remote` で方向ごとに許可します。いずれの機能も sshd の転送を使わないため、sshd の `no-port-forwarding` では止められません。禁止する場合は接続先のオプションを `command=` に書かないでください。
 
 ### 安全性
 

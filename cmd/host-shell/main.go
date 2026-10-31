@@ -24,8 +24,10 @@ import (
 
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/bridge"
+	"github.com/hondarer/host-shell-mcp/internal/channel"
 	"github.com/hondarer/host-shell-mcp/internal/clientproxy"
 	"github.com/hondarer/host-shell-mcp/internal/config"
+	"github.com/hondarer/host-shell-mcp/internal/forward"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/proc"
 	"github.com/hondarer/host-shell-mcp/internal/server"
@@ -55,6 +57,8 @@ func main() {
 		allowPaths, allowReadPaths, allowCommands, denyCommands, allowHosts, unsetEnv, redactPatterns listFlag
 
 		proxyMode = flag.Bool("client-proxy", false, "route HTTP/HTTPS through an explicitly enabled local bridge")
+		fwdLocal  = flag.Bool("allow-forward-local", false, "permit the bridge's local forwards and SOCKS5 to connect from this host (takes no value; destinations follow --allow-host)")
+		fwdRemote = flag.Bool("allow-forward-remote", false, "permit the bridge's remote forwards to listen on this host's loopback (takes no value)")
 		mcpMode   = flag.Bool("mcp", false, "serve MCP over stdin/stdout")
 		showVer   = flag.Bool("version", false, "print version and exit")
 		noLog     = flag.Bool("no-log", false, "disable the audit log")
@@ -90,6 +94,8 @@ func main() {
 	}
 
 	cfg.ClientProxy = *proxyMode
+	cfg.ForwardLocal = *fwdLocal
+	cfg.ForwardRemote = *fwdRemote
 	cfg.LogFile = *logFile
 	if *noLog {
 		cfg.LogFile = ""
@@ -133,7 +139,9 @@ func run(cfg config.Config) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	var transport mcp.Transport = &mcp.StdioTransport{}
+	// The channel transport passes ordinary MCP through and answers a bridge's channel hello,
+	// so a bridge asking for features this host does not permit fails with a precise error.
+	var channelOptions channel.Options
 	if cfg.ClientProxy {
 		target, err := clientproxy.NewTarget()
 		if err != nil {
@@ -142,8 +150,18 @@ func run(cfg config.Config) error {
 		defer target.Close()
 		cfg.Proxy = target
 		al.SetMask(target.Mask)
-		transport = clientproxy.Remote(transport, target)
+		target.Register(&channelOptions)
 	}
+	if cfg.ForwardLocal || cfg.ForwardRemote {
+		pol, err := policy.New(cfg.Policy, tools.Catalog())
+		if err != nil {
+			return err
+		}
+		cfg.Forward = forward.NewTarget(cfg.ForwardLocal, cfg.ForwardRemote, pol, al)
+		defer cfg.Forward.Close()
+		cfg.Forward.Register(&channelOptions)
+	}
+	transport := channel.Target(&mcp.StdioTransport{}, channelOptions)
 	s, closeServer, err := server.New(cfg, al)
 	if err != nil {
 		return err

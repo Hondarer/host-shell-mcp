@@ -59,7 +59,10 @@ internal/tools/        Tool implementations
   admin.go             Input/output types and shared logic for proc_kill, svc_*, log_query, disk_list
   admin_*.go           OS-specific administration (systemd / journald, Service Control Manager / Event Log)
   registry*.go         reg_read, reg_write, reg_delete (Windows)
-internal/bridge/       host-shell bridge (local relay, transfer_push, transfer_pull)
+internal/bridge/       host-shell bridge (local relay, transfer_push, transfer_pull, forward tools)
+internal/channel/      Multiplexed channel over SSH stdio (feature negotiation, bidirectional streams, flow control, diagnostic history)
+internal/clientproxy/  HTTP proxy through the client (bridge-side destination checks and connections, target-side authenticated proxy)
+internal/forward/      Port forwarding (persistent forward syntax, bridge listeners, SOCKS5 and forward_*, target-side connections and listeners)
 internal/proc/         Child process spawning, OS shell execution, process tree termination, signal delivery
   proc_unix.go         Linux (process groups, SIGKILL)
   proc_windows.go      Windows (cmd command lines, taskkill /T)
@@ -195,4 +198,8 @@ On Windows, antivirus software may falsely flag unsigned Go binaries; consider c
 
 [HTTP proxy through the client](client-proxy.md) describes startup, restrictions, proxy_status, environment precedence, and limits.
 
-internal/clientproxy/ implements versioned negotiation, JSON/Base64 multiplexing, flow control, authenticated HTTP proxying, upstream connections, and diagnostics. Connection wrappers consume private notifications without exposing them to ordinary MCP.
+[Port forwarding over SSH stdio](port-forward.md) describes forward startup, how requests are matched with permissions, tools, and limits.
+
+internal/channel/ provides Connection wrappers on the bridge and the target that consume `host-shell/channel/*` notifications without passing them to ordinary MCP. In negotiation, hello carries the features the bridge requests (`http_proxy`, `forward_local`, `forward_remote`) and the features the target permits; persistent remote forward listeners are set up with listen, then ready proceeds to MCP initialization. The target inspects the first message even without permissions and handles ordinary MCP unchanged. Either side may open streams, with odd connection IDs from the bridge and even IDs from the target. The target can only open incoming remote forwards that the bridge registered with listen; it cannot name destinations, so it cannot make the bridge connect anywhere else.
+
+internal/clientproxy/ implements the authenticated HTTP proxy, upstream connections and diagnostics, and internal/forward/ implements port forwarding, both on top of internal/channel/.

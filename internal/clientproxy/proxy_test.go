@@ -4,13 +4,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
-	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -18,9 +16,11 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/hondarer/host-shell-mcp/internal/channel"
 )
 
-func pair(t *testing.T, rules []string) (*Target, *Gateway, *channel, *channel) {
+func pair(t *testing.T, rules []string) (*Target, *Gateway, *channel.Conn, *channel.Conn) {
 	t.Helper()
 	target, e := NewTarget()
 	if e != nil {
@@ -38,8 +38,11 @@ func pair(t *testing.T, rules []string) (*Target, *Gateway, *channel, *channel) 
 	var remote mcp.Connection
 	var re error
 	done := make(chan struct{})
-	go func() { remote, re = Remote(a, target).Connect(ctx); close(done) }()
-	bridge, e := Bridge(b, gateway).Connect(ctx)
+	var targetOptions, bridgeOptions channel.Options
+	target.Register(&targetOptions)
+	gateway.Register(&bridgeOptions)
+	go func() { remote, re = channel.Target(a, targetOptions).Connect(ctx); close(done) }()
+	bridge, e := channel.Client(b, bridgeOptions).Connect(ctx)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -48,7 +51,7 @@ func pair(t *testing.T, rules []string) (*Target, *Gateway, *channel, *channel) 
 		t.Fatal(re)
 	}
 	t.Cleanup(func() { remote.Close(); bridge.Close() })
-	return target, gateway, remote.(*channel), bridge.(*channel)
+	return target, gateway, remote.(*channel.Conn), bridge.(*channel.Conn)
 }
 func proxyClient(t *testing.T, target *Target) *http.Client {
 	t.Helper()
@@ -166,7 +169,7 @@ func TestHalfClose(t *testing.T) {
 	}()
 	_, _, remote, _ := pair(t, []string{"127.0.0.1:*"})
 	addr := listener.Addr().(*net.TCPAddr)
-	c, e := remote.dial(context.Background(), "127.0.0.1", addr.Port, "connect")
+	c, e := remote.Dial(context.Background(), channel.KindConnect, "127.0.0.1", addr.Port, 0)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -264,7 +267,7 @@ func TestUpstreamHTTPAndCONNECT(t *testing.T) {
 		t.Fatalf("%q %v", b, e)
 	}
 	addr := echo.Addr().(*net.TCPAddr)
-	c, e := remote.dial(context.Background(), "127.0.0.1", addr.Port, "connect")
+	c, e := remote.Dial(context.Background(), channel.KindConnect, "127.0.0.1", addr.Port, 0)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -306,41 +309,6 @@ func TestProxyEnvironment(t *testing.T) {
 		t.Fatal("not a startup snapshot")
 	}
 }
-func TestStreamLimitsAndValidation(t *testing.T) {
-	_, _, remote, bridge := pair(t, []string{"example.com:443"})
-	var streams []*stream
-	for i := 0; i < maxStreams; i++ {
-		s, e := remote.newStream(remote.next.Add(1))
-		if e != nil {
-			t.Fatal(e)
-		}
-		streams = append(streams, s)
-	}
-	if _, e := remote.newStream(remote.next.Add(1)); e == nil {
-		t.Fatal("limit not enforced")
-	}
-	for _, s := range streams {
-		s.stop()
-	}
-	s, e := bridge.newStream(1)
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer s.stop()
-	for _, tc := range []struct {
-		kind string
-		f    frame
-	}{
-		{"data", frame{ID: 1, Data: "??"}}, {"data", frame{ID: 1, Data: strings.Repeat("A", 24*1024)}},
-		{"window", frame{ID: 1, Bytes: 1}}, {"window", frame{ID: 1, Bytes: -1}},
-		{"open", frame{ID: 0}}, {"unknown", frame{ID: 1}},
-	} {
-		if bridge.handle(tc.kind, tc.f) == nil {
-			t.Fatalf("accepted %s", tc.kind)
-		}
-	}
-}
-
 func TestHTTPSUpstream(t *testing.T) {
 	echo, e := net.Listen("tcp4", "127.0.0.1:0")
 	if e != nil {
@@ -390,7 +358,7 @@ func TestHTTPSUpstream(t *testing.T) {
 	if e != nil || string(b) != "HTTPS upstream" {
 		t.Fatalf("%q %v", b, e)
 	}
-	c, e := remote.dial(context.Background(), "allowed.example", 443, "connect")
+	c, e := remote.Dial(context.Background(), channel.KindConnect, "allowed.example", 443, 0)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -402,53 +370,6 @@ func TestHTTPSUpstream(t *testing.T) {
 		t.Fatalf("%q %v", b, e)
 	}
 }
-func TestBlockedStreamDeadline(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	mux := &channel{ctx: ctx, cancel: cancel, streams: map[uint64]*stream{}, high: make(chan packet, 1), data: make(chan packet, 1)}
-	s, e := mux.newStream(1)
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer s.stop()
-	c := &streamConn{s: s}
-	c.SetWriteDeadline(time.Now().Add(20 * time.Millisecond))
-	// The data writer is stalled: completion must respect the caller's deadline.
-	_, e = c.Write([]byte("pending"))
-	if !errors.Is(e, os.ErrDeadlineExceeded) {
-		t.Fatalf("deadline: %v", e)
-	}
-}
-
-func TestNegotiationMismatch(t *testing.T) {
-	a, b := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	target, e := NewTarget()
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer target.Close()
-	done := make(chan error, 1)
-	go func() { _, e := Remote(a, target).Connect(ctx); done <- e }()
-	peer, e := b.Connect(ctx)
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer peer.Close()
-	if e = writeFrame(ctx, peer, "hello", frame{Version: 2}); e != nil {
-		t.Fatal(e)
-	}
-	select {
-	case e = <-done:
-		if e == nil {
-			t.Fatal("mismatch accepted")
-		}
-	case <-ctx.Done():
-		t.Fatal("negotiation did not fail")
-	}
-}
-
 func TestConcurrentConnectionLimit(t *testing.T) {
 	listener, e := net.Listen("tcp4", "127.0.0.1:0")
 	if e != nil {
@@ -470,11 +391,11 @@ func TestConcurrentConnectionLimit(t *testing.T) {
 	port := listener.Addr().(*net.TCPAddr).Port
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	connections := make(chan net.Conn, maxStreams)
+	connections := make(chan net.Conn, channel.MaxStreams)
 	var wg sync.WaitGroup
-	for i := 0; i < maxStreams; i++ {
+	for i := 0; i < channel.MaxStreams; i++ {
 		wg.Go(func() {
-			c, e := remote.dial(ctx, "127.0.0.1", port, "connect")
+			c, e := remote.Dial(ctx, channel.KindConnect, "127.0.0.1", port, 0)
 			if e != nil {
 				t.Error(e)
 				return
@@ -487,10 +408,10 @@ func TestConcurrentConnectionLimit(t *testing.T) {
 		return
 	}
 	status, _ := g.Status(StatusInput{})
-	if status.ActiveConnections != maxStreams {
+	if status.ActiveConnections != channel.MaxStreams {
 		t.Fatalf("active %d", status.ActiveConnections)
 	}
-	if c, e := remote.dial(ctx, "127.0.0.1", port, "connect"); e == nil {
+	if c, e := remote.Dial(ctx, channel.KindConnect, "127.0.0.1", port, 0); e == nil {
 		c.Close()
 		t.Fatal("capacity exceeded")
 	}
@@ -518,7 +439,7 @@ func TestIdleHTTPConnectionLimit(t *testing.T) {
 			c.Close()
 		}
 	}()
-	for i := 0; i < maxStreams; i++ {
+	for i := 0; i < channel.MaxStreams; i++ {
 		c, e := net.DialTimeout("tcp", u.Host, time.Second)
 		if e != nil {
 			t.Fatal(e)

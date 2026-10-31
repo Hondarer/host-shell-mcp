@@ -67,6 +67,9 @@ If none of `--mcp`, `bridge` and `--version` is given, it prints the usage to st
 | `--unset-env` | Environment variable name globs (comma-separated, can be repeated) | None | Environment variables not passed to child processes |
 | `--redact` | None | | Mask secrets matching known patterns in tool output |
 | `--redact-pattern` | Regular expression (can be repeated) | None | Additional regular expression patterns to mask |
+| `--client-proxy` | None | | With the bridge's `--proxy`, enables the [HTTP proxy through the client](client-proxy.md) |
+| `--allow-forward-local` | None | | Permits the bridge's local forwards and SOCKS5 to connect from the target ([Port forwarding](port-forward.md)) |
+| `--allow-forward-remote` | None | | Permits the bridge's remote forwards to listen on the target's loopback ([Port forwarding](port-forward.md)) |
 
 Table: Startup options
 
@@ -124,6 +127,8 @@ Tools without the `readOnlyHint` annotation are not published. However, `net_req
 
 - `net_request_http`: only the methods `GET`, `HEAD` and `OPTIONS` are allowed, and `save_to` cannot be used
 - `net_exchange`: `send` cannot be used (only receiving data the destination sends first)
+
+`--read-only` and `--tools` select the published MCP tools; they do not restrict traffic of the [HTTP proxy through the client](client-proxy.md) or [port forwarding](port-forward.md). Port forwarding is permitted only by `--allow-forward-local` and `--allow-forward-remote`. Even on a `--read-only` target, `--allow-forward-local` lets a local forward write to services on the target.
 
 ### User confirmation (--confirm)
 
@@ -420,6 +425,9 @@ Reading and writing in `base64` mode convert neither encodings nor line endings.
 | | [`reg_delete`](#reg_delete) | Deletes registry keys and values (Windows only) |
 | Transfer with the local machine | [`transfer_push`](#transfer_push) | Transfers files from the local machine to the target (only through `bridge`) |
 | | [`transfer_pull`](#transfer_pull) | Transfers files from the target to the local machine (only through `bridge`) |
+| Port forwarding | [`forward_status`](port-forward.md#tools-bridge) | Returns forwards and recent connection results (only when `bridge` has forward options) |
+| | [`forward_open`](port-forward.md#tools-bridge) | Creates a port forward (only when `bridge` has destination rules) |
+| | [`forward_close`](port-forward.md#tools-bridge) | Closes a forward created by `forward_open` (only when `bridge` has destination rules) |
 
 Table: Tool list
 
@@ -1179,6 +1187,9 @@ Returns the target's environment, the published tool groups and the policy restr
 | `version`, `go_version` | string | Version of `host-shell` and the Go version it was built with |
 | `tool_groups` | string[] | List of published tool groups |
 | `restrictions` | string[] | List of restrictions in effect (`item: value`, omitted when there are none) |
+| `client_proxy`, `proxy_url_file` | boolean, string | Whether the HTTP proxy through the client is enabled, and the path of its credential URL file |
+| `forward_local`, `forward_remote` | boolean | Port forwarding directions permitted on the target (`--allow-forward-local`, `--allow-forward-remote`) |
+| `remote_forwards` | object[] | Remote forwards listening on the target (`forward_id`, `address`); omitted when there are none |
 
 Table: Output of sys_get_info
 
@@ -1502,6 +1513,10 @@ host-shell bridge [options] -- COMMAND [ARGS...]
 | `--allow-local-path` | Directory (can be repeated) | Local directories file transfers may read and write |
 | `--allow-local-read-path` | Directory (can be repeated) | Local directories `transfer_push` may only read |
 | `--no-transfer` | None | Only relay, without adding the transfer tools (`transfer_push`, `transfer_pull`) |
+| `--proxy`, `--proxy-allow-host` | None, `HOST[:PORT]` (can be repeated) | Enable the [HTTP proxy through the client](client-proxy.md) and allow destinations |
+| `--forward-local`, `--forward-remote` | `[BIND:]PORT:HOST:HOSTPORT` (can be repeated) | Persistent local and remote forwards ([Port forwarding](port-forward.md)) |
+| `--forward-socks` | `[BIND:]PORT` (can be repeated) | Persistent SOCKS5 (requires `--forward-allow-local`) |
+| `--forward-allow-local`, `--forward-allow-remote` | `HOST[:PORT]` (can be repeated) | Destinations allowed for `forward_open` and SOCKS5 |
 
 Table: Options of bridge
 
@@ -1704,3 +1719,7 @@ Table: Values replaced in the audit log
 ## Client proxy
 
 [HTTP proxy through the client](client-proxy.md) describes startup, restrictions, proxy_status, environment precedence, and limits.
+
+## Port forwarding
+
+[Port forwarding over SSH stdio](port-forward.md) describes startup of local forwards, remote forwards and SOCKS5, how requests are matched with permissions, forward_open, forward_close, forward_status, and limits.

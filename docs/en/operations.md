@@ -88,6 +88,9 @@ Keep the following points in mind when configuring restriction options.
 Setting `command=` in the target's `authorized_keys` restricts the dedicated key to running `host-shell`.  
 Even if the key is compromised, interactive shell access and port forwarding are blocked, and all tool calls are recorded in the audit log.
 
+> [!IMPORTANT]
+> host-shell's [HTTP proxy through the client](client-proxy.md) and [port forwarding](port-forward.md) do not use sshd forwarding, so `no-port-forwarding` or `AllowTcpForwarding no` cannot stop them. They are available only when the target is started with `--client-proxy`, `--allow-forward-local`, or `--allow-forward-remote`. To forbid them, leave these options out of `command=`.
+
 ```{.text caption="~hsagent/.ssh/authorized_keys (Linux target)"}
 command="/opt/host-shell/host-shell --mcp",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA... host-shell agent
 ```
@@ -105,6 +108,10 @@ command="/opt/host-shell/host-shell --mcp --read-only --redact",no-pty,no-port-f
 
 `no-pty` disables PTY allocation for the SSH session itself without affecting pseudo-terminals created by `host-shell` for `pty` jobs.  
 Without restriction options, `host-shell` can run arbitrary commands with the connecting user's permissions. Enforce upper privilege bounds via the OS user and `sudoers`.
+
+```{.text caption="~hsagent/.ssh/authorized_keys (permitting remote forwards only)"}
+command="/opt/host-shell/host-shell --mcp --allow-forward-remote",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA... host-shell agent
+```
 
 To pin the command per user in `sshd_config`, use `ForceCommand`.
 
@@ -231,3 +238,5 @@ Written file contents (`content` in `fs_write`) log only character count and SHA
 ## Restricting client network access
 
 [HTTP proxy through the client](client-proxy.md) describes startup, restrictions, proxy_status, environment precedence, and limits.
+
+[Port forwarding](port-forward.md) describes the per-direction permission options, destination restrictions by the target's `--allow-host`, unauthenticated listeners, and audit records.

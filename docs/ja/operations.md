@@ -88,6 +88,9 @@ Table: 制限のオプションの例
 接続先の `authorized_keys` に `command=` を設定すると、専用鍵で実行できるコマンドを `host-shell` に固定できます。  
 万一鍵が漏洩しても、`host-shell` を介さない対話ログインやポート転送を防ぎ、全操作を操作ログに記録できます。
 
+> [!IMPORTANT]
+> host-shell の [クライアント経由 HTTP プロキシ](client-proxy.md) と [ポート転送](port-forward.md) は sshd の転送機能を使わないため、`no-port-forwarding` や `AllowTcpForwarding no` では止められません。これらは接続先の `--client-proxy`、`--allow-forward-local`、`--allow-forward-remote` を指定した場合だけ利用できます。許可しない場合は `command=` にこれらのオプションを書かないでください。
+
 ```{.text caption="~hsagent/.ssh/authorized_keys (Linux の接続先)"}
 command="/opt/host-shell/host-shell --mcp",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA... host-shell agent
 ```
@@ -105,6 +108,10 @@ command="/opt/host-shell/host-shell --mcp --read-only --redact",no-pty,no-port-f
 
 `no-pty` は SSH セッションへの PTY 割り当てを禁止する指定であり、`host-shell` が `pty` ジョブ用に作成する疑似端末には影響しません。  
 なお、制限オプションを付けない場合、`host-shell` 自身は接続ユーザーの権限で任意のコマンドを実行できます。権限の上限は OS ユーザーと sudoers で制御してください。
+
+```{.text caption="~hsagent/.ssh/authorized_keys (リモート転送だけを許可する例)"}
+command="/opt/host-shell/host-shell --mcp --allow-forward-remote",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA... host-shell agent
+```
 
 ユーザー単位で固定する場合は `sshd_config` の `ForceCommand` も使用できます。
 
@@ -231,3 +238,5 @@ jq -c 'select(.tool | IN("exec_run", "job_start", "job_write", "exec_sudo", "fs_
 ## クライアント側ネットワークの制限
 
 [クライアント経由 HTTP プロキシ](client-proxy.md) に起動設定、制限、proxy_status、環境変数の優先順位、上限を記載しています。
+
+[ポート転送](port-forward.md) に、方向ごとの許可オプション、接続先の `--allow-host` による宛先の制限、待ち受けの無認証、操作ログへの記録を記載しています。

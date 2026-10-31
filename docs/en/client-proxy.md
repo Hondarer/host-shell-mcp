@@ -1,6 +1,8 @@
 # HTTP proxy through the client
 
-When a target cannot access external services directly, its HTTP proxy aware applications can use the client bridge's network. Traffic shares the existing SSH standard input/output session; SSH port forwarding is unnecessary. The feature is disabled by default.
+When a target cannot access external services directly, its HTTP proxy aware applications can use the client bridge's network. Traffic shares the existing SSH standard input/output session; SSH port forwarding is unnecessary. The feature is disabled by default. For other TCP traffic or the opposite direction, use [port forwarding](port-forward.md).
+
+The feature does not use sshd forwarding, so sshd `no-port-forwarding` or `AllowTcpForwarding no` cannot stop it. It is available only when the target is started with `--client-proxy`.
 
 ## Startup
 
@@ -46,7 +48,7 @@ For a denial, inspect host, port, and reason, then add only the required destina
 
 ## Limits and shutdown
 
-The session supports 32 connections, 16 KiB of decoded data per frame, and a 64 KiB directional window. MCP and relay control take priority over data, with bounded queues. Connection and HTTP header timeouts are 30 seconds; inactivity is 5 minutes; shutdown waits up to 5 seconds.
+The session supports 64 connections (shared with [port forwarding](port-forward.md)), 16 KiB of decoded data per frame, and a 64 KiB directional window. MCP and relay control take priority over data, with bounded queues. Connection and HTTP header timeouts are 30 seconds; inactivity is 5 minutes; shutdown waits up to 5 seconds.
 
 HTTP errors normally use 403 for denied destinations, 407 for authentication, 503 for capacity, 502 for connection failures, and 504 for establishment timeouts. Failures after successful CONNECT close the connection. Session disconnection closes the listener and all relay connections.
 

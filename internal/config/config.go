@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hondarer/host-shell-mcp/internal/clientproxy"
+	"github.com/hondarer/host-shell-mcp/internal/forward"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
@@ -16,6 +17,9 @@ import (
 type Config struct {
 	ClientProxy bool
 	Proxy       *clientproxy.Target
+	// ForwardLocal and ForwardRemote permit the bridge's port forwards (--allow-forward-local/--allow-forward-remote).
+	ForwardLocal, ForwardRemote bool
+	Forward                     *forward.Target
 	// MaxOutputBytes caps individual output streams (stdout, stderr, file content, etc.);
 	// longer output is middle-truncated, keeping its head and tail.
 	MaxOutputBytes int

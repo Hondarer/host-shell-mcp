@@ -12,6 +12,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/hondarer/host-shell-mcp/internal/forward"
 	"github.com/hondarer/host-shell-mcp/internal/proc"
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 	"github.com/hondarer/host-shell-mcp/internal/version"
@@ -91,26 +92,30 @@ func (in ExecSudoInput) CommandArgs(string) (programs []string, text string) {
 
 // SysGetInfoOutput is the output of sys_get_info.
 type SysGetInfoOutput struct {
-	ClientProxy  bool     `json:"client_proxy"`
-	ProxyURLFile string   `json:"proxy_url_file,omitempty"`
-	OS           string   `json:"os"`
-	Arch         string   `json:"arch"`
-	Hostname     string   `json:"hostname"`
-	User         string   `json:"user"`
-	UID          string   `json:"uid"`
-	Home         string   `json:"home"`
-	Cwd          string   `json:"cwd"`
-	PathSep      string   `json:"path_separator"`
-	DefaultShell string   `json:"default_shell"`
-	ConsoleEnc   string   `json:"console_encoding" jsonschema:"default command I/O encoding (system for output_encoding/stdin_encoding)"`
-	FileEnc      string   `json:"file_encoding" jsonschema:"default text file encoding (system for charset)"`
-	NumCPU       int      `json:"num_cpu"`
-	PID          int      `json:"pid"`
-	Executable   string   `json:"executable"`
-	Version      string   `json:"version" jsonschema:"host-shell version"`
-	GoVersion    string   `json:"go_version"`
-	ToolGroups   []string `json:"tool_groups" jsonschema:"enabled tool groups in this session (see help)"`
-	Restrictions []string `json:"restrictions,omitempty" jsonschema:"active policy restrictions configured on this server"`
+	ClientProxy  bool   `json:"client_proxy"`
+	ProxyURLFile string `json:"proxy_url_file,omitempty"`
+	// Port forwarding permitted by this host; remote forwards are addresses the bridge listens on here.
+	ForwardLocal   bool                    `json:"forward_local" jsonschema:"the bridge's local forwards and SOCKS5 may connect from this host (--allow-forward-local)"`
+	ForwardRemote  bool                    `json:"forward_remote" jsonschema:"the bridge's remote forwards may listen on this host (--allow-forward-remote)"`
+	RemoteForwards []forward.RemoteForward `json:"remote_forwards,omitempty" jsonschema:"remote forwards listening on this host; connect to address to reach the bridge's destination"`
+	OS             string                  `json:"os"`
+	Arch           string                  `json:"arch"`
+	Hostname       string                  `json:"hostname"`
+	User           string                  `json:"user"`
+	UID            string                  `json:"uid"`
+	Home           string                  `json:"home"`
+	Cwd            string                  `json:"cwd"`
+	PathSep        string                  `json:"path_separator"`
+	DefaultShell   string                  `json:"default_shell"`
+	ConsoleEnc     string                  `json:"console_encoding" jsonschema:"default command I/O encoding (system for output_encoding/stdin_encoding)"`
+	FileEnc        string                  `json:"file_encoding" jsonschema:"default text file encoding (system for charset)"`
+	NumCPU         int                     `json:"num_cpu"`
+	PID            int                     `json:"pid"`
+	Executable     string                  `json:"executable"`
+	Version        string                  `json:"version" jsonschema:"host-shell version"`
+	GoVersion      string                  `json:"go_version"`
+	ToolGroups     []string                `json:"tool_groups" jsonschema:"enabled tool groups in this session (see help)"`
+	Restrictions   []string                `json:"restrictions,omitempty" jsonschema:"active policy restrictions configured on this server"`
 }
 
 func (d *Deps) sysGetInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, SysGetInfoOutput, error) {
@@ -129,6 +134,10 @@ func (d *Deps) sysGetInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp
 	if d.Cfg.Proxy != nil {
 		out.ClientProxy = true
 		out.ProxyURLFile = d.Cfg.Proxy.File
+	}
+	if d.Cfg.Forward != nil {
+		info := d.Cfg.Forward.Info()
+		out.ForwardLocal, out.ForwardRemote, out.RemoteForwards = info.Local, info.Remote, info.RemoteForwards
 	}
 	out.Hostname, _ = os.Hostname()
 	out.Cwd, _ = os.Getwd()

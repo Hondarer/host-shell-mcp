@@ -1,3 +1,4 @@
+// Package clientproxy carries authenticated HTTP proxy traffic over the client channel.
 package clientproxy
 
 import (
@@ -6,17 +7,18 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/url"
-	"path"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/hondarer/host-shell-mcp/internal/channel"
+	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
 type Event struct {
@@ -42,12 +44,13 @@ type Status struct {
 	NextSeq           uint64   `json:"next_seq"`
 	Truncated         bool     `json:"truncated"`
 }
+
+// Gateway is the bridge side of the HTTP proxy: it checks destinations and connects on the client network.
 type Gateway struct {
-	rules     []string
+	rules     policy.NameRules
+	history   channel.History[Event]
 	mu        sync.Mutex
-	events    []Event
-	seq       uint64
-	mux       *channel
+	mux       *channel.Conn
 	proxy     func(*http.Request) (*url.URL, error)
 	tlsConfig *tls.Config
 }
@@ -56,97 +59,64 @@ func NewGateway(rules []string) (*Gateway, error) {
 	if len(rules) == 0 {
 		return nil, errors.New("--proxy requires --proxy-allow-host")
 	}
-	for _, r := range rules {
-		if strings.ContainsAny(r, "/\r\n\t @") || strings.HasPrefix(r, "unix:") || r == "" {
-			return nil, fmt.Errorf("invalid proxy host rule %q", r)
-		}
-		host, port := splitRule(r)
-		if host == "" || strings.HasSuffix(r, ":") {
-			return nil, errors.New("empty proxy host or port")
-		}
-		if _, e := path.Match(host, "example.com"); e != nil {
-			return nil, errors.New("invalid host glob")
-		}
-		if port != "" {
-			if _, e := path.Match(port, "443"); e != nil {
-				return nil, e
-			}
-		}
+	parsed, e := policy.ParseNameRules("--proxy-allow-host", rules)
+	if e != nil {
+		return nil, e
 	}
-	return &Gateway{rules: append([]string{}, rules...), proxy: snapshotProxy(), tlsConfig: &tls.Config{MinVersion: tls.VersionTLS12}}, nil
+	return &Gateway{rules: parsed, proxy: snapshotProxy(), tlsConfig: &tls.Config{MinVersion: tls.VersionTLS12}}, nil
 }
-func splitRule(r string) (string, string) {
-	if h, p, e := net.SplitHostPort(r); e == nil {
-		return strings.Trim(h, "[]"), p
-	}
-	if strings.Count(r, ":") == 1 {
-		h, p, _ := strings.Cut(r, ":")
-		return h, p
-	}
-	return strings.Trim(r, "[]"), ""
+
+// Register enables the HTTP proxy on the bridge's channel options.
+func (g *Gateway) Register(o *channel.Options) {
+	o.Enable(channel.HTTPProxy)
+	o.Handle(channel.KindHTTP, g.open)
+	o.Handle(channel.KindConnect, g.open)
+	o.OnReport(g.report)
+	o.OnAttach(func(c *channel.Conn) { g.mu.Lock(); g.mux = c; g.mu.Unlock() })
 }
-func (g *Gateway) attach(c *channel) { g.mu.Lock(); g.mux = c; g.mu.Unlock() }
-func (g *Gateway) allowed(host string, port int) bool {
-	for _, r := range g.rules {
-		h, p := splitRule(r)
-		hm, _ := path.Match(strings.ToLower(h), strings.ToLower(host))
-		pm, _ := path.Match(p, strconv.Itoa(port))
-		if hm && (p == "" || pm) {
-			return true
-		}
+func (g *Gateway) allowed(host string, port int) bool { return g.rules.Allow(host, port) }
+func (g *Gateway) report(kind string, f channel.Frame) {
+	if f.Forward != 0 {
+		return
 	}
-	return false
+	switch kind {
+	case "limit":
+		g.record(0, f.Host, f.Port, "denied", "connection limit reached")
+	case "auth_failed":
+		g.record(0, "", 0, "failed", "authentication")
+	}
 }
 func (g *Gateway) record(id uint64, host string, port int, status, reason string) {
 	// Reasons are fixed strings, never raw network errors containing credentials.
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	if status == "failed" && reason == "authentication" && len(g.events) > 0 {
-		last := &g.events[len(g.events)-1]
-		if last.Reason == reason {
-			last.Count++
-			return
+	if status == "failed" && reason == "authentication" && g.history.Merge(func(last *Event) bool {
+		if last.Reason != reason {
+			return false
 		}
+		last.Count++
+		return true
+	}) {
+		return
 	}
-	g.seq++
-	e := Event{Seq: g.seq, Time: time.Now().Format(time.RFC3339), ConnectionID: id, Host: host, Port: port, Status: status, Reason: reason, Count: 1}
-	g.events = append(g.events, e)
-	if len(g.events) > 100 {
-		g.events = append([]Event{}, g.events[len(g.events)-100:]...)
-	}
+	g.history.Add(func(seq uint64) Event {
+		return Event{Seq: seq, Time: time.Now().Format(time.RFC3339), ConnectionID: id, Host: host, Port: port, Status: status, Reason: reason, Count: 1}
+	})
 	log.Printf("proxy: id=%d host=%q port=%d status=%s reason=%s", id, host, port, status, reason)
 }
 func (g *Gateway) Status(in StatusInput) (Status, error) {
-	if in.Limit == 0 {
-		in.Limit = 20
+	events, next, truncated, e := g.history.Page(in.AfterSeq, in.Limit)
+	if e != nil {
+		return Status{}, e
 	}
-	if in.Limit < 1 || in.Limit > 100 {
-		return Status{}, errors.New("limit must be 1 to 100")
-	}
+	o := Status{Enabled: true, State: "disconnected", AllowHosts: append([]string{}, g.rules...), Events: events, NextSeq: next, Truncated: truncated}
 	g.mu.Lock()
-	defer g.mu.Unlock()
-	o := Status{Enabled: true, State: "disconnected", AllowHosts: append([]string{}, g.rules...), Events: []Event{}, NextSeq: in.AfterSeq}
-	if g.mux != nil {
+	mux := g.mux
+	g.mu.Unlock()
+	if mux != nil {
 		select {
-		case <-g.mux.ctx.Done():
+		case <-mux.Done():
 		default:
 			o.State = "ready"
-			g.mux.mu.Lock()
-			o.ActiveConnections = len(g.mux.streams)
-			g.mux.mu.Unlock()
-		}
-	}
-	if len(g.events) > 0 && in.AfterSeq < g.events[0].Seq-1 {
-		o.Truncated = true
-	}
-	for _, e := range g.events {
-		if e.Seq > in.AfterSeq {
-			if len(o.Events) == in.Limit {
-				o.Truncated = true
-				break
-			}
-			o.Events = append(o.Events, e)
-			o.NextSeq = e.Seq
+			o.ActiveConnections = mux.Active()
 		}
 	}
 	return o, nil
@@ -154,38 +124,41 @@ func (g *Gateway) Status(in StatusInput) (Status, error) {
 func validDestination(host string, port int) bool {
 	return host != "" && len(host) <= 253 && !strings.ContainsAny(host, "/\\\r\n\t @") && port > 0 && port <= 65535
 }
-func (g *Gateway) open(ctx context.Context, s *stream, f frame) {
-	if !validDestination(f.Host, f.Port) || (f.Kind != "http" && f.Kind != "connect") || !g.allowed(f.Host, f.Port) {
-		g.record(f.ID, f.Host, f.Port, "denied", "destination not allowed")
-		s.mux.send("open_result", frame{ID: f.ID, Error: "destination not allowed"})
-		s.stop()
+func (g *Gateway) open(ctx context.Context, in *channel.Incoming) {
+	if !validDestination(in.Host, in.Port) || !g.allowed(in.Host, in.Port) {
+		g.record(in.ID, in.Host, in.Port, "denied", "destination not allowed")
+		in.Reject(channel.CodeNotAllowed)
 		return
 	}
-	g.record(f.ID, f.Host, f.Port, "allowed", "destination allowed")
-	conn := &streamConn{s: s}
-	defer conn.Close()
-	if f.Kind == "http" {
-		s.mux.send("open_result", frame{ID: f.ID})
-		g.serveHTTP(ctx, conn, f)
+	g.record(in.ID, in.Host, in.Port, "allowed", "destination allowed")
+	if in.Kind == channel.KindHTTP {
+		conn, e := in.Accept()
+		if e != nil {
+			return
+		}
+		defer conn.Close()
+		g.serveHTTP(ctx, conn, in)
 		return
 	}
 	dialCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	external, e := g.connect(dialCtx, f.Host, f.Port)
+	external, e := g.connect(dialCtx, in.Host, in.Port)
 	if e != nil {
-		g.record(f.ID, f.Host, f.Port, "failed", "upstream connection failed")
-		s.mux.send("open_result", frame{ID: f.ID, Error: "upstream connection failed"})
+		g.record(in.ID, in.Host, in.Port, "failed", "upstream connection failed")
+		in.Reject(channel.CodeFailed)
 		return
 	}
 	defer external.Close()
 	stopClose := context.AfterFunc(ctx, func() { external.Close() })
 	defer stopClose()
-	if s.mux.send("open_result", frame{ID: f.ID}) != nil {
+	conn, e := in.Accept()
+	if e != nil {
 		return
 	}
+	defer conn.Close()
 	tunnel(conn, external)
 }
-func (g *Gateway) serveHTTP(ctx context.Context, c net.Conn, f frame) {
+func (g *Gateway) serveHTTP(ctx context.Context, c net.Conn, f *channel.Incoming) {
 	tr := &http.Transport{Proxy: g.proxy, DisableKeepAlives: true, TLSClientConfig: g.tlsConfig.Clone(), ResponseHeaderTimeout: 30 * time.Second}
 	defer tr.CloseIdleConnections()
 	headerLimit := &io.LimitedReader{R: c, N: 32*1024 + 1}

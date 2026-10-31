@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/hondarer/host-shell-mcp/internal/audit"
+	"github.com/hondarer/host-shell-mcp/internal/channel"
 	"github.com/hondarer/host-shell-mcp/internal/clientproxy"
 	"github.com/hondarer/host-shell-mcp/internal/config"
 	"github.com/hondarer/host-shell-mcp/internal/server"
@@ -33,7 +34,9 @@ func TestProxySessionIntegration(t *testing.T) {
 	defer stop()
 	rs, rc := mcp.NewInMemoryTransports()
 	remoteDone := make(chan error, 1)
-	go func() { remoteDone <- srv.Run(ctx, clientproxy.Remote(rs, target)) }()
+	var targetOptions channel.Options
+	target.Register(&targetOptions)
+	go func() { remoteDone <- srv.Run(ctx, channel.Target(rs, targetOptions)) }()
 	ls, lc := mcp.NewInMemoryTransports()
 	bridgeDone := make(chan error, 1)
 	go func() {

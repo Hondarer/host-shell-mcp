@@ -67,6 +67,9 @@ host-shell --version
 | `--unset-env` | 環境変数名 glob (カンマ区切り、複数指定可) | なし | 子プロセスへ引き継がない環境変数 |
 | `--redact` | なし | | ツール出力に含まれる既知パターンの機密情報を伏せ字化する |
 | `--redact-pattern` | 正規表現 (複数指定可) | なし | 追加で伏せ字化する正規表現パターン |
+| `--client-proxy` | なし | | bridge の `--proxy` と組み合わせて [クライアント経由 HTTP プロキシ](client-proxy.md) を有効にする |
+| `--allow-forward-local` | なし | | bridge のローカル転送と SOCKS5 による接続先からの発信を許可する ([ポート転送](port-forward.md)) |
+| `--allow-forward-remote` | なし | | bridge のリモート転送による接続先のループバックでの待ち受けを許可する ([ポート転送](port-forward.md)) |
 
 Table: 起動オプション
 
@@ -124,6 +127,8 @@ Table: --tools の例
 
 - `net_request_http`: メソッドは `GET`、`HEAD`、`OPTIONS` のみ許可し、`save_to` は使用不可
 - `net_exchange`: `send` は使用不可 (接続先が先に送信するデータの受信のみ)
+
+`--read-only` と `--tools` は MCP ツールの公開範囲の指定であり、[クライアント経由 HTTP プロキシ](client-proxy.md) と [ポート転送](port-forward.md) の通信を制限しません。ポート転送は `--allow-forward-local`、`--allow-forward-remote` を指定した場合だけ許可されます。`--read-only` の接続先でも、`--allow-forward-local` を指定するとローカル転送で接続先のサービスへ書き込めます。
 
 ### 利用者の確認 (--confirm)
 
@@ -420,6 +425,9 @@ Table: 文字コードの変換の対象
 | | [`reg_delete`](#reg_delete) | レジストリ キー・値を削除する (Windows のみ) |
 | 手元との転送 | [`transfer_push`](#transfer_push) | ローカルから接続先へファイルを転送する (`bridge` 経由時のみ) |
 | | [`transfer_pull`](#transfer_pull) | 接続先からローカルへファイルを転送する (`bridge` 経由時のみ) |
+| ポート転送 | [`forward_status`](port-forward.md#ツール-bridge) | 転送の一覧と接続結果の履歴を返す (`bridge` で転送の指定がある場合のみ) |
+| | [`forward_open`](port-forward.md#ツール-bridge) | ポート転送を作成する (`bridge` で許可規則がある場合のみ) |
+| | [`forward_close`](port-forward.md#ツール-bridge) | `forward_open` で作成した転送を閉じる (`bridge` で許可規則がある場合のみ) |
 
 Table: ツール一覧
 
@@ -1180,6 +1188,9 @@ Table: exec_sudo の引数
 | `version`、`go_version` | string | `host-shell` のバージョンとビルド時の Go バージョン |
 | `tool_groups` | string[] | 公開中のツール グループ一覧 |
 | `restrictions` | string[] | 適用中の制限一覧 (`項目: 値`、制限がない場合は省略) |
+| `client_proxy`、`proxy_url_file` | boolean、string | クライアント経由 HTTP プロキシの有効状態と認証 URL ファイルのパス |
+| `forward_local`、`forward_remote` | boolean | 接続先で許可されたポート転送の方向 (`--allow-forward-local`、`--allow-forward-remote`) |
+| `remote_forwards` | object[] | 接続先で待ち受け中のリモート転送 (`forward_id`、`address`)。待ち受けがない場合は省略 |
 
 Table: sys_get_info の出力
 
@@ -1503,6 +1514,10 @@ host-shell bridge [options] -- COMMAND [ARGS...]
 | `--allow-local-path` | ディレクトリ (複数指定可) | ファイル転送でローカル側の読み書きを許可するディレクトリ |
 | `--allow-local-read-path` | ディレクトリ (複数指定可) | `transfer_push` での読み取りのみを許可するローカル ディレクトリ |
 | `--no-transfer` | なし | 転送ツール (`transfer_push`、`transfer_pull`) を追加せず中継のみを行う |
+| `--proxy`、`--proxy-allow-host` | なし、`HOST[:PORT]` (複数指定可) | [クライアント経由 HTTP プロキシ](client-proxy.md) を有効にし、宛先を許可する |
+| `--forward-local`、`--forward-remote` | `[BIND:]PORT:HOST:HOSTPORT` (複数指定可) | 常設のローカル転送・リモート転送 ([ポート転送](port-forward.md)) |
+| `--forward-socks` | `[BIND:]PORT` (複数指定可) | 常設の SOCKS5 (`--forward-allow-local` が必要) |
+| `--forward-allow-local`、`--forward-allow-remote` | `HOST[:PORT]` (複数指定可) | `forward_open` と SOCKS5 で許可する宛先 |
 
 Table: bridge のオプション
 
@@ -1705,3 +1720,7 @@ Table: 操作ログで置き換える値
 ## クライアントプロキシ
 
 [クライアント経由 HTTP プロキシ](client-proxy.md) に起動設定、制限、proxy_status、環境変数の優先順位、上限を記載しています。
+
+## ポート転送
+
+[SSH stdio 経由のポート転送](port-forward.md) に、ローカル転送・リモート転送・SOCKS5 の起動設定、要求と許可の照合、forward_open・forward_close・forward_status、上限を記載しています。

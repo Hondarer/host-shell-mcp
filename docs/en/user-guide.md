@@ -45,7 +45,7 @@ flowchart TB
     hs -->|"process start, file operations"| os
 ```
 
-Even across jump hosts, port forwarding (`-L`, `-R`, `-D`, `ProxyJump`, `-W`) and SFTP are not used. Each hop runs a nested `ssh` command, so connections work even when `sshd` sets `AllowTcpForwarding no`.
+Even across jump hosts, SSH port forwarding (`-L`, `-R`, `-D`, `ProxyJump`, `-W`) and SFTP are not used. Each hop runs a nested `ssh` command, so connections work even when `sshd` sets `AllowTcpForwarding no`.
 
 - A single SSH connection stays open for the entire MCP session, avoiding per-call reconnection overhead even over multi-hop routes.
 - `host-shell` normalizes differences between Windows and Linux (shells, quoting, path separators), allowing the agent to invoke the same tools with identical arguments.
@@ -484,3 +484,5 @@ If the issue persists, inspect the failed tool call and error message in the tar
 ## External access through the client
 
 [HTTP proxy through the client](client-proxy.md) describes startup, restrictions, proxy_status, environment precedence, and limits.
+
+To forward ports where SSH port forwarding is unavailable, see [Port forwarding](port-forward.md). It provides local forwards, remote forwards and SOCKS5 over the standard input/output of the same SSH session, without SSH port forwarding (`-L`, `-R`, `-D`).

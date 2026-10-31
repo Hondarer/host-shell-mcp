@@ -22,7 +22,9 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/hondarer/host-shell-mcp/internal/channel"
 	"github.com/hondarer/host-shell-mcp/internal/clientproxy"
+	"github.com/hondarer/host-shell-mcp/internal/forward"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/tools"
 	"github.com/hondarer/host-shell-mcp/internal/version"
@@ -37,7 +39,8 @@ on the remote host, for example:
 
 All remote tools are passed through. transfer_push and transfer_pull copy files and
 directories directly between this machine and the remote host without passing their
-contents through the agent's context.
+contents through the agent's context. --forward-* options forward TCP ports over the same
+session; the target must permit them with --allow-forward-local or --allow-forward-remote.
 
 options:
 `
@@ -46,6 +49,10 @@ options:
 type Options struct {
 	Proxy           bool
 	ProxyAllowHosts []string
+	// Forwards are persistent forwards; ForwardAllowLocal and ForwardAllowRemote bound forward_open and SOCKS.
+	Forwards           []forward.Spec
+	ForwardAllowLocal  []string
+	ForwardAllowRemote []string
 	// Command starts host-shell on the target.
 	Command []string
 	// AllowLocalPaths restricts local read/write access to these directories (empty means unrestricted).
@@ -66,6 +73,18 @@ func Main(args []string) error {
 	var opt Options
 	fs.BoolVar(&opt.Proxy, "proxy", false, "enable target HTTP/HTTPS proxy over this session")
 	fs.Func("proxy-allow-host", "allow proxy destination host glob with optional :port (repeatable; required with --proxy)", func(v string) error { opt.ProxyAllowHosts = append(opt.ProxyAllowHosts, v); return nil })
+	spec := func(direction string) func(string) error {
+		return func(v string) error {
+			s, err := forward.ParseSpec(direction, v)
+			opt.Forwards = append(opt.Forwards, s)
+			return err
+		}
+	}
+	fs.Func("forward-local", "listen on this machine and connect from the target: [BIND:]PORT:HOST:HOSTPORT, BIND 127.0.0.1 or [::1] (repeatable)", spec(forward.Local))
+	fs.Func("forward-remote", "listen on the target and connect from this machine: [BIND:]PORT:HOST:HOSTPORT (repeatable)", spec(forward.Remote))
+	fs.Func("forward-socks", "serve SOCKS5 on this machine, connecting from the target: [BIND:]PORT (repeatable; requires --forward-allow-local)", spec(forward.SOCKS))
+	fs.Func("forward-allow-local", "allow forward_open local forwards and SOCKS destinations: host glob with optional :port (repeatable)", func(v string) error { opt.ForwardAllowLocal = append(opt.ForwardAllowLocal, v); return nil })
+	fs.Func("forward-allow-remote", "allow forward_open remote forwards to this destination: host glob with optional :port (repeatable)", func(v string) error { opt.ForwardAllowRemote = append(opt.ForwardAllowRemote, v); return nil })
 	fs.Func("allow-local-path", "restrict local file transfers (read/write) to this directory (repeatable)", func(v string) error {
 		opt.AllowLocalPaths = append(opt.AllowLocalPaths, v)
 		return nil
@@ -102,6 +121,7 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	var channelOptions channel.Options
 	var gateway *clientproxy.Gateway
 	if opt.Proxy {
 		var err error
@@ -109,9 +129,24 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 		if err != nil {
 			return err
 		}
-		remote = clientproxy.Bridge(remote, gateway)
+		gateway.Register(&channelOptions)
 	} else if len(opt.ProxyAllowHosts) > 0 {
 		return errors.New("--proxy-allow-host requires --proxy")
+	}
+	forwards, err := forward.NewManager(opt.Forwards, opt.ForwardAllowLocal, opt.ForwardAllowRemote)
+	if err != nil {
+		return err
+	}
+	if forwards.Enabled() {
+		// Local listeners are bound before the target starts so that a busy port fails fast.
+		if err := forwards.Bind(); err != nil {
+			return err
+		}
+		defer forwards.Close()
+		forwards.Register(&channelOptions)
+	}
+	if len(channelOptions.Features) > 0 {
+		remote = channel.Client(remote, channelOptions)
 	}
 	localPolicy, err := policy.New(policy.Options{AllowPaths: opt.AllowLocalPaths, AllowReadPaths: opt.AllowLocalReadPaths}, nil)
 	if err != nil {
@@ -155,6 +190,9 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 	if gateway != nil {
 		instructions += "\nClient proxy enabled: use proxy_status to inspect allowed destinations and recent denials."
 	}
+	if forwards.Enabled() {
+		instructions += "\n" + forwardInstructions(forwards)
+	}
 	if !opt.NoTransfer {
 		instructions += "\n\n" + transferInstructions
 	}
@@ -169,6 +207,9 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 			out, err := gateway.Status(in)
 			return nil, out, err
 		})
+	}
+	if forwards.Enabled() {
+		registerForwardTools(srv, forwards)
 	}
 	if err := relayResources(ctx, cs, srv); err != nil {
 		return err

@@ -59,7 +59,10 @@ internal/tools/        各ツールの実装
   admin.go             proc_kill、svc_*、log_query、disk_list の入出力定義と共通処理
   admin_*.go           OS 別管理実装 (systemd / journald、サービス コントロール マネージャー / イベント ログ)
   registry*.go         reg_read、reg_write、reg_delete (Windows)
-internal/bridge/       host-shell bridge (ローカル中継、transfer_push、transfer_pull)
+internal/bridge/       host-shell bridge (ローカル中継、transfer_push、transfer_pull、転送ツールの公開)
+internal/channel/      SSH stdio 上の多重化チャネル (機能の交渉、双方向のストリーム、フロー制御、診断履歴)
+internal/clientproxy/  クライアント経由 HTTP プロキシ (bridge 側の宛先検査と接続、接続先側の認証付きプロキシ)
+internal/forward/      ポート転送 (常設転送の書式、bridge 側の待ち受け・SOCKS5・forward_*、接続先側の発信と待ち受け)
 internal/proc/         子プロセス起動、OS 別シェル実行、プロセス ツリー終了、シグナル送信
   proc_unix.go         Linux (プロセス グループ、SIGKILL)
   proc_windows.go      Windows (cmd コマンドライン、taskkill /T)
@@ -195,4 +198,8 @@ Windows 環境ではウイルス対策ソフトが Go 製バイナリを誤検�
 
 [クライアント経由 HTTP プロキシ](client-proxy.md) に起動設定、制限、proxy_status、環境変数の優先順位、上限を記載しています。
 
-internal/clientproxy/ は版付きチャネル交渉、JSON/Base64 多重化、フロー制御、認証付き HTTP プロキシ、上流接続、診断を実装します。bridge と接続先の Connection ラッパーだけで独自通知を処理し、通常 MCP に渡しません。
+[SSH stdio 経由のポート転送](port-forward.md) に転送の起動設定、要求と許可の照合、ツール、上限を記載しています。
+
+internal/channel/ は bridge と接続先の Connection ラッパーで `host-shell/channel/*` 通知を処理し、通常 MCP に渡しません。交渉では bridge が要求する機能 (`http_proxy`、`forward_local`、`forward_remote`)、接続先が許可する機能を hello で交換し、リモート転送の常設の待ち受け (listen) を済ませてから ready で MCP の初期化へ進みます。接続先は許可がなくても最初のメッセージを確認し、通常の MCP はそのまま処理します。ストリームはどちらの側からも開け、bridge が奇数、接続先が偶数の接続 ID を使います。接続先は bridge が listen で登録したリモート転送の着信だけを開けます。宛先を指定できないため、bridge に任意の宛先へ接続させることはできません。
+
+internal/clientproxy/ は認証付き HTTP プロキシ、上流接続、診断を、internal/forward/ はポート転送を、それぞれ internal/channel/ の上に実装します。
