@@ -70,6 +70,7 @@ host-shell --version
 | `--client-proxy` | なし | | bridge の `--proxy` と組み合わせて [クライアント経由 HTTP プロキシ](client-proxy.md) を有効にする |
 | `--allow-forward-local` | なし | | bridge のローカル転送と SOCKS5 による接続先からの発信を許可する ([ポート転送](port-forward.md)) |
 | `--allow-forward-remote` | なし | | bridge のリモート転送による接続先のループバックでの待ち受けを許可する ([ポート転送](port-forward.md)) |
+| `--allow-forward-remote-port` | `PORT` または `PORT-PORT` (カンマ区切り、複数指定可) | なし (制限しない) | リモート転送で待ち受けるポート番号を限る。`--allow-forward-remote` が必要 ([ポート転送](port-forward.md)) |
 
 Table: 起動オプション
 

@@ -49,8 +49,8 @@
     - ✅ 4.3. BL-003: HTTP プロキシの接続の接続先監査ログへの記録 (internal/clientproxy/target.go、cmd/host-shell/main.go)
     - ✅ 4.4. BL-004: job_start の初期入力の順序の修正と TestPTYScreen の見直し (internal/jobs/jobs.go、internal/server/screen_test.go)
     - ✅ 4.5. 単体・結合テストの追加 (internal/forward、internal/clientproxy、internal/jobs、cmd/host-shell)
-    - 🔄 4.6. 日英正本文書・埋め込み help への反映 (docs/ja/、docs/en/ の port-forward.md、client-proxy.md、reference.md、operations.md、internal/tools/help/network.md) ← **CURRENT**
-    - ⏸️ 4.7. 元案件の残課題一覧の状態の更新 (BL-001 は容認、BL-002〜BL-004 は解消) ([Q-003](#q-003-元案件の残課題一覧の扱い)、[Q-015](#q-015-元の残課題一覧が-past-へ移された場合の更新))
+    - ✅ 4.6. 日英正本文書・埋め込み help への反映 (docs/ja/、docs/en/ の port-forward.md、client-proxy.md、reference.md、operations.md、internal/tools/help/network.md)
+    - 🔄 4.7. 元案件の残課題一覧の状態の更新 (BL-001 は容認、BL-002〜BL-004 は解消) ([Q-003](#q-003-元案件の残課題一覧の扱い)、[Q-015](#q-015-元の残課題一覧が-past-へ移された場合の更新)) ← **CURRENT**
     - ⏸️ 4.8. make、6 ターゲットのクロスビルド、main 向けドラフト PR の作成と全 OS CI の実行 ([Q-017](#q-017-本件の-pr-の作成))
     - ⏸️ 4.9. 受入条件への適合確認 (全完確認)
     - ⏸️ 4.10. 残課題一覧 (`261031-forward-followup-backlog.md`) の再構築と整理 (残渣がなければ作成しない)

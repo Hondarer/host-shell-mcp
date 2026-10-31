@@ -38,6 +38,11 @@ URL ファイルはユーザー限定権限で作成し、通常終了・切断�
 
 bridge の読み取り専用ツール proxy_status で拒否先と理由を取得できます。
 
+接続先の操作ログには、次の記録を残します。
+
+- `proxy_connect`: HTTP の要求 1 件、または CONNECT 1 件ごとに、種別 (`http`、`connect`)、宛先のホストとポート、結果 (`allowed`、`denied`、`failed`) と理由を記録します。URL のパスとクエリー、ヘッダー、本文、資格情報は記録しません。結果は bridge への中継路を開いた時点のものです。HTTP の要求で bridge から上流への接続が後で失敗した場合 (HTTP 502) も `allowed` になります。
+- `proxy_auth_failed`: プロキシ認証の失敗 (HTTP 407) の件数を記録します。最初の失敗はすぐに 1 件として記録し、以後は 1 分ごとにその間の件数をまとめて記録します。セッションの終了時に未記録の件数があれば記録します。認証前の要求の宛先は記録しません。
+
     {"after_seq": 0, "limit": 20}
 
 入力は after_seq (非負、既定0)、limit (1〜100、既定20) です。出力は enabled、state、allow_hosts、active_connections、events、next_seq、truncated です。
