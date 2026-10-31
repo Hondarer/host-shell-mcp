@@ -39,7 +39,7 @@
     - ✅ 3.1. `261031-port-forward-design.md` の作成
     - ✅ 3.2. 最終仕様における受入条件と整合性の確認
     - ✅ 3.3. 対話セッションにおける最終仕様の承認の受付 (第 2 ゲート: 作業着手の合意。2026-10-31 10:28 JST、Tetsuo Honda「承認」)
-- 🔄 4. 承認された最終仕様に従った作業の実施 (対象ファイルは Q&A の結果で確定)
+- ✅ 4. 承認された最終仕様に従った作業の実施 (対象ファイルは Q&A の結果で確定)
     - ✅ 4.1. PR #1 の main へのマージを確認し、main から作業ブランチを作成 ([Q-013](#q-013-作業ブランチと-pr)。PR #1 は 2026-10-31 10:26 JST に b24cfc9 でマージ済み。最新リリース v20261031.1.0 は HTTP プロキシを含まない ([Q-016](#q-016-版-1-を維持する前提の変化))。作業ブランチ claude/port-forward)
     - ✅ 4.2. 多重化の汎用パッケージへの分離と双方向化 (internal/clientproxy/channel.go → internal/channel、[Q-011](#q-011-共通通信基盤の構成)、[Q-012](#q-012-通信プロトコルの改訂)、[Q-038](#q-038-旧定義の相手の検出))
     - ✅ 4.3. 既存 HTTP プロキシの新基盤への移行と回帰確認 (internal/clientproxy/gateway.go、target.go。既存テストの通過を確認)
@@ -48,12 +48,12 @@
     - ✅ 4.6. help・sys_get_info・監査の連携 (internal/tools/help.go、internal/tools/system.go、internal/tools/help/、internal/audit/)
     - ✅ 4.7. 単体・インメモリ結合・実 stdio 結合テスト (internal/channel、internal/forward、internal/bridge/forward_test.go、cmd/host-shell/forward_test.go)
     - ✅ 4.8. 日英正本文書・README・接続スキルへの反映 (docs/ja/、docs/en/、README.md、.agents/skills/host-shell-connect/SKILL.md、[Q-037](#q-037-文書の構成)、[Q-039](#q-039-接続先の---read-only--tools-との関係))
-    - 🔄 4.9. make、6 ターゲットのクロスビルド (`make dist` によるスキル同梱バイナリの更新を含む)、全 OS CI の実行 ← **CURRENT**
-    - ⏸️ 4.10. 受入条件への適合確認 (全完確認)
-    - ⏸️ 4.11. 残課題一覧 (`261031-port-forward-backlog.md`) の再構築と整理
-- ⏸️ 5. 成果物の承認の受付 (第 3 ゲート)
-    - ⏸️ 5.1. 成果物・検証結果・残課題の提示
-    - ⏸️ 5.2. 対話セッションにおける成果物の承認の受付 (「承認」または「完了」の受領によるスキル完了)
+    - ✅ 4.9. make、6 ターゲットのクロスビルド (`make dist` によるスキル同梱バイナリの更新を含む)、全 OS CI の実行 (PR #2、831a682 で全 OS 成功)
+    - ✅ 4.10. 受入条件への適合確認 (全完確認)
+    - ✅ 4.11. 残課題一覧 (`261031-port-forward-backlog.md`) の再構築と整理
+- 🔄 5. 成果物の承認の受付 (第 3 ゲート)
+    - ✅ 5.1. 成果物・検証結果・残課題の提示
+    - 🔄 5.2. 対話セッションにおける成果物の承認の受付 (「承認」または「完了」の受領によるスキル完了) ← **CURRENT**
 
 ## 対象と参照資料
 
@@ -2141,4 +2141,28 @@ A の単一選択を確認しました。第 3 群の回答はすべて推奨案
 
 ## 反映と検証の記録
 
-未着手。
+作業ブランチ claude/port-forward (main の b24cfc9 から分岐)、PR #2 (ドラフト)。コミット 9e6a08e、831a682。
+
+受入条件 ([Q-041](#q-041-受入条件)) との照合結果です。
+
+| 条件 | 結果 | 主な検証 |
+| --- | --- | --- |
+| 1. 3 種類の転送の往復 | 適合 | internal/forward の TestPersistentForwards、TestSOCKS、TestSOCKSFailuresAndIPv6Bind (1.5MB のバイナリ、並行、片方向終了、IPv4・IPv6・ドメイン名) |
+| 2. 常設転送とツール | 適合 | TestPersistentForwards (ポート 0)、TestSOCKSFailuresAndIPv6Bind (`[::1]`)、TestForwardTools、internal/bridge の TestForwardToolExposure、TestForwardSession |
+| 3. 要求と許可の照合 | 適合 | internal/channel の TestNegotiationRules、TestTargetPassesPlainMCP、TestOlderPeers、TestForwardNotPermitted、cmd/host-shell の TestForwardStdioPermissions |
+| 4. 宛先の制限と診断 | 適合 | TestSOCKS (0x02、0x05、0x07、SOCKS4、0xFF)、TestSOCKSFailuresAndIPv6Bind (0x04、0x08、接続先 `--allow-host`)、TestSOCKSTimeout (0x06)、TestForwardTools、TestStatusPaging、TestParseSpec |
+| 5. 待ち受け | 適合 | TestParseSpec、TestForwardTools (ループバック以外、接続先のポート使用中)、TestRemoteFailuresAndRelease (常設のポート使用中)、TestListenValidationAndLimit |
+| 6. 上限と無通信 | 適合 | TestStreamLimitsAndValidation (64)、clientproxy の TestConcurrentConnectionLimit、TestIdleHTTPConnectionLimit、TestForwardTools (16)、TestPersistentForwards (無通信後の通信)。HTTP プロキシの 5 分は既存実装を変更せず維持 |
+| 7. 通信の安全性 | 適合 | TestBidirectionalStreams (偶奇の採番)、TestTargetCannotChooseDestinations、TestStreamLimitsAndValidation、TestRemoteFailuresAndRelease (goroutine の解放)、`go test -race ./...` |
+| 8. 監査ログと sys_get_info | 適合 | TestPersistentForwards (監査ログ、本文を含まない)、TestForwardSession、TestForwardStdio |
+| 9. 既存機能の維持 | 適合 | 既存の全テスト、TestForwardStdio (HTTP プロキシと両方向の転送の同時利用、通常ツール)、TestProxyStdio |
+| 10. ビルドと CI | 適合 | make、make dist (6 ターゲットとスキル同梱バイナリ)、PR #2 の CI (831a682 で ubuntu・windows・macos とも成功) |
+
+Table: 受入条件の照合
+
+作業中の主な判断と修正です。
+
+- 検証中に、SOCKS5 の握手の期限が確立待ちにも掛かり、宛先のタイムアウト時に 0x06 を返せない不具合を見つけて修正しました (831a682)。
+- 接続先の HTTP プロキシで、bridge 側の接続上限による拒否が二重に記録される既存の挙動を、接続先側の上限のときだけ報告するように改めました。
+- macOS の CI で internal/server の既存テストが断続的に失敗しました。本件の変更範囲外のため BL-004 として残課題一覧に記録しました。
+- 正本文書への反映は最終仕様の知見の反映計画のとおりです。docs/README.md と README.md の文書一覧に、クライアント経由 HTTP プロキシとポート転送の行を追加しました。reference.md の起動オプションの表に、記載が漏れていた `--client-proxy` と bridge の `--proxy`、`--proxy-allow-host` を追加しました。
