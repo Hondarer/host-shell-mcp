@@ -537,6 +537,16 @@ func TestSOCKSTimeout(t *testing.T) {
 		t.Fatalf("timeout reply %d", code)
 	}
 	s.waitEvent(t, "connection timeout")
+	// The target's dial ends on its own clock (its timeout, or the bridge closing the stream);
+	// wait for its audit record so that it is not written after the temporary directory is removed.
+	testutil.WaitFor(t, 5*time.Second, "target did not record the timeout", func() bool {
+		m, _ := filepath.Glob(strings.TrimSuffix(s.log, ".log") + "*")
+		if len(m) == 0 {
+			return false
+		}
+		b, _ := os.ReadFile(m[0])
+		return strings.Contains(string(b), "forward_connect")
+	})
 }
 
 func TestRemotePortRanges(t *testing.T) {
