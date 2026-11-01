@@ -1,8 +1,8 @@
 package tools
 
 import (
+	"cmp"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -101,13 +101,12 @@ func (d *Deps) checkTarget(ctx context.Context, target string, useTLS bool, time
 	}
 	defer conn.Close()
 	if useTLS {
-		tc := tls.Client(conn, &tls.Config{InsecureSkipVerify: true, ServerName: host})
-		if err := tc.HandshakeContext(ctx); err != nil {
-			r.Error = "tls handshake: " + err.Error()
+		_, info, err := handshakeTLS(ctx, conn, host, true)
+		if err != nil {
+			r.Error = err.Error()
 			return r
 		}
-		st := tc.ConnectionState()
-		r.TLS = tlsInfo(&st, host, nil)
+		r.TLS = info
 	}
 	return r
 }
@@ -120,14 +119,8 @@ func parseTarget(t string) (host string, port int, isTLS bool, err error) {
 			return "", 0, false, err
 		}
 		host = u.Hostname()
-		ps := u.Port()
-		switch {
-		case ps != "":
-		case u.Scheme == "https":
-			ps = "443"
-		case u.Scheme == "http":
-			ps = "80"
-		default:
+		ps := cmp.Or(u.Port(), defaultPort(u.Scheme))
+		if ps == "" {
 			if p, err := net.LookupPort("tcp", u.Scheme); err == nil {
 				ps = strconv.Itoa(p)
 			}

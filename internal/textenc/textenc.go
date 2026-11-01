@@ -53,6 +53,15 @@ func (e Encoding) Decode(b []byte) string {
 	return string(out)
 }
 
+// DecodeUnlessUTF8 returns b as-is when it is valid UTF-8 and otherwise decodes it with e.
+// decoded reports whether e was used.
+func (e Encoding) DecodeUnlessUTF8(b []byte) (s string, decoded bool) {
+	if utf8.Valid(b) {
+		return string(b), false
+	}
+	return e.Decode(b), true
+}
+
 // DecodePrefix decodes the longest prefix of src that fits within max UTF-8 bytes,
 // leaving any trailing incomplete rune unconverted when atEOF is false.
 // full reports whether conversion stopped because dst reached max bytes.
@@ -291,6 +300,21 @@ type Choice struct {
 	Enc  Encoding
 }
 
+// Detect resolves c against the start of a file. A BOM selects its encoding when c is automatic
+// or names that same encoding, and the BOM length is returned so callers can skip it; automatic
+// detection also recognizes BOM-less UTF-16. Otherwise c is returned unchanged and ok is false.
+func (c Choice) Detect(head []byte) (_ Choice, bomLen int, ok bool) {
+	if e, n, ok := DetectBOM(head); ok && (c.Auto || c.Enc.Name == e.Name) {
+		return Choice{Enc: e}, n, true
+	}
+	if c.Auto {
+		if e, ok := DetectUTF16(head); ok {
+			return Choice{Enc: e}, 0, true
+		}
+	}
+	return c, 0, false
+}
+
 // Parse resolves a tool's encoding argument: "" and "auto" select automatic detection (or def when
 // allowAuto is false, where "auto" is rejected), and "system" selects system().
 func Parse(name string, system func() Encoding, allowAuto bool, def Encoding) (Choice, error) {
@@ -326,13 +350,16 @@ func IncompleteTail(b []byte) int {
 	return 0
 }
 
+// ValidTruncated reports whether b is valid UTF-8, allowing a rune split at the end of b.
+func ValidTruncated(b []byte) bool { return utf8.Valid(b[:len(b)-IncompleteTail(b)]) }
+
 // LooksUTF8 reports whether b is valid UTF-8, ignoring split runes at the start and end of b.
 func LooksUTF8(b []byte) bool {
 	start := 0
 	for start < len(b) && start < utf8.UTFMax-1 && !utf8.RuneStart(b[start]) {
 		start++
 	}
-	return utf8.Valid(b[start : len(b)-IncompleteTail(b[start:])])
+	return ValidTruncated(b[start:])
 }
 
 // Newline returns the newline style of s ("lf", "crlf", "cr", "mixed", or "" if s has no line breaks).

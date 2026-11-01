@@ -3,6 +3,7 @@ package tools
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -156,11 +157,11 @@ func (d *Deps) searchGrep(ctx context.Context, _ *mcp.CallToolRequest, in Search
 	if err != nil {
 		return nil, SearchGrepOutput{}, fmt.Errorf("include: %w", err)
 	}
-	ch, err := textenc.Parse(in.Charset, textenc.File, true, textenc.UTF8)
+	ch, err := parseCharset(in.Charset, true)
 	if err != nil {
-		return nil, SearchGrepOutput{}, fmt.Errorf("charset: %w", err)
+		return nil, SearchGrepOutput{}, err
 	}
-	mode := orDefault(in.OutputMode, "content")
+	mode := cmp.Or(in.OutputMode, "content")
 	opt := grepOptions{re: re, ch: ch, multiline: in.Multiline}
 	switch mode {
 	case "content":
@@ -185,7 +186,7 @@ func (d *Deps) searchGrep(ctx context.Context, _ *mcp.CallToolRequest, in Search
 	}
 
 	out := SearchGrepOutput{}
-	skipped, err := walkFiles(ctx, orDefault(in.Path, "."), in.ExcludeDirs, in.Gitignore == nil || *in.Gitignore, func(path, rel string, de fs.DirEntry) error {
+	skipped, err := walkFiles(ctx, cmp.Or(in.Path, "."), in.ExcludeDirs, in.Gitignore == nil || *in.Gitignore, func(path, rel string, de fs.DirEntry) error {
 		if !de.Type().IsRegular() || !include.match(rel, de.Name()) {
 			return nil
 		}
@@ -269,10 +270,10 @@ func grepFile(path string, opt grepOptions, emit func(Match) grepAction) error {
 	switch {
 	case ch.Auto:
 		conv = func(b []byte) ([]byte, string) {
-			if utf8.Valid(b) {
-				return b, ""
+			if s, decoded := ch.Enc.DecodeUnlessUTF8(b); decoded {
+				return []byte(s), ch.Enc.Name
 			}
-			return []byte(ch.Enc.Decode(b)), ch.Enc.Name
+			return b, ""
 		}
 	case !ch.Enc.IsUTF8():
 		src = transform.NewReader(br, ch.Enc.NewDecoder())
@@ -342,15 +343,11 @@ func grepFile(path string, opt grepOptions, emit func(Match) grepAction) error {
 // ok is false for a binary file: one with NUL bytes that does not look like UTF-16.
 func fileEncoding(br *bufio.Reader, ch textenc.Choice) (textenc.Choice, bool) {
 	head, _ := br.Peek(8000)
-	if bomEnc, n, ok := textenc.DetectBOM(head); ok && (ch.Auto || ch.Enc.Name == bomEnc.Name) {
+	if detected, n, ok := ch.Detect(head); ok {
 		br.Discard(n)
-		return textenc.Choice{Enc: bomEnc}, true
-	} else if e, ok := textenc.DetectUTF16(head); ok && ch.Auto {
-		return textenc.Choice{Enc: e}, true
-	} else if ch.Enc.ASCIICompatible() && bytes.IndexByte(head, 0) >= 0 {
-		return ch, false
+		return detected, true
 	}
-	return ch, true
+	return ch, !(ch.Enc.ASCIICompatible() && bytes.IndexByte(head, 0) >= 0)
 }
 
 // grepFileMultiline searches the whole file at once, so that matches can span lines.
@@ -467,7 +464,7 @@ func (d *Deps) searchFind(ctx context.Context, _ *mcp.CallToolRequest, in Search
 		return nil, SearchFindOutput{}, fmt.Errorf("unknown sort %q (use path or mtime)", in.Sort)
 	}
 	max := orDefaultInt(in.MaxResults, 1000)
-	root := orDefault(in.Path, ".")
+	root := cmp.Or(in.Path, ".")
 
 	type found struct {
 		path  string
@@ -549,7 +546,7 @@ func (d *Deps) fsManifest(ctx context.Context, _ *mcp.CallToolRequest, in FsMani
 	if err != nil {
 		return nil, FsManifestOutput{}, fmt.Errorf("include: %w", err)
 	}
-	root := orDefault(in.Path, ".")
+	root := cmp.Or(in.Path, ".")
 	max := orDefaultInt(in.MaxFiles, 2000)
 	out := FsManifestOutput{Root: absPath(root), Files: []ManifestEntry{}}
 	skipped, err := walkFiles(ctx, root, in.ExcludeDirs, false, func(path, rel string, de fs.DirEntry) error {

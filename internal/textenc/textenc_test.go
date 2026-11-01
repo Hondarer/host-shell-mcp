@@ -252,3 +252,57 @@ func TestWriterUTF16NoBOM(t *testing.T) {
 		t.Errorf("prompt = %q", out.String())
 	}
 }
+
+func TestChoiceDetect(t *testing.T) {
+	sj := mustLookup(t, "shift_jis")
+	le := mustLookup(t, "utf-16le")
+	bom := []byte{0xEF, 0xBB, 0xBF, 'a'}
+	utf16 := append([]byte{}, "p\x00a\x00c\x00k\x00a\x00g\x00e\x00 \x00m\x00a\x00i\x00n\x00\r\x00\n\x00"...)
+	for _, c := range []struct {
+		name   string
+		ch     Choice
+		head   []byte
+		want   string
+		bomLen int
+		ok     bool
+	}{
+		{"auto bom", Choice{Auto: true, Enc: sj}, bom, "utf-8", 3, true},
+		{"explicit matching bom", Choice{Enc: UTF8}, bom, "utf-8", 3, true},
+		{"explicit other bom", Choice{Enc: sj}, bom, "shift_jis", 0, false},
+		{"auto utf-16", Choice{Auto: true, Enc: sj}, utf16, "utf-16le", 0, true},
+		{"explicit ignores utf-16", Choice{Enc: sj}, utf16, "shift_jis", 0, false},
+		{"plain", Choice{Auto: true, Enc: le}, []byte("plain"), "utf-16le", 0, false},
+	} {
+		got, n, ok := c.ch.Detect(c.head)
+		if got.Enc.Name != c.want || n != c.bomLen || ok != c.ok {
+			t.Errorf("%s: got (%s, %d, %v), want (%s, %d, %v)", c.name, got.Enc.Name, n, ok, c.want, c.bomLen, c.ok)
+		}
+		if ok && got.Auto {
+			t.Errorf("%s: a detected encoding should not stay automatic", c.name)
+		}
+	}
+}
+
+func TestDecodeUnlessUTF8(t *testing.T) {
+	sj := mustLookup(t, "shift_jis")
+	if s, decoded := sj.DecodeUnlessUTF8([]byte("日本語")); s != "日本語" || decoded {
+		t.Errorf("UTF-8 input: got %q, %v", s, decoded)
+	}
+	if s, decoded := sj.DecodeUnlessUTF8(sjis); s != "日本語" || !decoded {
+		t.Errorf("Shift_JIS input: got %q, %v", s, decoded)
+	}
+}
+
+func TestValidTruncated(t *testing.T) {
+	b := []byte("日本")
+	for _, c := range []struct {
+		b    []byte
+		want bool
+	}{
+		{b, true}, {b[:4], true}, {b[1:], false}, {sjis, false}, {nil, true},
+	} {
+		if got := ValidTruncated(c.b); got != c.want {
+			t.Errorf("ValidTruncated(% x) = %v, want %v", c.b, got, c.want)
+		}
+	}
+}

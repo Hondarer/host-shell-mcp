@@ -203,14 +203,13 @@ func (d *Deps) procList(_ context.Context, _ *mcp.CallToolRequest, in ProcListIn
 	}
 	slices.SortFunc(all, func(a, b Process) int { return a.PID - b.PID })
 	if in.PID > 0 {
+		parents := make(map[int]int, len(all))
+		for _, p := range all {
+			parents[p.PID] = p.PPID
+		}
 		keep := map[int]bool{in.PID: true}
-		for changed := true; changed; { // parents come before children only by chance, so repeat
-			changed = false
-			for _, p := range all {
-				if !keep[p.PID] && keep[p.PPID] && p.PID != p.PPID {
-					keep[p.PID], changed = true, true
-				}
-			}
+		for _, p := range descendantPIDs(parents, in.PID) {
+			keep[p] = true
 		}
 		all = slices.DeleteFunc(all, func(p Process) bool { return !keep[p.PID] })
 	}
@@ -226,4 +225,32 @@ func (d *Deps) procList(_ context.Context, _ *mcp.CallToolRequest, in ProcListIn
 	}
 	out.Processes = all
 	return nil, out, nil
+}
+
+// descendantPIDs returns the descendants of pid, breadth first, from a pid-to-parent map.
+func descendantPIDs(parents map[int]int, pid int) []int {
+	children := map[int][]int{}
+	for p, pp := range parents {
+		if p != pp {
+			children[pp] = append(children[pp], p)
+		}
+	}
+	for _, c := range children {
+		slices.Sort(c)
+	}
+	var out []int
+	seen := map[int]bool{pid: true}
+	queue := []int{pid}
+	for len(queue) > 0 {
+		p := queue[0]
+		queue = queue[1:]
+		for _, c := range children[p] {
+			if !seen[c] {
+				seen[c] = true
+				out = append(out, c)
+				queue = append(queue, c)
+			}
+		}
+	}
+	return out
 }

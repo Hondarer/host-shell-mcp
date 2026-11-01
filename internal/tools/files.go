@@ -2,6 +2,7 @@ package tools
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -15,8 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"golang.org/x/text/transform"
@@ -71,7 +70,7 @@ type FsListOutput struct {
 }
 
 func (d *Deps) fsList(_ context.Context, _ *mcp.CallToolRequest, in FsListInput) (*mcp.CallToolResult, FsListOutput, error) {
-	path := orDefault(in.Path, ".")
+	path := cmp.Or(in.Path, ".")
 	ents, err := os.ReadDir(path)
 	if err != nil {
 		return nil, FsListOutput{}, err
@@ -156,7 +155,7 @@ func (d *Deps) fsRead(_ context.Context, req *mcp.CallToolRequest, in FsReadInpu
 	if info.IsDir() {
 		return nil, FsReadOutput{}, fmt.Errorf("%s is a directory", in.Path)
 	}
-	out := FsReadOutput{Path: absPath(in.Path), Size: info.Size(), Encoding: orDefault(in.Encoding, "text")}
+	out := FsReadOutput{Path: absPath(in.Path), Size: info.Size(), Encoding: cmp.Or(in.Encoding, "text")}
 
 	switch out.Encoding {
 	case "text":
@@ -165,7 +164,7 @@ func (d *Deps) fsRead(_ context.Context, req *mcp.CallToolRequest, in FsReadInpu
 		if in.Charset != "" {
 			return nil, FsReadOutput{}, errors.New("charset applies to encoding text only")
 		}
-		limit := d.Cfg.MaxOutputBytes / 4 * 3 // stay within the limit after base64 expansion
+		limit := d.base64Budget()
 		if fromBridge(req) {
 			// Bridge transfers do not pass through the agent's context, so read in large chunks.
 			limit = TransferChunkBytes
@@ -182,21 +181,15 @@ func (d *Deps) fsRead(_ context.Context, req *mcp.CallToolRequest, in FsReadInpu
 
 // readText reads a file, converting it to UTF-8.
 func (d *Deps) readText(f *os.File, in FsReadInput, out *FsReadOutput) error {
-	ch, err := textenc.Parse(in.Charset, textenc.File, true, textenc.UTF8)
+	ch, err := parseCharset(in.Charset, true)
 	if err != nil {
-		return fmt.Errorf("charset: %w", err)
+		return err
 	}
 	// Check the start of the file for a BOM, or for UTF-16 without one, regardless of the range read.
 	head := make([]byte, 4096)
 	k, _ := f.ReadAt(head, 0)
-	skip := 0
-	if bomEnc, n, ok := textenc.DetectBOM(head[:k]); ok && (ch.Auto || ch.Enc.Name == bomEnc.Name) {
-		ch = textenc.Choice{Enc: bomEnc}
-		skip = n
-		out.BOM = true
-	} else if e, ok := textenc.DetectUTF16(head[:k]); ok && ch.Auto {
-		ch = textenc.Choice{Enc: e}
-	}
+	ch, skip, _ := ch.Detect(head[:k])
+	out.BOM = skip > 0
 	if in.LineNumbers && in.LineStart <= 0 {
 		return errors.New("line_numbers requires line_start (use line_start: 1 to read from the beginning)")
 	}
@@ -220,11 +213,9 @@ func (d *Deps) readLines(f *os.File, skip int64, ch textenc.Choice, in FsReadInp
 		// Per line: pass through when valid UTF-8, otherwise treat it as the target's default encoding.
 		r = bufio.NewReader(src)
 		decode = func(b []byte) string {
-			if utf8.Valid(b) {
-				return string(b)
-			}
-			converted = true
-			return ch.Enc.Decode(b)
+			s, decoded := ch.Enc.DecodeUnlessUTF8(b)
+			converted = converted || decoded
+			return s
 		}
 	} else {
 		r = bufio.NewReader(transform.NewReader(src, ch.Enc.NewDecoder()))
@@ -367,7 +358,7 @@ func (in FsWriteInput) AuditArgs() any {
 
 // data encodes Content for writing, applying newline conversion, charset encoding, and optional BOM in text mode.
 func (in FsWriteInput) data() ([]byte, error) {
-	switch orDefault(in.Encoding, "text") {
+	switch cmp.Or(in.Encoding, "text") {
 	case "text":
 	case "base64":
 		if in.Charset != "" || in.Newline != "" || in.BOM {
@@ -386,9 +377,9 @@ func (in FsWriteInput) data() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	ch, err := textenc.Parse(in.Charset, textenc.File, false, textenc.UTF8)
+	ch, err := parseCharset(in.Charset, false)
 	if err != nil {
-		return nil, fmt.Errorf("charset: %w", err)
+		return nil, err
 	}
 	b, err := ch.Enc.Encode(s)
 	if err != nil {
@@ -416,7 +407,7 @@ type FsWriteOutput struct {
 
 func (d *Deps) fsWrite(_ context.Context, _ *mcp.CallToolRequest, in FsWriteInput) (*mcp.CallToolResult, FsWriteOutput, error) {
 	flag := os.O_WRONLY | os.O_CREATE
-	switch orDefault(in.Mode, "overwrite") {
+	switch cmp.Or(in.Mode, "overwrite") {
 	case "overwrite":
 		flag |= os.O_TRUNC
 	case "append":
@@ -495,25 +486,4 @@ func absPath(p string) string {
 		return a
 	}
 	return p
-}
-
-func orDefault(s, def string) string {
-	if s == "" {
-		return def
-	}
-	return s
-}
-
-func orDefaultInt(n, def int) int {
-	if n <= 0 {
-		return def
-	}
-	return n
-}
-
-func redactedLen(s string) string {
-	if s == "" {
-		return ""
-	}
-	return fmt.Sprintf("<%d chars>", len(s))
 }

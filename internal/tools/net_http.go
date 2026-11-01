@@ -2,6 +2,7 @@ package tools
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -16,7 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -93,7 +93,7 @@ type NetRequestHTTPOutput struct {
 }
 
 func (d *Deps) netRequestHTTP(ctx context.Context, req *mcp.CallToolRequest, in NetRequestHTTPInput) (*mcp.CallToolResult, NetRequestHTTPOutput, error) {
-	method := strings.ToUpper(orDefault(in.Method, http.MethodGet))
+	method := strings.ToUpper(cmp.Or(in.Method, http.MethodGet))
 	if d.Policy.ReadOnly && (!slices.Contains([]string{"GET", "HEAD", "OPTIONS"}, method) || in.SaveTo != "") {
 		return nil, NetRequestHTTPOutput{}, errors.New("policy: read-only mode allows only GET, HEAD and OPTIONS without save_to")
 	}
@@ -212,13 +212,7 @@ func (d *Deps) checkURL(u *url.URL, unixSocket string) error {
 	if unixSocket != "" {
 		return d.Policy.CheckUnixSocket(unixSocket)
 	}
-	port := u.Port()
-	if port == "" {
-		port = "80"
-		if u.Scheme == "https" {
-			port = "443"
-		}
-	}
+	port := cmp.Or(u.Port(), defaultPort(u.Scheme), "80")
 	n, _ := strconv.Atoi(port)
 	return d.Policy.CheckHost(u.Hostname(), n)
 }
@@ -232,29 +226,20 @@ func requestBody(in NetRequestHTTPInput) (io.Reader, error) {
 	case in.Body == "":
 		return nil, nil
 	}
-	switch orDefault(in.BodyEncoding, "text") {
-	case "text":
-		return strings.NewReader(in.Body), nil
-	case "base64":
-		b, err := base64.StdEncoding.DecodeString(in.Body)
-		if err != nil {
-			return nil, fmt.Errorf("body: %w", err)
-		}
-		return bytes.NewReader(b), nil
-	default:
-		return nil, fmt.Errorf("unknown body_encoding %q", in.BodyEncoding)
+	b, err := decodeData("body", in.BodyEncoding, in.Body)
+	if err != nil {
+		return nil, err
 	}
+	return bytes.NewReader(b), nil
 }
 
 func (d *Deps) readBody(resp *http.Response, in NetRequestHTTPInput, out *NetRequestHTTPOutput) error {
 	max := d.Cfg.MaxOutputBytes
-	enc := orDefault(in.ResponseEncoding, "auto")
+	enc := cmp.Or(in.ResponseEncoding, "auto")
 	if enc == "base64" || enc == "auto" {
-		max = d.Cfg.MaxOutputBytes / 4 * 3
+		max = d.base64Budget()
 	}
-	if in.MaxBytes > 0 && in.MaxBytes < max {
-		max = in.MaxBytes
-	}
+	max = clampMax(max, in.MaxBytes)
 	buf, err := io.ReadAll(io.LimitReader(resp.Body, int64(max)))
 	if err != nil {
 		return err
@@ -269,7 +254,7 @@ func (d *Deps) readBody(resp *http.Response, in NetRequestHTTPInput, out *NetReq
 	charset := strings.ToLower(params["charset"])
 	if enc == "auto" {
 		enc = "base64"
-		if textual(mediaType) || (mediaType == "" && utf8.Valid(buf[:len(buf)-textenc.IncompleteTail(buf)])) {
+		if textual(mediaType) || (mediaType == "" && textenc.ValidTruncated(buf)) {
 			enc = "text"
 		}
 		if charset != "" && charset != "utf-8" && charset != "us-ascii" {

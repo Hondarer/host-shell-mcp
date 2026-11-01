@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -59,7 +60,7 @@ func (d *Deps) stdinDefault(c CommandSpec, pty bool) textenc.Encoding {
 	if runtime.GOOS != "windows" || pty || len(c.Argv) > 0 {
 		return textenc.UTF8
 	}
-	switch orDefault(c.Shell, d.DefaultShell) {
+	switch cmp.Or(c.Shell, d.DefaultShell) {
 	case "powershell", "pwsh":
 		if !proc.UTF8Console() {
 			return textenc.Console()
@@ -102,7 +103,7 @@ func (c CommandSpec) CommandArgs(defaultShell string) (programs []string, text s
 	if len(c.Argv) > 0 {
 		return []string{c.Argv[0]}, strings.Join(c.Argv, " ")
 	}
-	return []string{orDefault(c.Shell, defaultShell)}, c.Command
+	return []string{cmp.Or(c.Shell, defaultShell)}, c.Command
 }
 
 // AuditArgs redacts Stdin for audit logging.
@@ -253,19 +254,14 @@ func (d *Deps) jobRead(ctx context.Context, _ *mcp.CallToolRequest, in JobReadIn
 	if err != nil {
 		return nil, JobReadOutput{}, err
 	}
-	maxBytes := in.MaxBytes
-	if maxBytes <= 0 || maxBytes > d.Cfg.MaxOutputBytes {
-		maxBytes = d.Cfg.MaxOutputBytes
-	}
+	maxBytes := clampMax(d.Cfg.MaxOutputBytes, in.MaxBytes)
 	offset := in.Offset
 	if offset < 0 {
 		offset = max(0, j.Status().Output+offset)
 	}
-	var until *regexp.Regexp
-	if in.Until != "" {
-		if until, err = regexp.Compile(in.Until); err != nil {
-			return nil, JobReadOutput{}, fmt.Errorf("until: %w", err)
-		}
+	until, err := compileUntil(in.Until)
+	if err != nil {
+		return nil, JobReadOutput{}, err
 	}
 	if in.Screen && !j.PTY() {
 		return nil, JobReadOutput{}, errors.New("screen needs a pty job (job_start with pty)")
@@ -302,6 +298,13 @@ func waitForOutput(ctx context.Context, j *jobs.Job, offset int64, wait time.Dur
 	tick := time.NewTicker(50 * time.Millisecond)
 	defer tick.Stop()
 	idle := time.Duration(idleMs) * time.Millisecond
+	matched := func() bool {
+		data, _, _ := j.Read(offset, 1<<20)
+		if strip {
+			data, _ = stripTerminal(data)
+		}
+		return until.MatchString(data)
+	}
 	lastSize, lastChange := offset, time.Now()
 	for {
 		size := j.Status().Output
@@ -310,14 +313,8 @@ func waitForOutput(ctx context.Context, j *jobs.Job, offset int64, wait time.Dur
 		}
 		switch {
 		case until != nil:
-			if size > offset {
-				data, _, _ := j.Read(offset, 1<<20)
-				if strip {
-					data, _ = stripTerminal(data)
-				}
-				if until.MatchString(data) {
-					return true
-				}
+			if size > offset && matched() {
+				return true
 			}
 		case idle > 0:
 			if size > offset && time.Since(lastChange) >= idle {
@@ -335,22 +332,10 @@ func waitForOutput(ctx context.Context, j *jobs.Job, offset int64, wait time.Dur
 			return false
 		case <-j.Done():
 			// Check once more against the output that arrived before the end.
-			if until != nil {
-				data, _, _ := j.Read(offset, 1<<20)
-				if strip {
-					data, _ = stripTerminal(data)
-				}
-				return until.MatchString(data)
-			}
-			return false
+			return until != nil && matched()
 		case <-tick.C:
 		}
 	}
-}
-
-// JobIDInput is the input of tools that take only a job ID.
-type JobIDInput struct {
-	ID string `json:"id" jsonschema:"job id from job_start"`
 }
 
 // JobStopInput is the input of job_stop.
@@ -366,7 +351,7 @@ func (d *Deps) jobStop(ctx context.Context, _ *mcp.CallToolRequest, in JobStopIn
 		return nil, jobs.Status{}, err
 	}
 	wait := time.Duration(orDefaultInt(in.WaitSec, 5)) * time.Second
-	if sig := orDefault(in.Signal, "kill"); sig == "kill" {
+	if sig := cmp.Or(in.Signal, "kill"); sig == "kill" {
 		j.Stop(wait)
 	} else {
 		if err := j.Signal(sig); err != nil {

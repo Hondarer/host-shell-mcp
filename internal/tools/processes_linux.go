@@ -13,37 +13,67 @@ import (
 // clockTicks is the kernel USER_HZ value used for start times in /proc/<pid>/stat (100 on all Go-supported Linux architectures).
 const clockTicks = 100
 
-// listProcesses reads all processes from /proc.
-func listProcesses() ([]Process, error) {
-	boot := bootTime()
-	users := map[string]string{}
+// procStat holds the parsed fields of /proc/<pid>/stat.
+type procStat struct {
+	name  string
+	ppid  int
+	state string
+	rest  []string // the fields after comm, starting with state
+}
+
+// readStat parses /proc/<pid>/stat. comm in "pid (comm) state ppid ..." may contain spaces and
+// parentheses, so the remaining fields are split after the last ")".
+func readStat(pid int) (procStat, bool) {
+	b, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
+	if err != nil {
+		return procStat{}, false // the process has exited meanwhile
+	}
+	s := string(b)
+	open, end := strings.IndexByte(s, '('), strings.LastIndexByte(s, ')')
+	if open < 0 || end < open {
+		return procStat{}, false
+	}
+	f := strings.Fields(s[end+1:])
+	if len(f) < 2 {
+		return procStat{}, false
+	}
+	st := procStat{name: s[open+1 : end], state: f[0], rest: f}
+	st.ppid, _ = strconv.Atoi(f[1])
+	return st, true
+}
+
+// procPIDs lists the PIDs present in /proc.
+func procPIDs() ([]int, error) {
 	dirs, err := filepath.Glob("/proc/[0-9]*")
 	if err != nil {
 		return nil, err
 	}
-	var out []Process
+	pids := make([]int, 0, len(dirs))
 	for _, dir := range dirs {
-		pid, err := strconv.Atoi(filepath.Base(dir))
-		if err != nil {
+		if pid, err := strconv.Atoi(filepath.Base(dir)); err == nil {
+			pids = append(pids, pid)
+		}
+	}
+	return pids, nil
+}
+
+// listProcesses reads all processes from /proc.
+func listProcesses() ([]Process, error) {
+	boot := bootTime()
+	users := map[string]string{}
+	pids, err := procPIDs()
+	if err != nil {
+		return nil, err
+	}
+	var out []Process
+	for _, pid := range pids {
+		st, ok := readStat(pid)
+		if !ok || len(st.rest) < 20 {
 			continue
 		}
-		stat, err := os.ReadFile(filepath.Join(dir, "stat"))
-		if err != nil {
-			continue // the process has exited meanwhile
-		}
-		// "pid (comm) state ppid ...": comm may contain spaces and parentheses.
-		s := string(stat)
-		open, end := strings.IndexByte(s, '('), strings.LastIndexByte(s, ')')
-		if open < 0 || end < open {
-			continue
-		}
-		f := strings.Fields(s[end+1:])
-		if len(f) < 20 {
-			continue
-		}
-		p := Process{PID: pid, Name: s[open+1 : end], State: f[0]}
-		p.PPID, _ = strconv.Atoi(f[1])
-		if ticks, err := strconv.ParseInt(f[19], 10, 64); err == nil && !boot.IsZero() {
+		dir := "/proc/" + strconv.Itoa(pid)
+		p := Process{PID: pid, Name: st.name, State: st.state, PPID: st.ppid}
+		if ticks, err := strconv.ParseInt(st.rest[19], 10, 64); err == nil && !boot.IsZero() {
 			p.StartTime = boot.Add(time.Duration(ticks) * time.Second / clockTicks).Format(time.RFC3339)
 		}
 		if b, err := os.ReadFile(filepath.Join(dir, "cmdline")); err == nil {

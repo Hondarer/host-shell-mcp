@@ -76,7 +76,7 @@ func (t *transfer) register(srv *mcp.Server) {
 			"Files that are already identical on the remote host are skipped, so it also syncs. remote_path is the full target path " +
 			"(for a single file, an existing remote directory or a path ending in / receives the file inside it). Existing different files are replaced only with overwrite. " +
 			"Executable permissions are kept. dry_run lists what would be sent.",
-		Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(false)},
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(true), OpenWorldHint: new(false)},
 	}, t.push)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:  "transfer_pull",
@@ -84,7 +84,7 @@ func (t *transfer) register(srv *mcp.Server) {
 		Description: "Copy a remote file or directory tree to the local machine, directly and verified by SHA-256, without passing the contents through the conversation. " +
 			"Files that are already identical locally are skipped. local_path is the full target path " +
 			"(for a single file, an existing local directory or a path ending in / receives the file inside it). Existing different files are replaced only with overwrite. dry_run lists what would be fetched.",
-		Annotations: &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(false)},
+		Annotations: &mcp.ToolAnnotations{DestructiveHint: new(true), OpenWorldHint: new(false)},
 	}, t.pull)
 }
 
@@ -649,5 +649,3 @@ func remarshal(in, out any) error {
 	}
 	return json.Unmarshal(b, out)
 }
-
-func ptr[T any](v T) *T { return &v }

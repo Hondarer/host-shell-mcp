@@ -47,13 +47,6 @@ func (b *Buffer) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-// Total returns the number of bytes written.
-func (b *Buffer) Total() int64 {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.total
-}
-
 // Truncated reports whether the output exceeded the limit and was truncated.
 func (b *Buffer) Truncated() bool {
 	b.mu.Lock()

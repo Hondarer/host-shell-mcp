@@ -144,9 +144,9 @@ type textFile struct {
 // loadText reads a file, detects its encoding, and decodes it to UTF-8,
 // failing if re-encoding would not reproduce the original bytes losslessly.
 func loadText(path, charset string) (textFile, error) {
-	ch, err := textenc.Parse(charset, textenc.File, true, textenc.UTF8)
+	ch, err := parseCharset(charset, true)
 	if err != nil {
-		return textFile{}, fmt.Errorf("charset: %w", err)
+		return textFile{}, err
 	}
 	f, err := os.Open(path)
 	if err != nil {
@@ -166,15 +166,11 @@ func loadText(path, charset string) (textFile, error) {
 	}
 
 	var tf textFile
-	body := raw
-	if bomEnc, n, ok := textenc.DetectBOM(raw); ok && (ch.Auto || ch.Enc.Name == bomEnc.Name) {
-		tf.enc, tf.bom, body = bomEnc, raw[:n], raw[n:]
-	} else if e, ok := textenc.DetectUTF16(raw); ok && ch.Auto {
-		tf.enc = e
-	} else if ch.Auto && utf8.Valid(raw) {
+	ch, n, _ := ch.Detect(raw)
+	tf.enc, tf.bom = ch.Enc, raw[:n]
+	body := raw[n:]
+	if ch.Auto && utf8.Valid(raw) {
 		tf.enc = textenc.UTF8
-	} else {
-		tf.enc = ch.Enc
 	}
 	if tf.enc.IsUTF8() {
 		if !utf8.Valid(body) {

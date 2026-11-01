@@ -7,6 +7,7 @@
 package policy
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net"
@@ -69,7 +70,7 @@ type Policy struct {
 func New(o Options, known map[string]string) (*Policy, error) {
 	p := &Policy{ReadOnly: o.ReadOnly}
 	var err error
-	if p.tools, err = parseSelector(orDefault(o.Tools, "all"), known); err != nil {
+	if p.tools, err = parseSelector(cmp.Or(o.Tools, "all"), known); err != nil {
 		return nil, fmt.Errorf("tools: %w", err)
 	}
 	if o.Confirm != "" {
@@ -270,7 +271,7 @@ func (p *Policy) CheckPath(pth string, write bool) error {
 	if roots == nil {
 		return nil
 	}
-	abs, err := filepath.Abs(orDefault(pth, "."))
+	abs, err := filepath.Abs(cmp.Or(pth, "."))
 	if err != nil {
 		return err
 	}
@@ -542,13 +543,6 @@ func (p *Policy) Redacting() bool { return len(p.redact) > 0 }
 func (p *Policy) RedactString(s string) string {
 	for _, r := range p.redact {
 		s = r.re.ReplaceAllString(s, r.repl)
-	}
-	return s
-}
-
-func orDefault(s, def string) string {
-	if s == "" {
-		return def
 	}
 	return s
 }

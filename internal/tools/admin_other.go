@@ -5,6 +5,7 @@ package tools
 import (
 	"context"
 	"errors"
+	"regexp"
 	"syscall"
 
 	"github.com/hondarer/host-shell-mcp/internal/proc"
@@ -27,7 +28,7 @@ func controlService(context.Context, *Deps, SvcControlInput, string) (SvcControl
 	return SvcControlOutput{}, errAdminUnsupported
 }
 
-func queryLog(context.Context, *Deps, LogQueryInput) ([]LogEntry, error) {
+func queryLog(context.Context, *Deps, LogQueryInput, *regexp.Regexp) ([]LogEntry, error) {
 	return nil, errAdminUnsupported
 }
 

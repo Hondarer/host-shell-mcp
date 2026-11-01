@@ -1,11 +1,13 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -168,7 +170,7 @@ func (d *Deps) svcList(ctx context.Context, _ *mcp.CallToolRequest, in SvcListIn
 		if filter != "" && !strings.Contains(strings.ToLower(s.Name+" "+s.Description), filter) {
 			continue
 		}
-		if st := orDefault(in.State, "all"); st != "all" && s.State != st {
+		if st := cmp.Or(in.State, "all"); st != "all" && s.State != st {
 			continue
 		}
 		if len(out.Services) >= 2000 {
@@ -201,7 +203,7 @@ func (d *Deps) svcControl(ctx context.Context, _ *mcp.CallToolRequest, in SvcCon
 	if in.Name == "" {
 		return nil, SvcControlOutput{}, errors.New("name is required")
 	}
-	action := orDefault(in.Action, "status")
+	action := cmp.Or(in.Action, "status")
 	switch action {
 	case "status", "start", "stop", "restart", "reload", "enable", "disable":
 	default:
@@ -251,7 +253,14 @@ type LogQueryOutput struct {
 
 func (d *Deps) logQuery(ctx context.Context, _ *mcp.CallToolRequest, in LogQueryInput) (*mcp.CallToolResult, LogQueryOutput, error) {
 	in.Lines = min(orDefaultInt(in.Lines, 100), 2000)
-	entries, err := queryLog(ctx, d, in)
+	var grep *regexp.Regexp
+	if in.Grep != "" {
+		var err error
+		if grep, err = regexp.Compile("(?i)" + in.Grep); err != nil {
+			return nil, LogQueryOutput{}, fmt.Errorf("grep: %w", err)
+		}
+	}
+	entries, err := queryLog(ctx, d, in, grep)
 	if err != nil {
 		return nil, LogQueryOutput{}, err
 	}

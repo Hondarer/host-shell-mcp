@@ -2,19 +2,18 @@ package tools
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
-	"unicode/utf8"
 
 	"github.com/hondarer/host-shell-mcp/internal/proc"
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
@@ -28,11 +27,11 @@ func killProcess(ctx context.Context, d *Deps, pid int, sig string, tree, sudo b
 		pids = append(pids, descendants(pid)...)
 	}
 	if sudo {
-		names := map[string]string{"interrupt": "INT", "terminate": "TERM", "hangup": "HUP", "quit": "QUIT", "kill": "KILL", "stop": "STOP", "continue": "CONT", "usr1": "USR1", "usr2": "USR2"}
-		if names[sig] == "" {
-			return nil, fmt.Errorf("unknown signal %q (use one of: %s)", sig, proc.SignalNames)
+		name, err := proc.KillName(sig)
+		if err != nil {
+			return nil, err
 		}
-		argv := []string{"kill", "-s", names[sig]}
+		argv := []string{"kill", "-s", name}
 		for _, p := range pids {
 			argv = append(argv, strconv.Itoa(p))
 		}
@@ -60,51 +59,20 @@ func killProcess(ctx context.Context, d *Deps, pid int, sig string, tree, sudo b
 
 // descendants returns all descendant PIDs of pid using /proc/<pid>/stat parent links.
 func descendants(pid int) []int {
-	children := map[int][]int{}
-	stats, _ := filepath.Glob("/proc/[0-9]*/stat")
-	for _, st := range stats {
-		b, err := os.ReadFile(st)
-		if err != nil {
-			continue
-		}
-		// comm in "pid (comm) state ppid ..." can contain spaces and ")", so parse after the last ")".
-		s := string(b)
-		i := strings.LastIndexByte(s, ')')
-		if i < 0 {
-			continue
-		}
-		f := strings.Fields(s[i+1:])
-		if len(f) < 2 {
-			continue
-		}
-		p, _ := strconv.Atoi(filepath.Base(filepath.Dir(st)))
-		pp, _ := strconv.Atoi(f[1])
-		children[pp] = append(children[pp], p)
-	}
-	var out []int
-	queue := []int{pid}
-	for len(queue) > 0 {
-		p := queue[0]
-		queue = queue[1:]
-		for _, c := range children[p] {
-			out = append(out, c)
-			queue = append(queue, c)
+	pids, _ := procPIDs()
+	parents := make(map[int]int, len(pids))
+	for _, p := range pids {
+		if st, ok := readStat(p); ok {
+			parents[p] = st.ppid
 		}
 	}
-	return out
+	return descendantPIDs(parents, pid)
 }
 
+// processAlive reports whether pid is running; zombies count as exited.
 func processAlive(pid int) bool {
-	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-	if err != nil {
-		return false
-	}
-	// Zombies (Z) count as exited.
-	s := string(b)
-	if i := strings.LastIndexByte(s, ')'); i >= 0 && len(s) > i+2 {
-		return s[i+2] != 'Z'
-	}
-	return syscall.Kill(pid, 0) == nil
+	st, ok := readStat(pid)
+	return ok && st.state != "Z"
 }
 
 // ---- svc_list / svc_control ----
@@ -212,7 +180,7 @@ func controlService(ctx context.Context, d *Deps, in SvcControlInput, action str
 	}
 	pid, _ := strconv.Atoi(props["MainPID"])
 	out.Service = Service{
-		Name: orDefault(props["Id"], in.Name), Description: props["Description"],
+		Name: cmp.Or(props["Id"], in.Name), Description: props["Description"],
 		State: serviceState(props["ActiveState"], props["SubState"]), SubState: props["SubState"],
 		StartMode: props["UnitFileState"], PID: pid,
 	}
@@ -227,7 +195,8 @@ func controlService(ctx context.Context, d *Deps, in SvcControlInput, action str
 
 var journalPriorities = []string{"emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"}
 
-func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error) {
+// queryLog reads journal entries; grep (case-insensitive) filters messages when set.
+func queryLog(ctx context.Context, d *Deps, in LogQueryInput, grep *regexp.Regexp) ([]LogEntry, error) {
 	if in.EventID != 0 {
 		return nil, errors.New("event_id is for the Windows Event Log")
 	}
@@ -274,12 +243,7 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error
 		}
 		argv = append(argv, "-p", p)
 	}
-	var grep *regexp.Regexp
-	if in.Grep != "" {
-		var err error
-		if grep, err = regexp.Compile("(?i)" + in.Grep); err != nil {
-			return nil, fmt.Errorf("grep: %w", err)
-		}
+	if grep != nil {
 		// journalctl -g requires PCRE2 build support, so fetch extra entries and filter in Go.
 		argv[5] = strconv.Itoa(min(in.Lines*20, 50000))
 	}
@@ -336,10 +300,8 @@ func journalString(v any) string {
 				b = append(b, byte(f))
 			}
 		}
-		if utf8.Valid(b) {
-			return string(b)
-		}
-		return textenc.Console().Decode(b)
+		s, _ := textenc.Console().DecodeUnlessUTF8(b)
+		return s
 	case float64:
 		return strconv.FormatInt(int64(x), 10)
 	}

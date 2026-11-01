@@ -1,18 +1,16 @@
 package tools
 
 import (
+	"cmp"
 	"context"
-	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -62,30 +60,19 @@ func (d *Deps) netExchange(ctx context.Context, _ *mcp.CallToolRequest, in NetEx
 	if d.Policy.ReadOnly && in.Send != "" {
 		return nil, NetExchangeOutput{}, errors.New("policy: read-only mode does not allow sending data (only reading what the server sends first)")
 	}
-	var until *regexp.Regexp
-	if in.Until != "" {
-		var err error
-		if until, err = regexp.Compile(in.Until); err != nil {
-			return nil, NetExchangeOutput{}, fmt.Errorf("until: %w", err)
-		}
+	until, err := compileUntil(in.Until)
+	if err != nil {
+		return nil, NetExchangeOutput{}, err
 	}
-	send := []byte(in.Send)
-	switch orDefault(in.SendEncoding, "text") {
-	case "text":
-	case "base64":
-		b, err := base64.StdEncoding.DecodeString(in.Send)
-		if err != nil {
-			return nil, NetExchangeOutput{}, fmt.Errorf("send: %w", err)
-		}
-		send = b
-	default:
-		return nil, NetExchangeOutput{}, fmt.Errorf("unknown send_encoding %q", in.SendEncoding)
+	send, err := decodeData("send", in.SendEncoding, in.Send)
+	if err != nil {
+		return nil, NetExchangeOutput{}, err
 	}
 
 	timeout := time.Duration(orDefaultInt(in.TimeoutSec, 10)) * time.Second
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	network, addr, host := "tcp", "", orDefault(in.Host, "localhost")
+	network, addr, host := "tcp", "", cmp.Or(in.Host, "localhost")
 	if in.UnixSocket != "" {
 		network, addr = "unix", in.UnixSocket
 		if err := d.Policy.CheckUnixSocket(addr); err != nil {
@@ -110,13 +97,11 @@ func (d *Deps) netExchange(ctx context.Context, _ *mcp.CallToolRequest, in NetEx
 	defer conn.Close()
 	out := NetExchangeOutput{RemoteAddr: conn.RemoteAddr().String()}
 	if in.TLS {
-		conf := &tls.Config{InsecureSkipVerify: in.Insecure, ServerName: host}
-		tc := tls.Client(conn, conf)
-		if err := tc.HandshakeContext(ctx); err != nil {
-			return nil, NetExchangeOutput{}, fmt.Errorf("tls handshake: %w", err)
+		tc, info, err := handshakeTLS(ctx, conn, host, in.Insecure)
+		if err != nil {
+			return nil, NetExchangeOutput{}, err
 		}
-		st := tc.ConnectionState()
-		out.TLS = tlsInfo(&st, host, nil)
+		out.TLS = info
 		conn = tc
 	}
 	stop := context.AfterFunc(ctx, func() { conn.SetDeadline(time.Now()) })
@@ -134,10 +119,7 @@ func (d *Deps) netExchange(ctx context.Context, _ *mcp.CallToolRequest, in NetEx
 		}
 	}
 
-	max := d.Cfg.MaxOutputBytes / 4 * 3
-	if in.MaxBytes > 0 && in.MaxBytes < max {
-		max = in.MaxBytes
-	}
+	max := clampMax(d.base64Budget(), in.MaxBytes)
 	idle := time.Duration(orDefaultInt(in.IdleMs, 1000)) * time.Millisecond
 	var recv []byte
 	buf := make([]byte, 32<<10)
@@ -161,10 +143,10 @@ func (d *Deps) netExchange(ctx context.Context, _ *mcp.CallToolRequest, in NetEx
 	}
 	out.Truncated = len(recv) >= max
 	out.ReceivedBytes = len(recv)
-	enc := orDefault(in.ReceiveEncoding, "auto")
+	enc := cmp.Or(in.ReceiveEncoding, "auto")
 	if enc == "auto" {
 		enc = "base64"
-		if utf8.Valid(recv[:len(recv)-textenc.IncompleteTail(recv)]) {
+		if textenc.ValidTruncated(recv) {
 			enc = "text"
 		}
 	}

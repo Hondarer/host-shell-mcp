@@ -39,8 +39,8 @@ func newProgress(ctx context.Context, req *mcp.CallToolRequest) *progress {
 
 func (d *Deps) progress(ctx context.Context, req *mcp.CallToolRequest) *progress {
 	p := newProgress(ctx, req)
-	if p != nil && d.Cfg.Proxy != nil {
-		p.mask = d.Cfg.Proxy.Mask
+	if p != nil {
+		p.mask = d.mask
 	}
 	return p
 }

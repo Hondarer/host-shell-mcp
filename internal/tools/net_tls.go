@@ -1,10 +1,12 @@
 package tools
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"time"
 )
@@ -49,6 +51,27 @@ func clientTLS(insecure bool, caFile, certFile, keyFile string) (*tls.Config, er
 		c.Certificates = []tls.Certificate{cert}
 	}
 	return c, nil
+}
+
+// handshakeTLS runs a TLS client handshake over conn and summarizes the result.
+func handshakeTLS(ctx context.Context, conn net.Conn, host string, insecure bool) (*tls.Conn, *TLSInfo, error) {
+	tc := tls.Client(conn, &tls.Config{InsecureSkipVerify: insecure, ServerName: host})
+	if err := tc.HandshakeContext(ctx); err != nil {
+		return nil, nil, fmt.Errorf("tls handshake: %w", err)
+	}
+	st := tc.ConnectionState()
+	return tc, tlsInfo(&st, host, nil), nil
+}
+
+// defaultPort returns the port for http and https URLs without an explicit one, otherwise "".
+func defaultPort(scheme string) string {
+	switch scheme {
+	case "https":
+		return "443"
+	case "http":
+		return "80"
+	}
+	return ""
 }
 
 // tlsInfo summarizes the TLS connection. Even when verification was skipped, it shows what verification would have found.

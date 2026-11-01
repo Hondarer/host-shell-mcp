@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"embed"
 	"fmt"
@@ -32,7 +33,7 @@ type HelpGetInput struct {
 }
 
 func (d *Deps) helpGet(_ context.Context, _ *mcp.CallToolRequest, in HelpGetInput) (*mcp.CallToolResult, any, error) {
-	topic := orDefault(in.Topic, "overview")
+	topic := cmp.Or(in.Topic, "overview")
 	var text string
 	switch {
 	case topic == "all":
@@ -42,10 +43,7 @@ func (d *Deps) helpGet(_ context.Context, _ *mcp.CallToolRequest, in HelpGetInpu
 		}
 		text = strings.Join(parts, "\n\n")
 	case slices.Contains(helpTopics, topic):
-		text = helpText(topic)
-		if topic == "overview" || topic == "limits" {
-			text = d.hostSummary() + "\n\n" + text
-		}
+		text = d.helpTopic(topic)
 	default:
 		return nil, nil, fmt.Errorf("unknown topic %q (use one of: %s, all)", topic, strings.Join(helpTopics, ", "))
 	}
@@ -60,6 +58,14 @@ func helpText(topic string) string {
 	return strings.TrimSpace(string(b))
 }
 
+// helpTopic returns a single topic, prefixed with the host summary for overview and limits.
+func (d *Deps) helpTopic(topic string) string {
+	if topic == "overview" || topic == "limits" {
+		return d.hostSummary() + "\n\n" + helpText(topic)
+	}
+	return helpText(topic)
+}
+
 // registerHelp registers each help topic as an MCP resource.
 func registerHelp(s *mcp.Server, d *Deps) {
 	for _, t := range helpTopics {
@@ -72,10 +78,7 @@ func registerHelp(s *mcp.Server, d *Deps) {
 			Description: "host-shell usage guide: " + title,
 			MIMEType:    "text/markdown",
 		}, func(context.Context, *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-			text := helpText(t)
-			if t == "overview" || t == "limits" {
-				text = d.hostSummary() + "\n\n" + text
-			}
+			text := d.helpTopic(t)
 			return &mcp.ReadResourceResult{Contents: []*mcp.ResourceContents{{URI: uri, MIMEType: "text/markdown", Text: text}}}, nil
 		})
 	}

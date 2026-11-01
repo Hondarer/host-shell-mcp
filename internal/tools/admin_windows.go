@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"encoding/xml"
 	"errors"
@@ -11,7 +12,6 @@ import (
 	"strings"
 	"time"
 	"unicode/utf16"
-	"unicode/utf8"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -286,7 +286,8 @@ type event struct {
 	} `xml:"RenderingInfo"`
 }
 
-func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error) {
+// queryLog reads event log entries; grep (case-insensitive) filters messages when set.
+func queryLog(ctx context.Context, d *Deps, in LogQueryInput, grep *regexp.Regexp) ([]LogEntry, error) {
 	if in.User || in.Sudo {
 		return nil, errors.New("user and sudo apply to Linux only")
 	}
@@ -311,34 +312,25 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput) ([]LogEntry, error
 	if in.EventID != 0 {
 		conds = append(conds, fmt.Sprintf("EventID=%d", in.EventID))
 	}
-	if in.Since != "" {
-		t, err := parseSince(in.Since)
+	for _, b := range []struct{ op, val string }{{">=", in.Since}, {"<=", in.Until}} {
+		if b.val == "" {
+			continue
+		}
+		t, err := parseSince(b.val)
 		if err != nil {
 			return nil, err
 		}
-		conds = append(conds, fmt.Sprintf("TimeCreated[@SystemTime>='%s']", t.UTC().Format("2006-01-02T15:04:05.000Z")))
-	}
-	if in.Until != "" {
-		t, err := parseSince(in.Until)
-		if err != nil {
-			return nil, err
-		}
-		conds = append(conds, fmt.Sprintf("TimeCreated[@SystemTime<='%s']", t.UTC().Format("2006-01-02T15:04:05.000Z")))
+		conds = append(conds, fmt.Sprintf("TimeCreated[@SystemTime%s'%s']", b.op, t.UTC().Format("2006-01-02T15:04:05.000Z")))
 	}
 	query := "*"
 	if len(conds) > 0 {
 		query = "*[System[" + strings.Join(conds, " and ") + "]]"
 	}
-	var grep *regexp.Regexp
 	count := in.Lines
-	if in.Grep != "" {
-		var err error
-		if grep, err = regexp.Compile("(?i)" + in.Grep); err != nil {
-			return nil, fmt.Errorf("grep: %w", err)
-		}
+	if grep != nil {
 		count = min(in.Lines*20, 20000)
 	}
-	argv := []string{"wevtutil", "qe", orDefault(in.Log, "System"), "/q:" + query, "/c:" + strconv.Itoa(count), "/rd:true", "/f:RenderedXml", "/e:Events"}
+	argv := []string{"wevtutil", "qe", cmp.Or(in.Log, "System"), "/q:" + query, "/c:" + strconv.Itoa(count), "/rd:true", "/f:RenderedXml", "/e:Events"}
 	// wevtutil output encoding varies (UTF-16, UTF-8, or console code page), so capture raw bytes and auto-detect.
 	res, err := proc.Run(ctx, d.procSpec(CommandSpec{Argv: argv}), proc.Options{
 		Timeout:   d.Cfg.DefaultTimeout,
@@ -396,10 +388,8 @@ func decodeToolOutput(s string) string {
 	if enc, n, ok := textenc.DetectUnicode(b); ok {
 		return enc.Decode(b[n:])
 	}
-	if utf8.Valid(b) {
-		return s
-	}
-	return textenc.Console().Decode(b)
+	s, _ = textenc.Console().DecodeUnlessUTF8(b)
+	return s
 }
 
 // ---- disk_list ----

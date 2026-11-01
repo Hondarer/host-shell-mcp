@@ -294,9 +294,6 @@ func (m *Manager) StopAll(wait time.Duration) {
 	}
 }
 
-// ID returns the job ID.
-func (j *Job) ID() string { return j.id }
-
 // PTY reports whether the job runs in a pseudo-terminal.
 func (j *Job) PTY() bool { return j.term != nil }
 

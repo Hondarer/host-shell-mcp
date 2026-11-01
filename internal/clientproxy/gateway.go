@@ -298,12 +298,6 @@ func (w *idleWriter) Write(b []byte) (int, error) {
 	return w.Conn.Write(b)
 }
 
-type idleReader struct{ net.Conn }
-
-func (r *idleReader) Read(b []byte) (int, error) {
-	r.SetReadDeadline(time.Now().Add(5 * time.Minute))
-	return r.Conn.Read(b)
-}
 func stripHop(h http.Header) {
 	for _, v := range h.Values("Connection") {
 		for _, k := range strings.Split(v, ",") {

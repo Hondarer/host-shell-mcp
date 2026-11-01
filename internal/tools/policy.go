@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"cmp"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -9,11 +10,11 @@ import (
 	"fmt"
 	"os"
 	"reflect"
-	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/hondarer/host-shell-mcp/internal/audit"
+	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
 // pathArgs is implemented by input types that report read and write paths for policy checks.
@@ -83,16 +84,10 @@ func (d *Deps) confirm(req *mcp.CallToolRequest, name string, in any) (ask *mcp.
 		args = r.AuditArgs()
 	}
 	b, _ := json.Marshal(args)
-	s := string(b)
-	if d.Cfg.Proxy != nil {
-		s = d.Cfg.Proxy.Mask(s)
-	}
+	s := d.mask(string(b))
 	if len(s) > 1000 {
 		s = s[:1000]
-		for !utf8.ValidString(s) {
-			s = s[:len(s)-1]
-		}
-		s += "..."
+		s = s[:len(s)-textenc.IncompleteTail([]byte(s))] + "..."
 	}
 	host, _ := os.Hostname()
 	return &mcp.CallToolResult{
@@ -123,15 +118,23 @@ func (d *Deps) confirmState(name string, args []byte) string {
 	return hex.EncodeToString(m.Sum(nil))
 }
 
+// mask hides the client proxy credential in s.
+func (d *Deps) mask(s string) string {
+	if d.Cfg.Proxy != nil {
+		return d.Cfg.Proxy.Mask(s)
+	}
+	return s
+}
+
+// redact applies policy redaction and the proxy credential mask to s.
+func (d *Deps) redact(s string) string { return d.mask(d.Policy.RedactString(s)) }
+
 // redactOutput applies redaction to every string in the output.
 func redactOutput[T any](d *Deps, res *mcp.CallToolResult, out T) (*mcp.CallToolResult, T) {
 	if res != nil {
 		for _, c := range res.Content {
 			if tc, ok := c.(*mcp.TextContent); ok {
-				tc.Text = d.Policy.RedactString(tc.Text)
-				if d.Cfg.Proxy != nil {
-					tc.Text = d.Cfg.Proxy.Mask(tc.Text)
-				}
+				tc.Text = d.redact(tc.Text)
 			}
 		}
 	}
@@ -145,11 +148,7 @@ func redactValue(d *Deps, v reflect.Value) {
 	switch v.Kind() {
 	case reflect.String:
 		if v.CanSet() {
-			s := d.Policy.RedactString(v.String())
-			if d.Cfg.Proxy != nil {
-				s = d.Cfg.Proxy.Mask(s)
-			}
-			v.SetString(s)
+			v.SetString(d.redact(v.String()))
 		}
 	case reflect.Pointer, reflect.Interface:
 		if !v.IsNil() {
@@ -190,7 +189,7 @@ func redactValue(d *Deps, v reflect.Value) {
 // The paths each tool input reads and writes.
 
 func (in FsListInput) PathArgs() (read, write []string) {
-	return []string{orDefault(in.Path, ".")}, nil
+	return []string{cmp.Or(in.Path, ".")}, nil
 }
 func (in FsStatInput) PathArgs() (read, write []string)  { return []string{in.Path}, nil }
 func (in FsReadInput) PathArgs() (read, write []string)  { return []string{in.Path}, nil }
@@ -205,11 +204,11 @@ func (in FsCopyInput) PathArgs() (read, write []string) {
 }
 func (in FsRemoveInput) PathArgs() (read, write []string) { return nil, []string{in.Path} }
 func (in SearchGrepInput) PathArgs() (read, write []string) {
-	return []string{orDefault(in.Path, ".")}, nil
+	return []string{cmp.Or(in.Path, ".")}, nil
 }
 func (in SearchFindInput) PathArgs() (read, write []string) {
-	return []string{orDefault(in.Path, ".")}, nil
+	return []string{cmp.Or(in.Path, ".")}, nil
 }
 func (in FsManifestInput) PathArgs() (read, write []string) {
-	return []string{orDefault(in.Path, ".")}, nil
+	return []string{cmp.Or(in.Path, ".")}, nil
 }

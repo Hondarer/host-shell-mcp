@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"cmp"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -158,7 +159,7 @@ func (d *Deps) regWrite(_ context.Context, _ *mcp.CallToolRequest, in RegWriteIn
 		return nil, out, nil
 	}
 	name := *in.Value
-	switch strings.ToUpper(orDefault(in.Type, "REG_SZ")) {
+	switch strings.ToUpper(cmp.Or(in.Type, "REG_SZ")) {
 	case "REG_SZ", "REG_EXPAND_SZ":
 		s, ok := in.Data.(string)
 		if !ok {

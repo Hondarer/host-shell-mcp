@@ -3,6 +3,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 	"strings"
@@ -341,7 +342,7 @@ func registerTool[In, Out any](s *mcp.Server, d *Deps, group string, t *mcp.Tool
 			}
 		}
 		if err != nil && d.Cfg.Proxy != nil {
-			err = fmt.Errorf("%s", d.Cfg.Proxy.Mask(err.Error()))
+			err = errors.New(d.mask(err.Error()))
 		}
 		if err == nil && ctx.Err() != nil {
 			err = fmt.Errorf("cancelled: %w", ctx.Err())
@@ -353,26 +354,24 @@ func registerTool[In, Out any](s *mcp.Server, d *Deps, group string, t *mcp.Tool
 
 // readOnly annotates tools that do not change the target.
 func readOnly() *mcp.ToolAnnotations {
-	return &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: ptr(false)}
+	return &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: new(false)}
 }
 
 // additive annotates tools that only add to the target without destroying existing content.
 func additive(idempotent bool) *mcp.ToolAnnotations {
-	return &mcp.ToolAnnotations{DestructiveHint: ptr(false), IdempotentHint: idempotent, OpenWorldHint: ptr(false)}
+	return &mcp.ToolAnnotations{DestructiveHint: new(false), IdempotentHint: idempotent, OpenWorldHint: new(false)}
 }
 
 // destructive annotates tools that may change the target. Agents can use it to require approval.
 func destructive() *mcp.ToolAnnotations {
-	return &mcp.ToolAnnotations{DestructiveHint: ptr(true), OpenWorldHint: ptr(false)}
+	return &mcp.ToolAnnotations{DestructiveHint: new(true), OpenWorldHint: new(false)}
 }
-
-func ptr[T any](v T) *T { return &v }
 
 // network annotates tools that may act beyond the target (across the network).
 func network(readOnlyHint bool) *mcp.ToolAnnotations {
-	a := &mcp.ToolAnnotations{ReadOnlyHint: readOnlyHint, OpenWorldHint: ptr(true)}
+	a := &mcp.ToolAnnotations{ReadOnlyHint: readOnlyHint, OpenWorldHint: new(true)}
 	if !readOnlyHint {
-		a.DestructiveHint = ptr(true)
+		a.DestructiveHint = new(true)
 	}
 	return a
 }

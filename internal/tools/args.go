@@ -1,0 +1,74 @@
+package tools
+
+import (
+	"encoding/base64"
+	"fmt"
+	"regexp"
+
+	"github.com/hondarer/host-shell-mcp/internal/textenc"
+)
+
+// Shared helpers for interpreting tool arguments.
+
+func orDefaultInt(n, def int) int {
+	if n <= 0 {
+		return def
+	}
+	return n
+}
+
+// clampMax returns requested when it is positive and below limit, otherwise limit.
+func clampMax(limit, requested int) int {
+	if requested > 0 && requested < limit {
+		return requested
+	}
+	return limit
+}
+
+// base64Budget is the raw byte count whose base64 form stays within the output limit.
+func (d *Deps) base64Budget() int { return d.Cfg.MaxOutputBytes / 4 * 3 }
+
+func redactedLen(s string) string {
+	if s == "" {
+		return ""
+	}
+	return fmt.Sprintf("<%d chars>", len(s))
+}
+
+// parseCharset resolves a file charset argument; allowAuto permits automatic detection (reads)
+// and otherwise defaults to UTF-8 (writes).
+func parseCharset(name string, allowAuto bool) (textenc.Choice, error) {
+	ch, err := textenc.Parse(name, textenc.File, allowAuto, textenc.UTF8)
+	if err != nil {
+		return textenc.Choice{}, fmt.Errorf("charset: %w", err)
+	}
+	return ch, nil
+}
+
+// decodeData decodes the argument field according to enc ("text", the default, or "base64").
+// Errors name the field and its companion field_encoding argument.
+func decodeData(field, enc, s string) ([]byte, error) {
+	switch enc {
+	case "", "text":
+		return []byte(s), nil
+	case "base64":
+		b, err := base64.StdEncoding.DecodeString(s)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", field, err)
+		}
+		return b, nil
+	}
+	return nil, fmt.Errorf("unknown %s_encoding %q", field, enc)
+}
+
+// compileUntil compiles an optional until pattern.
+func compileUntil(pattern string) (*regexp.Regexp, error) {
+	if pattern == "" {
+		return nil, nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("until: %w", err)
+	}
+	return re, nil
+}
