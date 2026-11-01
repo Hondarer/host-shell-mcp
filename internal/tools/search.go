@@ -25,6 +25,26 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/wire"
 )
 
+// registerSearch defines the search tools.
+func registerSearch(r *Registry, d *Deps) {
+	// Search
+	add(r, groupSearch, &mcp.Tool{
+		Name:  "search_grep",
+		Title: "Search file contents",
+		Description: "Search file contents recursively using a Go RE2 regex (or literal string). " +
+			"output_mode: content (matching lines with optional context/before/after), files (paths only) or count. " +
+			"Filters by include glob and gitignore, skips binary files and .git/.hg/.svn, and auto-decodes non-UTF-8 text encodings.",
+		Annotations: readOnly(),
+	}, d.searchGrep)
+	add(r, groupSearch, &mcp.Tool{
+		Name:  "search_find",
+		Title: "Find files",
+		Description: "Find files or directories recursively by glob (base name without '/', or relative path with '/'). " +
+			"Filter by type (file, dir) and sort by path or mtime (newest first).",
+		Annotations: readOnly(),
+	}, d.searchFind)
+}
+
 // defaultExcludeDirs are the directories searches skip by default.
 var defaultExcludeDirs = []string{".git", ".hg", ".svn"}
 
@@ -274,79 +294,98 @@ func grepFile(path string, opt grepOptions, emit func(Match) grepAction) error {
 	if !ok {
 		return nil
 	}
+	src, conv := decodedLines(br, ch)
+	withContext := opt.before > 0 || opt.after > 0
+	cm := &contextMatches{before: opt.before, after: opt.after, emit: emit}
 
-	var src io.Reader = br
-	var conv func([]byte) ([]byte, string)
+	sc := bufio.NewScanner(src)
+	sc.Buffer(make([]byte, 64*1024), 1<<20)
+	for n := 1; sc.Scan() && !cm.stopped; n++ {
+		line, cs := sc.Bytes(), ""
+		if conv != nil {
+			line, cs = conv(line)
+		}
+		text := clipLine(line)
+		if !opt.re.Match(line) {
+			cm.add(text, nil)
+			continue
+		}
+		m := Match{Path: path, Line: n, Text: text, Charset: cs}
+		if withContext {
+			cm.add(text, &m)
+			continue
+		}
+		// Without context, follow the handler's instruction on how to continue.
+		switch emit(m) {
+		case grepNextFile:
+			return nil
+		case grepStop:
+			return errStop
+		}
+	}
+	cm.flush()
+	if cm.stopped {
+		return errStop
+	}
+	return nil // For a file whose reading stopped early (for example at an overlong line), return the results so far.
+}
+
+// decodedLines returns the reader to scan for encoding ch and the per-line conversion that
+// reports the charset a line was decoded from; conv is nil when lines need no conversion.
+func decodedLines(br *bufio.Reader, ch textenc.Choice) (src io.Reader, conv func([]byte) ([]byte, string)) {
 	switch {
 	case ch.Auto:
-		conv = func(b []byte) ([]byte, string) {
+		return br, func(b []byte) ([]byte, string) {
 			if s, decoded := ch.Enc.DecodeUnlessUTF8(b); decoded {
 				return []byte(s), ch.Enc.Name
 			}
 			return b, ""
 		}
 	case !ch.Enc.IsUTF8():
-		src = transform.NewReader(br, ch.Enc.NewDecoder())
-		conv = func(b []byte) ([]byte, string) { return b, ch.Enc.Name }
+		return transform.NewReader(br, ch.Enc.NewDecoder()), func(b []byte) ([]byte, string) { return b, ch.Enc.Name }
 	}
+	return br, nil
+}
 
-	var (
-		before  []string // preceding lines (leading context)
-		pending *Match   // match collecting trailing context
-		stopped bool
-	)
-	flush := func() {
-		if pending != nil && !stopped {
-			if emit(*pending) == grepStop {
-				stopped = true
-			}
-		}
-		pending = nil
-	}
+// contextMatches collects matches with up to before leading and after trailing context lines.
+type contextMatches struct {
+	before, after int
+	emit          func(Match) grepAction
+	recent        []string // preceding lines (leading context)
+	pending       *Match   // match collecting trailing context
+	stopped       bool     // emit asked to stop
+}
 
-	sc := bufio.NewScanner(src)
-	sc.Buffer(make([]byte, 64*1024), 1<<20)
-	for n := 1; sc.Scan() && !stopped; n++ {
-		line, cs := sc.Bytes(), ""
-		if conv != nil {
-			line, cs = conv(line)
-		}
-		text := clipLine(line)
-		if pending != nil {
-			pending.After = append(pending.After, text)
-			if len(pending.After) >= opt.after {
-				flush()
-			}
-		}
-		if opt.re.Match(line) {
-			if opt.after == 0 && opt.before == 0 {
-				// Without context, follow the handler's instruction on how to continue.
-				switch emit(Match{Path: path, Line: n, Text: text, Charset: cs}) {
-				case grepNextFile:
-					return nil
-				case grepStop:
-					return errStop
-				}
-			} else {
-				flush()
-				pending = &Match{Path: path, Line: n, Text: text, Before: slices.Clone(before), Charset: cs}
-				if opt.after == 0 {
-					flush()
-				}
-			}
-		}
-		if opt.before > 0 {
-			before = append(before, text)
-			if len(before) > opt.before {
-				before = before[1:]
-			}
+// add feeds one line; m is the match it produced, or nil.
+func (c *contextMatches) add(text string, m *Match) {
+	if c.pending != nil {
+		c.pending.After = append(c.pending.After, text)
+		if len(c.pending.After) >= c.after {
+			c.flush()
 		}
 	}
-	flush()
-	if stopped {
-		return errStop
+	if m != nil {
+		c.flush()
+		m.Before = slices.Clone(c.recent)
+		c.pending = m
+		if c.after == 0 {
+			c.flush()
+		}
 	}
-	return nil // For a file whose reading stopped early (for example at an overlong line), return the results so far.
+	if c.before > 0 {
+		c.recent = append(c.recent, text)
+		if len(c.recent) > c.before {
+			c.recent = c.recent[1:]
+		}
+	}
+}
+
+// flush emits the pending match.
+func (c *contextMatches) flush() {
+	if c.pending != nil && !c.stopped && c.emit(*c.pending) == grepStop {
+		c.stopped = true
+	}
+	c.pending = nil
 }
 
 // fileEncoding decides the encoding of a file from its start (BOM, UTF-16, binary) and skips the BOM.

@@ -138,7 +138,8 @@ func (r *Registry) Register(s *mcp.Server) {
 	registerHelp(s, r.d)
 }
 
-// definitions collects tool descriptions and their typed handlers in one place.
+// definitions collects tool descriptions and their typed handlers in listing order; each group
+// registers its tools in the file that implements them.
 func definitions(d *Deps, allOS bool) *Registry {
 	r := &Registry{d: d, allOS: allOS}
 	// Usage
@@ -150,156 +151,9 @@ func definitions(d *Deps, allOS bool) *Registry {
 		Annotations: readOnly(),
 	}, d.helpGet)
 
-	// Running commands
-	add(r, groupExec, &mcp.Tool{
-		Name:  "exec_run",
-		Title: "Run command",
-		Description: "Run a command on the remote host and wait for completion (up to timeout_sec), returning exit_code, stdout and stderr. " +
-			"Pass command for a shell command line (default_shell in sys_get_info) or argv to run a program directly without a shell. " +
-			"Each call is a separate process (pass cwd and env; cd/export do not persist) with closed stdin unless stdin is set. " +
-			"Streams progress notifications and kills the process tree on cancellation. " +
-			"Use job_start for long-running, interactive, or TTY commands; prefer fs_read/fs_edit/fs_write for file operations.",
-		Annotations: destructive(),
-	}, d.execRun)
-
-	// Long-running commands
-	add(r, groupExec, &mcp.Tool{
-		Name:  "job_start",
-		Title: "Start background job",
-		Description: "Start a background command and return its job id immediately (same arguments as exec_run; no timeout unless timeout_sec is set). " +
-			"Use for builds, test suites, servers, or streaming commands; read output with job_read (with wait_sec). " +
-			"Set stdin_open to send input via job_write, or pty to run in a pseudo terminal (for password prompts, REPLs, ssh, top).",
-		Annotations: destructive(),
-	}, d.jobStart)
-	add(r, groupExec, &mcp.Tool{
-		Name:  "job_read",
-		Title: "Read job output",
-		Description: "Read interleaved stdout/stderr of a background job from a byte offset and return its status (running, exit_code). " +
-			"Start at offset 0 and pass next_offset on subsequent calls (or a negative offset for the tail). " +
-			"Set wait_sec (with optional until regex or idle_ms) to wait for output instead of polling. " +
-			"Strips ANSI escape sequences from pty jobs unless raw is set.",
-		Annotations: readOnly(),
-	}, d.jobRead)
-	add(r, groupExec, &mcp.Tool{
-		Name:  "job_write",
-		Title: "Send input to job",
-		Description: "Write to stdin of a job started with stdin_open or pty, close stdin (close: true), or resize a pty (cols, rows). " +
-			"Include \\n (or \\r in pty mode) to submit a line; pty jobs accept control sequences (\\u0003 Ctrl-C, \\u0004 Ctrl-D, \\u001b Esc). " +
-			"Follow with job_read (using wait_sec and until/idle_ms) to read the response.",
-		Annotations: destructive(),
-	}, d.jobWrite)
-	add(r, groupExec, &mcp.Tool{
-		Name:  "job_stop",
-		Title: "Stop job",
-		Description: "Stop or signal a background job: kill (default) terminates the process tree; Linux also supports process-group signals (interrupt, terminate, hangup, ...); " +
-			"in pty jobs interrupt sends Ctrl-C. Waits up to wait_sec and returns job status.",
-		Annotations: destructive(),
-	}, d.jobStop)
-	add(r, groupExec, &mcp.Tool{
-		Name:        "job_list",
-		Title:       "List jobs",
-		Description: "List background jobs in this session with their status (retains the 50 most recent finished jobs; all jobs terminate when the session ends).",
-		Annotations: readOnly(),
-	}, d.jobList)
-
-	// Running as root (not on Windows)
-	if r.allOS || runtime.GOOS != "windows" {
-		add(r, groupExec, &mcp.Tool{
-			Name:  "exec_sudo",
-			Title: "Run as root",
-			Description: "Run a shell command via sudo as root or user. Without password, uses sudo -n (requires NOPASSWD for sh; for command-specific sudoers rules, use exec_run with argv [\"sudo\", \"-n\", ...]). " +
-				"When password is provided by the user, passes it to sudo via askpass without exposing it to the command, logs, or output.",
-			Annotations: destructive(),
-		}, d.execSudo)
-	}
-
-	// File operations
-	add(r, groupFiles, &mcp.Tool{
-		Name:        "fs_list",
-		Title:       "List directory",
-		Description: "List entries in a single directory (name, type, size, mode, mod_time). Non-recursive; use search_find to search directory trees.",
-		Annotations: readOnly(),
-	}, d.fsList)
-	add(r, groupFiles, &mcp.Tool{
-		Name:        "fs_stat",
-		Title:       "File attributes",
-		Description: "Get type, size, mode, mod_time and symlink target of a path without following a final symlink.",
-		Annotations: readOnly(),
-	}, d.fsStat)
-	add(r, groupFiles, &mcp.Tool{
-		Name:  "fs_read",
-		Title: "Read file",
-		Description: "Read a file on the remote host. Line mode: line_start (1-based), line_count and optional line_numbers (continue with next_line). " +
-			"Byte mode: offset and length (continue with next_offset). Binary mode: encoding base64 with offset and length. " +
-			"Text mode decodes to UTF-8 (charset auto by default) and reports charset, bom and newline.",
-		Annotations: readOnly(),
-	}, d.fsRead)
-	add(r, groupFiles, &mcp.Tool{
-		Name:  "fs_edit",
-		Title: "Edit file",
-		Description: "Replace exact text in an existing file (prefer over fs_write for partial edits). old_string must match once unless replace_all is set; edits applies multiple replacements atomically. " +
-			"Preserves file encoding, BOM and line endings (LF in inputs matches CRLF files) and returns a numbered diff snippet. " +
-			"Copy old_string from fs_read without line number prefixes.",
-		Annotations: destructive(),
-	}, d.fsEdit)
-	add(r, groupFiles, &mcp.Tool{
-		Name:  "fs_write",
-		Title: "Write file",
-		Description: "Create, overwrite, or update a file with text or base64 content. mode: overwrite (default), append, create. " +
-			"offset writes at a byte position without truncating; make_dirs creates parent directories; perm sets octal permissions; atomic renames a temp file over the target. " +
-			"charset, newline and bom control text encoding (default UTF-8). Use fs_edit for partial edits to existing files.",
-		Annotations: destructive(),
-	}, d.fsWrite)
-	add(r, groupFiles, &mcp.Tool{
-		Name:        "fs_mkdir",
-		Title:       "Create directory",
-		Description: "Create a directory and any missing parent directories (no-op if the directory already exists).",
-		Annotations: additive(true),
-	}, d.fsMkdir)
-	add(r, groupFiles, &mcp.Tool{
-		Name:  "fs_move",
-		Title: "Move or rename",
-		Description: "Move or rename a file or directory to destination (full target path). Fails if destination exists unless overwrite is set (files only). " +
-			"Falls back to copy-and-delete across file systems.",
-		Annotations: destructive(),
-	}, d.fsMove)
-	add(r, groupFiles, &mcp.Tool{
-		Name:  "fs_copy",
-		Title: "Copy",
-		Description: "Copy a file or directory tree (with recursive) to destination (full target path), preserving permissions, mtimes and symlinks. " +
-			"Fails if destination exists unless overwrite is set (replaces files, merges directories).",
-		Annotations: destructive(),
-	}, d.fsCopy)
-	add(r, groupFiles, &mcp.Tool{
-		Name:        "fs_remove",
-		Title:       "Delete",
-		Description: "Delete a file, symlink, empty directory, or directory tree (with recursive). Refuses filesystem roots and home directory; missing_ok ignores nonexistent paths.",
-		Annotations: destructive(),
-	}, d.fsRemove)
-	add(r, groupFiles, &mcp.Tool{
-		Name:        "fs_manifest",
-		Title:       "File hashes",
-		Description: "List regular files under a path with relative path, size, octal mode and SHA-256 hash (for incremental sync or verification).",
-		Annotations: readOnly(),
-	}, d.fsManifest)
-
-	// Search
-	add(r, groupSearch, &mcp.Tool{
-		Name:  "search_grep",
-		Title: "Search file contents",
-		Description: "Search file contents recursively using a Go RE2 regex (or literal string). " +
-			"output_mode: content (matching lines with optional context/before/after), files (paths only) or count. " +
-			"Filters by include glob and gitignore, skips binary files and .git/.hg/.svn, and auto-decodes non-UTF-8 text encodings.",
-		Annotations: readOnly(),
-	}, d.searchGrep)
-	add(r, groupSearch, &mcp.Tool{
-		Name:  "search_find",
-		Title: "Find files",
-		Description: "Find files or directories recursively by glob (base name without '/', or relative path with '/'). " +
-			"Filter by type (file, dir) and sort by path or mtime (newest first).",
-		Annotations: readOnly(),
-	}, d.searchFind)
-
+	registerExec(r, d)
+	registerFiles(r, d)
+	registerSearch(r, d)
 	registerNet(r, d)
 	registerAdmin(r, d)
 

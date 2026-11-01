@@ -25,6 +25,79 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/wire"
 )
 
+// registerFiles defines the file tools.
+func registerFiles(r *Registry, d *Deps) {
+	// File operations
+	add(r, groupFiles, &mcp.Tool{
+		Name:        "fs_list",
+		Title:       "List directory",
+		Description: "List entries in a single directory (name, type, size, mode, mod_time). Non-recursive; use search_find to search directory trees.",
+		Annotations: readOnly(),
+	}, d.fsList)
+	add(r, groupFiles, &mcp.Tool{
+		Name:        "fs_stat",
+		Title:       "File attributes",
+		Description: "Get type, size, mode, mod_time and symlink target of a path without following a final symlink.",
+		Annotations: readOnly(),
+	}, d.fsStat)
+	add(r, groupFiles, &mcp.Tool{
+		Name:  "fs_read",
+		Title: "Read file",
+		Description: "Read a file on the remote host. Line mode: line_start (1-based), line_count and optional line_numbers (continue with next_line). " +
+			"Byte mode: offset and length (continue with next_offset). Binary mode: encoding base64 with offset and length. " +
+			"Text mode decodes to UTF-8 (charset auto by default) and reports charset, bom and newline.",
+		Annotations: readOnly(),
+	}, d.fsRead)
+	add(r, groupFiles, &mcp.Tool{
+		Name:  "fs_edit",
+		Title: "Edit file",
+		Description: "Replace exact text in an existing file (prefer over fs_write for partial edits). old_string must match once unless replace_all is set; edits applies multiple replacements atomically. " +
+			"Preserves file encoding, BOM and line endings (LF in inputs matches CRLF files) and returns a numbered diff snippet. " +
+			"Copy old_string from fs_read without line number prefixes.",
+		Annotations: destructive(),
+	}, d.fsEdit)
+	add(r, groupFiles, &mcp.Tool{
+		Name:  "fs_write",
+		Title: "Write file",
+		Description: "Create, overwrite, or update a file with text or base64 content. mode: overwrite (default), append, create. " +
+			"offset writes at a byte position without truncating; make_dirs creates parent directories; perm sets octal permissions; atomic renames a temp file over the target. " +
+			"charset, newline and bom control text encoding (default UTF-8). Use fs_edit for partial edits to existing files.",
+		Annotations: destructive(),
+	}, d.fsWrite)
+	add(r, groupFiles, &mcp.Tool{
+		Name:        "fs_mkdir",
+		Title:       "Create directory",
+		Description: "Create a directory and any missing parent directories (no-op if the directory already exists).",
+		Annotations: additive(true),
+	}, d.fsMkdir)
+	add(r, groupFiles, &mcp.Tool{
+		Name:  "fs_move",
+		Title: "Move or rename",
+		Description: "Move or rename a file or directory to destination (full target path). Fails if destination exists unless overwrite is set (files only). " +
+			"Falls back to copy-and-delete across file systems.",
+		Annotations: destructive(),
+	}, d.fsMove)
+	add(r, groupFiles, &mcp.Tool{
+		Name:  "fs_copy",
+		Title: "Copy",
+		Description: "Copy a file or directory tree (with recursive) to destination (full target path), preserving permissions, mtimes and symlinks. " +
+			"Fails if destination exists unless overwrite is set (replaces files, merges directories).",
+		Annotations: destructive(),
+	}, d.fsCopy)
+	add(r, groupFiles, &mcp.Tool{
+		Name:        "fs_remove",
+		Title:       "Delete",
+		Description: "Delete a file, symlink, empty directory, or directory tree (with recursive). Refuses filesystem roots and home directory; missing_ok ignores nonexistent paths.",
+		Annotations: destructive(),
+	}, d.fsRemove)
+	add(r, groupFiles, &mcp.Tool{
+		Name:        "fs_manifest",
+		Title:       "File hashes",
+		Description: "List regular files under a path with relative path, size, octal mode and SHA-256 hash (for incremental sync or verification).",
+		Annotations: readOnly(),
+	}, d.fsManifest)
+}
+
 // Entry is one directory entry.
 type Entry struct {
 	Name    string `json:"name"`

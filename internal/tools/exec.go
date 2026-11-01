@@ -17,6 +17,72 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
+// registerExec defines the command and job tools.
+func registerExec(r *Registry, d *Deps) {
+	// Running commands
+	add(r, groupExec, &mcp.Tool{
+		Name:  "exec_run",
+		Title: "Run command",
+		Description: "Run a command on the remote host and wait for completion (up to timeout_sec), returning exit_code, stdout and stderr. " +
+			"Pass command for a shell command line (default_shell in sys_get_info) or argv to run a program directly without a shell. " +
+			"Each call is a separate process (pass cwd and env; cd/export do not persist) with closed stdin unless stdin is set. " +
+			"Streams progress notifications and kills the process tree on cancellation. " +
+			"Use job_start for long-running, interactive, or TTY commands; prefer fs_read/fs_edit/fs_write for file operations.",
+		Annotations: destructive(),
+	}, d.execRun)
+
+	// Long-running commands
+	add(r, groupExec, &mcp.Tool{
+		Name:  "job_start",
+		Title: "Start background job",
+		Description: "Start a background command and return its job id immediately (same arguments as exec_run; no timeout unless timeout_sec is set). " +
+			"Use for builds, test suites, servers, or streaming commands; read output with job_read (with wait_sec). " +
+			"Set stdin_open to send input via job_write, or pty to run in a pseudo terminal (for password prompts, REPLs, ssh, top).",
+		Annotations: destructive(),
+	}, d.jobStart)
+	add(r, groupExec, &mcp.Tool{
+		Name:  "job_read",
+		Title: "Read job output",
+		Description: "Read interleaved stdout/stderr of a background job from a byte offset and return its status (running, exit_code). " +
+			"Start at offset 0 and pass next_offset on subsequent calls (or a negative offset for the tail). " +
+			"Set wait_sec (with optional until regex or idle_ms) to wait for output instead of polling. " +
+			"Strips ANSI escape sequences from pty jobs unless raw is set.",
+		Annotations: readOnly(),
+	}, d.jobRead)
+	add(r, groupExec, &mcp.Tool{
+		Name:  "job_write",
+		Title: "Send input to job",
+		Description: "Write to stdin of a job started with stdin_open or pty, close stdin (close: true), or resize a pty (cols, rows). " +
+			"Include \\n (or \\r in pty mode) to submit a line; pty jobs accept control sequences (\\u0003 Ctrl-C, \\u0004 Ctrl-D, \\u001b Esc). " +
+			"Follow with job_read (using wait_sec and until/idle_ms) to read the response.",
+		Annotations: destructive(),
+	}, d.jobWrite)
+	add(r, groupExec, &mcp.Tool{
+		Name:  "job_stop",
+		Title: "Stop job",
+		Description: "Stop or signal a background job: kill (default) terminates the process tree; Linux also supports process-group signals (interrupt, terminate, hangup, ...); " +
+			"in pty jobs interrupt sends Ctrl-C. Waits up to wait_sec and returns job status.",
+		Annotations: destructive(),
+	}, d.jobStop)
+	add(r, groupExec, &mcp.Tool{
+		Name:        "job_list",
+		Title:       "List jobs",
+		Description: "List background jobs in this session with their status (retains the 50 most recent finished jobs; all jobs terminate when the session ends).",
+		Annotations: readOnly(),
+	}, d.jobList)
+
+	// Running as root (not on Windows)
+	if r.allOS || runtime.GOOS != "windows" {
+		add(r, groupExec, &mcp.Tool{
+			Name:  "exec_sudo",
+			Title: "Run as root",
+			Description: "Run a shell command via sudo as root or user. Without password, uses sudo -n (requires NOPASSWD for sh; for command-specific sudoers rules, use exec_run with argv [\"sudo\", \"-n\", ...]). " +
+				"When password is provided by the user, passes it to sudo via askpass without exposing it to the command, logs, or output.",
+			Annotations: destructive(),
+		}, d.execSudo)
+	}
+}
+
 // CommandSpec is the input shared by command execution tools.
 type CommandSpec struct {
 	Command    string            `json:"command,omitempty" jsonschema:"shell command line (supports pipes, redirects, &&); set either command or argv"`

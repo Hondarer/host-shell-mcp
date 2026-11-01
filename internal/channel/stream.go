@@ -308,78 +308,104 @@ func (s *stream) handleFrame(kind string, f Frame) error {
 	}
 	switch kind {
 	case "open_result":
-		if s.established {
-			return errors.New("unexpected result")
-		}
-		s.established = f.Error == ""
-		var e error
-		if f.Error != "" {
-			e = &Error{Code: f.Error}
-		}
-		select {
-		case s.opened <- e:
-		default:
-			return errors.New("duplicate result")
-		}
+		return s.handleOpenResult(f)
 	case "data":
-		if !s.established {
-			return errors.New("data before open result")
-		}
-		b, e := base64.StdEncoding.DecodeString(f.Data)
-		if e != nil || len(b) == 0 || len(b) > frameSize {
-			return errors.New("invalid data")
-		}
-		s.flowMu.Lock()
-		if s.receivedEOF || len(b) > s.recvCredit {
-			s.flowMu.Unlock()
-			return errors.New("receive credit exceeded")
-		}
-		s.recvCredit -= len(b)
-		first := min(len(b), windowSize-s.recvTail)
-		copy(s.recvBuffer[s.recvTail:], b[:first])
-		copy(s.recvBuffer, b[first:])
-		s.recvTail = (s.recvTail + len(b)) % windowSize
-		s.buffered += len(b)
-		s.flowMu.Unlock()
-		s.wake()
-
+		return s.handleData(f)
 	case "window":
-		s.flowMu.Lock()
-		if f.Bytes <= 0 || f.Bytes > windowSize || s.sendCredit+f.Bytes > windowSize {
-			s.flowMu.Unlock()
-			return errors.New("invalid window")
-		}
-		s.sendCredit += f.Bytes
-		s.flowMu.Unlock()
-		select {
-		case s.credit <- 1:
-		default:
-		}
+		return s.handleWindow(f)
 	case "half_close":
-		s.flowMu.Lock()
-		if s.receivedEOF {
-			s.flowMu.Unlock()
-			return errors.New("duplicate eof")
-		}
-		s.receivedEOF = true
-		s.flowMu.Unlock()
-		s.wake()
+		return s.handleHalfClose()
 	case "close":
-		// Drain incoming bytes before EOF. Closing the write half here would make
-		// HTTP transports abort their reader before buffered responses are consumed.
-		s.flowMu.Lock()
-		s.peerClosed = true
-		s.networkCancel()
-		s.receivedEOF = true
-		s.flowMu.Unlock()
-		s.wake()
-		select {
-		case s.opened <- io.ErrClosedPipe:
-		default:
-		}
+		s.handleClose()
+		return nil
+	}
+	return errors.New("unknown channel notification")
+}
 
+// handleOpenResult completes a Dial waiting for the peer's answer.
+func (s *stream) handleOpenResult(f Frame) error {
+	if s.established {
+		return errors.New("unexpected result")
+	}
+	s.established = f.Error == ""
+	var e error
+	if f.Error != "" {
+		e = &Error{Code: f.Error}
+	}
+	select {
+	case s.opened <- e:
+		return nil
 	default:
-		return errors.New("unknown channel notification")
+		return errors.New("duplicate result")
+	}
+}
+
+// handleData stores received bytes in the ring buffer within the receive credit.
+func (s *stream) handleData(f Frame) error {
+	if !s.established {
+		return errors.New("data before open result")
+	}
+	b, e := base64.StdEncoding.DecodeString(f.Data)
+	if e != nil || len(b) == 0 || len(b) > frameSize {
+		return errors.New("invalid data")
+	}
+	s.flowMu.Lock()
+	if s.receivedEOF || len(b) > s.recvCredit {
+		s.flowMu.Unlock()
+		return errors.New("receive credit exceeded")
+	}
+	s.recvCredit -= len(b)
+	first := min(len(b), windowSize-s.recvTail)
+	copy(s.recvBuffer[s.recvTail:], b[:first])
+	copy(s.recvBuffer, b[first:])
+	s.recvTail = (s.recvTail + len(b)) % windowSize
+	s.buffered += len(b)
+	s.flowMu.Unlock()
+	s.wake()
+	return nil
+}
+
+// handleWindow returns send credit granted by the peer.
+func (s *stream) handleWindow(f Frame) error {
+	s.flowMu.Lock()
+	if f.Bytes <= 0 || f.Bytes > windowSize || s.sendCredit+f.Bytes > windowSize {
+		s.flowMu.Unlock()
+		return errors.New("invalid window")
+	}
+	s.sendCredit += f.Bytes
+	s.flowMu.Unlock()
+	select {
+	case s.credit <- 1:
+	default:
 	}
 	return nil
+}
+
+// handleHalfClose marks the end of the peer's data.
+func (s *stream) handleHalfClose() error {
+	s.flowMu.Lock()
+	if s.receivedEOF {
+		s.flowMu.Unlock()
+		return errors.New("duplicate eof")
+	}
+	s.receivedEOF = true
+	s.flowMu.Unlock()
+	s.wake()
+	return nil
+}
+
+// handleClose ends the stream from the peer's side.
+func (s *stream) handleClose() {
+	// Drain incoming bytes before EOF. Closing the write half here would make
+	// HTTP transports abort their reader before buffered responses are consumed.
+	s.flowMu.Lock()
+	s.peerClosed = true
+	s.networkCancel()
+	s.receivedEOF = true
+	s.flowMu.Unlock()
+	s.wake()
+	select {
+	case s.opened <- io.ErrClosedPipe:
+	default:
+	}
 }
