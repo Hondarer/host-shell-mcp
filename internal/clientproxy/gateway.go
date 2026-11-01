@@ -31,14 +31,10 @@ const reasonUpstream = "upstream connection failed"
 
 // Event is a connection result in proxy_status.
 type Event struct {
-	Seq          uint64 `json:"seq"`
-	Time         string `json:"time"`
+	channel.EventHead
 	ConnectionID uint64 `json:"connection_id"`
-	Host         string `json:"host,omitempty"`
-	Port         int    `json:"port,omitempty"`
-	Status       string `json:"status"`
-	Reason       string `json:"reason"`
-	Count        int    `json:"count,omitempty"`
+	channel.Outcome
+	Count int `json:"count,omitempty"`
 }
 
 // StatusInput is the input of proxy_status.
@@ -46,13 +42,10 @@ type StatusInput = channel.PageInput
 
 // Status is the output of proxy_status.
 type Status struct {
-	Enabled           bool     `json:"enabled"`
-	State             string   `json:"state"`
-	AllowHosts        []string `json:"allow_hosts"`
-	ActiveConnections int      `json:"active_connections"`
-	Events            []Event  `json:"events"`
-	NextSeq           uint64   `json:"next_seq"`
-	Truncated         bool     `json:"truncated"`
+	Enabled    bool     `json:"enabled"`
+	State      string   `json:"state"`
+	AllowHosts []string `json:"allow_hosts"`
+	channel.Recent[Event]
 }
 
 // Gateway is the bridge side of the HTTP proxy: it checks destinations and connects on the client network.
@@ -107,18 +100,18 @@ func (g *Gateway) record(id uint64, host string, port int, status, reason string
 		return
 	}
 	g.history.Add(func(seq uint64) Event {
-		return Event{Seq: seq, Time: time.Now().Format(time.RFC3339), ConnectionID: id, Host: host, Port: port, Status: status, Reason: reason, Count: 1}
+		return Event{EventHead: channel.NewEventHead(seq), ConnectionID: id, Outcome: channel.Outcome{Host: host, Port: port, Status: status, Reason: reason}, Count: 1}
 	})
 	log.Printf("proxy: id=%d host=%q port=%d status=%s reason=%s", id, host, port, status, reason)
 }
+
+// Status returns the proxy state, destination rules and recent connection results.
 func (g *Gateway) Status(in StatusInput) (Status, error) {
-	events, next, truncated, e := g.history.Page(in.AfterSeq, in.Limit)
-	if e != nil {
-		return Status{}, e
+	state, recent, err := channel.Snapshot(&g.history, &g.peer, in)
+	if err != nil {
+		return Status{}, err
 	}
-	o := Status{Enabled: true, AllowHosts: append([]string{}, g.rules...), Events: events, NextSeq: next, Truncated: truncated}
-	o.State, o.ActiveConnections = g.peer.State()
-	return o, nil
+	return Status{Enabled: true, State: state, AllowHosts: append([]string{}, g.rules...), Recent: recent}, nil
 }
 func (g *Gateway) open(ctx context.Context, in *channel.Incoming) {
 	if !channel.ValidDestination(in.Host, in.Port) || !g.allowed(in.Host, in.Port) {

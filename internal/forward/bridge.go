@@ -20,15 +20,11 @@ const establishTimeout = 30 * time.Second
 
 // Event is a connection result in forward_status.
 type Event struct {
-	Seq          uint64 `json:"seq"`
-	Time         string `json:"time"`
+	channel.EventHead
 	ForwardID    uint64 `json:"forward_id"`
 	ConnectionID uint64 `json:"connection_id,omitempty"`
 	Direction    string `json:"direction"`
-	Host         string `json:"host,omitempty"`
-	Port         int    `json:"port,omitempty"`
-	Status       string `json:"status" jsonschema:"allowed, denied or failed"`
-	Reason       string `json:"reason"`
+	channel.Outcome
 }
 
 // Info describes one forward.
@@ -62,14 +58,11 @@ type StatusInput = channel.PageInput
 
 // Status is the output of forward_status.
 type Status struct {
-	State             string   `json:"state"`
-	Forwards          []Info   `json:"forwards"`
-	AllowLocal        []string `json:"allow_local" jsonschema:"--forward-allow-local rules for tool-created local forwards and SOCKS destinations"`
-	AllowRemote       []string `json:"allow_remote" jsonschema:"--forward-allow-remote rules for tool-created remote forwards"`
-	ActiveConnections int      `json:"active_connections" jsonschema:"open channel streams, HTTP proxy included"`
-	Events            []Event  `json:"events"`
-	NextSeq           uint64   `json:"next_seq"`
-	Truncated         bool     `json:"truncated"`
+	State       string   `json:"state"`
+	Forwards    []Info   `json:"forwards"`
+	AllowLocal  []string `json:"allow_local" jsonschema:"--forward-allow-local rules for tool-created local forwards and SOCKS destinations"`
+	AllowRemote []string `json:"allow_remote" jsonschema:"--forward-allow-remote rules for tool-created remote forwards"`
+	channel.Recent[Event]
 }
 
 type forward struct {
@@ -277,7 +270,8 @@ func (m *Manager) sorted() []*forward {
 func (m *Manager) record(f *forward, conn uint64, host string, port int, status, reason string) {
 	// Reasons are fixed strings; forwarded data is never recorded.
 	m.history.Add(func(seq uint64) Event {
-		return Event{Seq: seq, Time: time.Now().Format(time.RFC3339), ForwardID: f.id, ConnectionID: conn, Direction: f.spec.Direction, Host: host, Port: port, Status: status, Reason: reason}
+		return Event{EventHead: channel.NewEventHead(seq), ForwardID: f.id, ConnectionID: conn, Direction: f.spec.Direction,
+			Outcome: channel.Outcome{Host: host, Port: port, Status: status, Reason: reason}}
 	})
 	log.Printf("forward: id=%d connection=%d direction=%s host=%q port=%d status=%s reason=%s", f.id, conn, f.spec.Direction, host, port, status, reason)
 }
@@ -532,15 +526,14 @@ func (f *forward) info() Info {
 
 // Status returns forwards, rules and recent connection results.
 func (m *Manager) Status(in StatusInput) (Status, error) {
-	events, next, truncated, err := m.history.Page(in.AfterSeq, in.Limit)
+	state, recent, err := channel.Snapshot(&m.history, &m.peer, in)
 	if err != nil {
 		return Status{}, err
 	}
-	o := Status{Forwards: []Info{}, AllowLocal: append([]string{}, m.allowLocal...), AllowRemote: append([]string{}, m.allowRemote...), Events: events, NextSeq: next, Truncated: truncated}
+	o := Status{State: state, Forwards: []Info{}, AllowLocal: append([]string{}, m.allowLocal...), AllowRemote: append([]string{}, m.allowRemote...), Recent: recent}
 	for _, f := range m.sorted() {
 		o.Forwards = append(o.Forwards, f.info())
 	}
-	o.State, o.ActiveConnections = m.peer.State()
 	return o, nil
 }
 
