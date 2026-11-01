@@ -20,6 +20,27 @@ const (
 	socksAddressUnsupport = 0x08
 )
 
+// A rejected SOCKS connection is kept for at most this long, reading at most this much,
+// so that its unread request bytes can be drained before it closes (see lingerClose).
+const (
+	socksLingerTimeout = time.Second
+	socksLingerLimit   = 64 << 10
+)
+
+// lingerClose closes c after a rejection reply. Closing a TCP connection with unread input makes
+// the OS send RST instead of FIN, and Windows then discards the reply before the client reads it.
+// So the write side is closed first (the client sees the reply and then EOF), and the remaining
+// input is drained until the client closes, socksLingerTimeout passes or socksLingerLimit bytes
+// are read.
+func lingerClose(c net.Conn) {
+	if cw, ok := c.(interface{ CloseWrite() error }); ok {
+		cw.CloseWrite()
+	}
+	c.SetReadDeadline(time.Now().Add(socksLingerTimeout))
+	io.Copy(io.Discard, io.LimitReader(c, socksLingerLimit))
+	c.Close()
+}
+
 func socksReply(code string) byte {
 	switch code {
 	case channel.CodeNotAllowed:
@@ -35,6 +56,7 @@ func socksReply(code string) byte {
 }
 
 // socks serves one SOCKS5 CONNECT without authentication; the target resolves domain names.
+// Every path that writes a rejection reply ends with lingerClose so that the reply arrives.
 func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
 	c.SetDeadline(time.Now().Add(m.timeout))
 	unsupported := func(host string, port int) {
@@ -55,6 +77,7 @@ func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
 		// SOCKS4 and 4a: "request rejected or failed".
 		c.Write([]byte{0, 0x5b, 0, 0, 0, 0, 0, 0})
 		unsupported("", 0)
+		lingerClose(c)
 		return
 	default:
 		unsupported("", 0)
@@ -71,6 +94,7 @@ func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
 	if !noAuth {
 		c.Write([]byte{5, 0xff})
 		unsupported("", 0)
+		lingerClose(c)
 		return
 	}
 	if _, err := c.Write([]byte{5, 0}); err != nil {
@@ -104,6 +128,7 @@ func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
 	default:
 		reply(socksAddressUnsupport)
 		unsupported("", 0)
+		lingerClose(c)
 		return
 	}
 	pb := make([]byte, 2)
@@ -114,16 +139,19 @@ func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
 	if req[1] != 1 {
 		reply(socksCommandUnsupport)
 		unsupported(host, port)
+		lingerClose(c)
 		return
 	}
 	if !validHost(host) || port == 0 {
 		reply(socksFailure)
 		unsupported(host, port)
+		lingerClose(c)
 		return
 	}
 	if !m.allowLocal.Allow(host, port) {
 		reply(socksNotAllowed)
 		m.record(f, id, host, port, "denied", "destination not allowed")
+		lingerClose(c)
 		return
 	}
 	// The handshake deadline must not cut the connect wait short, or a timeout could not be replied.
@@ -133,11 +161,13 @@ func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
 		code := channel.Code(err)
 		reply(socksReply(code))
 		m.record(f, id, host, port, status(code), reason(code))
+		lingerClose(c)
 		return
 	}
 	if !f.track(remote) {
 		remote.Close()
 		reply(socksFailure)
+		lingerClose(c)
 		return
 	}
 	defer f.untrack(remote)
