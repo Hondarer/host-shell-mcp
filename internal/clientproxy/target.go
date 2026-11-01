@@ -110,30 +110,9 @@ func (t *Target) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "proxy authentication required", 407)
 		return
 	}
-	host := r.URL.Host
-	port := 80
-	if r.Method == "CONNECT" {
-		host = r.Host
-		port = 443
-	}
-	h, p, e := net.SplitHostPort(host)
-	if e == nil {
-		host = h
-		port, e = strconv.Atoi(p)
-		if e != nil {
-			http.Error(w, "invalid port", 400)
-			return
-		}
-	} else if strings.Contains(host, ":") {
-		http.Error(w, "invalid destination", 400)
-		return
-	}
-	if !channel.ValidDestination(host, port) {
-		http.Error(w, "invalid destination", 400)
-		return
-	}
-	if r.Method != "CONNECT" && (r.URL.Scheme != "http" || !strings.EqualFold(r.Host, r.URL.Host)) {
-		http.Error(w, "invalid HTTP proxy destination", 400)
+	host, port, msg := destination(r)
+	if msg != "" {
+		http.Error(w, msg, 400)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), dialTimeout)
@@ -145,43 +124,82 @@ func (t *Target) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	cancel()
 	t.connect(kind, host, port, e)
 	if e != nil {
-		code := 502
-		switch channel.Code(e) {
-		case channel.CodeNotAllowed:
-			code = 403
-		case channel.CodeLimit:
-			if e == channel.ErrLimit {
-				// A limit reached on the bridge is already recorded there.
-				t.mux.Report("limit", channel.Frame{Host: host, Port: port})
-			}
-			code = 503
-		case channel.CodeTimeout:
-			code = 504
+		code := dialStatus(e)
+		if e == channel.ErrLimit {
+			// A limit reached on the bridge is already recorded there.
+			t.mux.Report("limit", channel.Frame{Host: host, Port: port})
 		}
 		http.Error(w, http.StatusText(code), code)
 		return
 	}
 	defer c.Close()
 	if r.Method == "CONNECT" {
-		hj, ok := w.(http.Hijacker)
-		if !ok {
-			http.Error(w, "hijacking unavailable", 500)
-			return
-		}
-		local, buf, e := hj.Hijack()
-		if e != nil {
-			return
-		}
-		defer local.Close()
-		if _, e = buf.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n"); e != nil {
-			return
-		}
-		if buf.Flush() != nil {
-			return
-		}
-		tunnel(&bufferedConn{Conn: local, r: buf.Reader}, c)
+		serveConnect(w, c)
 		return
 	}
+	serveRequest(w, r, c, host, port)
+}
+
+// destination returns the host and port a proxy request asks for, or the message of a 400 reply.
+func destination(r *http.Request) (host string, port int, msg string) {
+	host, port = r.URL.Host, 80
+	if r.Method == "CONNECT" {
+		host, port = r.Host, 443
+	}
+	h, p, e := net.SplitHostPort(host)
+	if e == nil {
+		host = h
+		if port, e = strconv.Atoi(p); e != nil {
+			return "", 0, "invalid port"
+		}
+	} else if strings.Contains(host, ":") {
+		return "", 0, "invalid destination"
+	}
+	if !channel.ValidDestination(host, port) {
+		return "", 0, "invalid destination"
+	}
+	if r.Method != "CONNECT" && (r.URL.Scheme != "http" || !strings.EqualFold(r.Host, r.URL.Host)) {
+		return "", 0, "invalid HTTP proxy destination"
+	}
+	return host, port, ""
+}
+
+// dialStatus maps a failed stream open to the HTTP status of the proxy reply.
+func dialStatus(err error) int {
+	switch channel.Code(err) {
+	case channel.CodeNotAllowed:
+		return 403
+	case channel.CodeLimit:
+		return 503
+	case channel.CodeTimeout:
+		return 504
+	}
+	return 502
+}
+
+// serveConnect answers CONNECT and tunnels the client connection through stream c.
+func serveConnect(w http.ResponseWriter, c net.Conn) {
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "hijacking unavailable", 500)
+		return
+	}
+	local, buf, e := hj.Hijack()
+	if e != nil {
+		return
+	}
+	defer local.Close()
+	if _, e = buf.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n"); e != nil {
+		return
+	}
+	if buf.Flush() != nil {
+		return
+	}
+	tunnel(&bufferedConn{Conn: local, r: buf.Reader}, c)
+}
+
+// serveRequest sends one plain HTTP request over stream c and copies the response back.
+func serveRequest(w http.ResponseWriter, r *http.Request, c net.Conn, host string, port int) {
 	rc := http.NewResponseController(w)
 	r.Body = &requestBody{ReadCloser: r.Body, rc: rc}
 	stripHop(r.Header)

@@ -122,16 +122,9 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 	defer cancel()
 
 	var channelOptions channel.Options
-	var gateway *clientproxy.Gateway
-	if opt.Proxy {
-		var err error
-		gateway, err = clientproxy.NewGateway(opt.ProxyAllowHosts)
-		if err != nil {
-			return err
-		}
-		gateway.Register(&channelOptions)
-	} else if len(opt.ProxyAllowHosts) > 0 {
-		return errors.New("--proxy-allow-host requires --proxy")
+	gateway, err := newGateway(opt, &channelOptions)
+	if err != nil {
+		return err
 	}
 	forwards, err := forward.NewManager(opt.Forwards, opt.ForwardAllowLocal, opt.ForwardAllowRemote)
 	if err != nil {
@@ -155,49 +148,15 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 
 	// The agent session is connected after the remote session; no remote notifications arrive before tool calls.
 	var agent atomic.Pointer[mcp.ServerSession]
-	client := mcp.NewClient(&mcp.Implementation{Name: tools.BridgeClientName, Version: version.Version}, &mcp.ClientOptions{
-		// Return elicitation requests to the agent as-is and forward the retried call with answers to the target.
-		MultiRoundTrip: &mcp.MultiRoundTripOptions{Disabled: true},
-		ElicitationHandler: func(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
-			ss := agent.Load()
-			if ss == nil {
-				return nil, errors.New("agent is not connected")
-			}
-			return ss.Elicit(ctx, req.Params)
-		},
-		ProgressNotificationHandler: func(ctx context.Context, req *mcp.ProgressNotificationClientRequest) {
-			if ss := agent.Load(); ss != nil {
-				_ = ss.NotifyProgress(ctx, req.Params)
-			}
-		},
-		LoggingMessageHandler: func(ctx context.Context, req *mcp.LoggingMessageRequest) {
-			if ss := agent.Load(); ss != nil {
-				_ = ss.Log(ctx, req.Params)
-			}
-		},
-	})
-	cs, err := client.Connect(ctx, remote, nil)
+	cs, err := newRemoteClient(&agent).Connect(ctx, remote, nil)
 	if err != nil {
 		return fmt.Errorf("connect to remote host-shell: %w", err)
 	}
 	defer cs.Close()
 
 	init := cs.InitializeResult()
-	instructions := ""
-	if init != nil {
-		instructions = init.Instructions
-	}
-	if gateway != nil {
-		instructions += "\nClient proxy enabled: use proxy_status to inspect allowed destinations and recent denials."
-	}
-	if forwards.Enabled() {
-		instructions += "\n" + forwardInstructions(forwards)
-	}
-	if !opt.NoTransfer {
-		instructions += "\n\n" + transferInstructions
-	}
 	srv := mcp.NewServer(&mcp.Implementation{Name: "host-shell", Title: "host-shell (bridge)", Version: remoteVersion(init)},
-		&mcp.ServerOptions{Instructions: instructions})
+		&mcp.ServerOptions{Instructions: bridgeInstructions(init, opt, gateway != nil, forwards)})
 
 	if err := relayTools(ctx, cs, srv); err != nil {
 		return err
@@ -227,7 +186,71 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 		return err
 	}
 	agent.Store(ss)
+	return waitSessions(ctx, ss, cs)
+}
 
+// newGateway creates the client proxy gateway when --proxy is set and registers it on o.
+func newGateway(opt Options, o *channel.Options) (*clientproxy.Gateway, error) {
+	if !opt.Proxy {
+		if len(opt.ProxyAllowHosts) > 0 {
+			return nil, errors.New("--proxy-allow-host requires --proxy")
+		}
+		return nil, nil
+	}
+	gateway, err := clientproxy.NewGateway(opt.ProxyAllowHosts)
+	if err != nil {
+		return nil, err
+	}
+	gateway.Register(o)
+	return gateway, nil
+}
+
+// newRemoteClient creates the client for the target. Elicitation, progress and log messages
+// from the target are relayed to the agent session once it is stored in agent.
+func newRemoteClient(agent *atomic.Pointer[mcp.ServerSession]) *mcp.Client {
+	return mcp.NewClient(&mcp.Implementation{Name: tools.BridgeClientName, Version: version.Version}, &mcp.ClientOptions{
+		// Return elicitation requests to the agent as-is and forward the retried call with answers to the target.
+		MultiRoundTrip: &mcp.MultiRoundTripOptions{Disabled: true},
+		ElicitationHandler: func(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {
+			ss := agent.Load()
+			if ss == nil {
+				return nil, errors.New("agent is not connected")
+			}
+			return ss.Elicit(ctx, req.Params)
+		},
+		ProgressNotificationHandler: func(ctx context.Context, req *mcp.ProgressNotificationClientRequest) {
+			if ss := agent.Load(); ss != nil {
+				_ = ss.NotifyProgress(ctx, req.Params)
+			}
+		},
+		LoggingMessageHandler: func(ctx context.Context, req *mcp.LoggingMessageRequest) {
+			if ss := agent.Load(); ss != nil {
+				_ = ss.Log(ctx, req.Params)
+			}
+		},
+	})
+}
+
+// bridgeInstructions extends the target's instructions with the bridge's own tools.
+func bridgeInstructions(init *mcp.InitializeResult, opt Options, proxy bool, forwards *forward.Manager) string {
+	instructions := ""
+	if init != nil {
+		instructions = init.Instructions
+	}
+	if proxy {
+		instructions += "\nClient proxy enabled: use proxy_status to inspect allowed destinations and recent denials."
+	}
+	if forwards.Enabled() {
+		instructions += "\n" + forwardInstructions(forwards)
+	}
+	if !opt.NoTransfer {
+		instructions += "\n\n" + transferInstructions
+	}
+	return instructions
+}
+
+// waitSessions waits until the agent or the target session ends, then closes the agent session.
+func waitSessions(ctx context.Context, ss *mcp.ServerSession, cs *mcp.ClientSession) error {
 	done := make(chan error, 2)
 	go func() { done <- ss.Wait() }()
 	go func() {
@@ -237,7 +260,7 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 		}
 		done <- err
 	}()
-	err = <-done
+	err := <-done
 	ss.Close()
 	if errors.Is(err, io.EOF) {
 		err = nil

@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -52,46 +53,67 @@ func main() {
 		return
 	}
 
-	cfg := config.Default()
-	var (
-		allowPaths, allowReadPaths, allowCommands, denyCommands, allowHosts, unsetEnv, redactPatterns, remotePorts listFlag
-
-		proxyMode = flag.Bool("client-proxy", false, "route HTTP/HTTPS through an explicitly enabled local bridge")
-		fwdLocal  = flag.Bool("allow-forward-local", false, "permit the bridge's local forwards and SOCKS5 to connect from this host (takes no value; destinations follow --allow-host)")
-		fwdRemote = flag.Bool("allow-forward-remote", false, "permit the bridge's remote forwards to listen on this host's loopback (takes no value)")
-		mcpMode   = flag.Bool("mcp", false, "serve MCP over stdin/stdout")
-		showVer   = flag.Bool("version", false, "print version and exit")
-		noLog     = flag.Bool("no-log", false, "disable the audit log")
-		logFile   = flag.String("log-file", cfg.LogFile, "audit log file (JSON Lines)")
-		maxOut    = flag.Int("max-output", cfg.MaxOutputBytes, "maximum bytes per output stream")
-		timeout   = flag.Duration("timeout", cfg.DefaultTimeout, "default command timeout")
-		maxTime   = flag.Duration("max-timeout", cfg.MaxTimeout, "maximum client-requested command timeout")
-		winShell  = flag.String("windows-shell", cfg.WindowsShell, "default Windows shell: cmd, powershell, or pwsh")
-
-		toolSel  = flag.String("tools", "all", "tools to expose: comma-separated groups (files, search, exec, net, admin) or names, applied left to right; -name excludes (e.g. all,-admin,-exec_sudo)")
-		readOnly = flag.Bool("read-only", false, "expose only non-modifying tools (limits net_request_http/net_exchange to read-only use)")
-		confirm  = flag.String("confirm", "", "tools requiring user confirmation (MCP elicitation) per call: groups, tool names, or destructive (e.g. destructive or exec,fs_remove)")
-		redact   = flag.Bool("redact", false, "replace secrets (private keys, tokens, passwords) in tool output with [REDACTED]")
-	)
-	flag.Var(&remotePorts, "allow-forward-remote-port", "limit the ports remote forwards listen on to PORT or PORT-PORT (comma-separated or repeatable; requires --allow-forward-remote)")
-	flag.Var(&allowPaths, "allow-path", "restrict file read/write access to this directory (repeatable)")
-	flag.Var(&allowReadPaths, "allow-read-path", "allow read-only file access under this directory (repeatable)")
-	flag.Var(&allowCommands, "allow-command", "allow only matching program names (comma-separated globs or repeatable); shell commands require the shell itself")
-	flag.Var(&denyCommands, "deny-command", "reject command lines matching this regular expression (repeatable)")
-	flag.Var(&allowHosts, "allow-host", "restrict network tools to matching destinations: host glob or CIDR with optional :port, or unix:/path glob (comma-separated or repeatable)")
-	flag.Var(&unsetEnv, "unset-env", "exclude matching environment variables from child processes (comma-separated globs or repeatable)")
-	flag.Var(&redactPatterns, "redact-pattern", "redact output matching this regular expression (repeatable)")
-	flag.Parse()
-
-	if *showVer {
+	cfg, showVersion, err := parseFlags(flag.CommandLine, os.Args[1:])
+	switch {
+	case showVersion:
 		fmt.Println("host-shell", version.Version)
 		return
-	}
-	if !*mcpMode {
+	case errors.Is(err, errUsage):
 		fmt.Fprintln(os.Stderr, "usage: host-shell --mcp [options]          (on the remote host)")
 		fmt.Fprintln(os.Stderr, "       host-shell bridge [options] -- COMMAND...  (on the local machine; see host-shell bridge -h)")
 		flag.PrintDefaults()
 		os.Exit(2)
+	case err != nil:
+		log.Fatal(err)
+	}
+
+	if err := run(cfg); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// errUsage reports that host-shell was started without --mcp.
+var errUsage = errors.New("usage")
+
+// parseFlags builds the server configuration from the target's command line.
+func parseFlags(fs *flag.FlagSet, args []string) (cfg config.Config, showVersion bool, err error) {
+	cfg = config.Default()
+	var (
+		allowPaths, allowReadPaths, allowCommands, denyCommands, allowHosts, unsetEnv, redactPatterns, remotePorts listFlag
+
+		proxyMode = fs.Bool("client-proxy", false, "route HTTP/HTTPS through an explicitly enabled local bridge")
+		fwdLocal  = fs.Bool("allow-forward-local", false, "permit the bridge's local forwards and SOCKS5 to connect from this host (takes no value; destinations follow --allow-host)")
+		fwdRemote = fs.Bool("allow-forward-remote", false, "permit the bridge's remote forwards to listen on this host's loopback (takes no value)")
+		mcpMode   = fs.Bool("mcp", false, "serve MCP over stdin/stdout")
+		showVer   = fs.Bool("version", false, "print version and exit")
+		noLog     = fs.Bool("no-log", false, "disable the audit log")
+		logFile   = fs.String("log-file", cfg.LogFile, "audit log file (JSON Lines)")
+		maxOut    = fs.Int("max-output", cfg.MaxOutputBytes, "maximum bytes per output stream")
+		timeout   = fs.Duration("timeout", cfg.DefaultTimeout, "default command timeout")
+		maxTime   = fs.Duration("max-timeout", cfg.MaxTimeout, "maximum client-requested command timeout")
+		winShell  = fs.String("windows-shell", cfg.WindowsShell, "default Windows shell: cmd, powershell, or pwsh")
+
+		toolSel  = fs.String("tools", "all", "tools to expose: comma-separated groups (files, search, exec, net, admin) or names, applied left to right; -name excludes (e.g. all,-admin,-exec_sudo)")
+		readOnly = fs.Bool("read-only", false, "expose only non-modifying tools (limits net_request_http/net_exchange to read-only use)")
+		confirm  = fs.String("confirm", "", "tools requiring user confirmation (MCP elicitation) per call: groups, tool names, or destructive (e.g. destructive or exec,fs_remove)")
+		redact   = fs.Bool("redact", false, "replace secrets (private keys, tokens, passwords) in tool output with [REDACTED]")
+	)
+	fs.Var(&remotePorts, "allow-forward-remote-port", "limit the ports remote forwards listen on to PORT or PORT-PORT (comma-separated or repeatable; requires --allow-forward-remote)")
+	fs.Var(&allowPaths, "allow-path", "restrict file read/write access to this directory (repeatable)")
+	fs.Var(&allowReadPaths, "allow-read-path", "allow read-only file access under this directory (repeatable)")
+	fs.Var(&allowCommands, "allow-command", "allow only matching program names (comma-separated globs or repeatable); shell commands require the shell itself")
+	fs.Var(&denyCommands, "deny-command", "reject command lines matching this regular expression (repeatable)")
+	fs.Var(&allowHosts, "allow-host", "restrict network tools to matching destinations: host glob or CIDR with optional :port, or unix:/path glob (comma-separated or repeatable)")
+	fs.Var(&unsetEnv, "unset-env", "exclude matching environment variables from child processes (comma-separated globs or repeatable)")
+	fs.Var(&redactPatterns, "redact-pattern", "redact output matching this regular expression (repeatable)")
+	if err := fs.Parse(args); err != nil {
+		return cfg, false, err
+	}
+	if *showVer {
+		return cfg, true, nil
+	}
+	if !*mcpMode {
+		return cfg, false, errUsage
 	}
 
 	cfg.ClientProxy = *proxyMode
@@ -99,7 +121,7 @@ func main() {
 	cfg.ForwardRemote = *fwdRemote
 	ports, err := forward.ParsePorts(remotePorts)
 	if err != nil {
-		log.Fatal(err)
+		return cfg, false, err
 	}
 	cfg.ForwardRemotePorts = ports
 	cfg.LogFile = *logFile
@@ -123,13 +145,7 @@ func main() {
 		Redact:         *redact,
 		RedactPatterns: redactPatterns,
 	}
-	if err := cfg.Validate(); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := run(cfg); err != nil {
-		log.Fatal(err)
-	}
+	return cfg, false, cfg.Validate()
 }
 
 func run(cfg config.Config) error {

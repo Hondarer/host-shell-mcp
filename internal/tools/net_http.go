@@ -105,31 +105,9 @@ func (d *Deps) netRequestHTTP(ctx context.Context, req *mcp.CallToolRequest, in 
 		return nil, NetRequestHTTPOutput{}, err
 	}
 
-	tlsConf, err := clientTLS(in.Insecure, in.CACert, in.ClientCert, in.ClientKey)
+	tr, err := d.httpTransport(in)
 	if err != nil {
 		return nil, NetRequestHTTPOutput{}, err
-	}
-	tr := &http.Transport{TLSClientConfig: tlsConf, Proxy: http.ProxyFromEnvironment, ForceAttemptHTTP2: true}
-	if d.Cfg.Proxy != nil {
-		tr.Proxy = d.Cfg.Proxy.Proxy
-	}
-	switch in.Proxy {
-	case "":
-	case "none":
-		tr.Proxy = nil
-	default:
-		pu, err := url.Parse(in.Proxy)
-		if err != nil {
-			return nil, NetRequestHTTPOutput{}, fmt.Errorf("proxy: %w", err)
-		}
-		tr.Proxy = http.ProxyURL(pu)
-	}
-	if in.UnixSocket != "" {
-		tr.Proxy = nil
-		tr.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
-			var dl net.Dialer
-			return dl.DialContext(ctx, "unix", in.UnixSocket)
-		}
 	}
 	defer tr.CloseIdleConnections()
 
@@ -159,21 +137,9 @@ func (d *Deps) netRequestHTTP(ctx context.Context, req *mcp.CallToolRequest, in 
 	if c, ok := body.(io.Closer); ok {
 		defer c.Close()
 	}
-	hreq, err := http.NewRequestWithContext(ctx, method, u.String(), body)
+	hreq, err := newRequest(ctx, method, u, body, in.Headers)
 	if err != nil {
 		return nil, NetRequestHTTPOutput{}, err
-	}
-	for k, v := range in.Headers {
-		if strings.EqualFold(k, "Host") {
-			hreq.Host = v
-			continue
-		}
-		hreq.Header.Set(k, v)
-	}
-	if f, ok := body.(*os.File); ok {
-		if st, err := f.Stat(); err == nil {
-			hreq.ContentLength = st.Size()
-		}
 	}
 
 	start := time.Now()
@@ -191,7 +157,7 @@ func (d *Deps) netRequestHTTP(ctx context.Context, req *mcp.CallToolRequest, in 
 		out.FinalURL = resp.Request.URL.String()
 	}
 	if resp.TLS != nil {
-		out.TLS = tlsInfo(resp.TLS, resp.Request.URL.Hostname(), tlsConf)
+		out.TLS = tlsInfo(resp.TLS, resp.Request.URL.Hostname(), tr.TLSClientConfig)
 	}
 
 	pr := d.progress(ctx, req)
@@ -205,6 +171,60 @@ func (d *Deps) netRequestHTTP(ctx context.Context, req *mcp.CallToolRequest, in 
 		return nil, NetRequestHTTPOutput{}, err
 	}
 	return nil, out, nil
+}
+
+// httpTransport builds the transport for one request: TLS options, the proxy (environment, the
+// client proxy, an explicit URL or none) and an optional Unix socket.
+func (d *Deps) httpTransport(in NetRequestHTTPInput) (*http.Transport, error) {
+	tlsConf, err := clientTLS(in.Insecure, in.CACert, in.ClientCert, in.ClientKey)
+	if err != nil {
+		return nil, err
+	}
+	tr := &http.Transport{TLSClientConfig: tlsConf, Proxy: http.ProxyFromEnvironment, ForceAttemptHTTP2: true}
+	if d.Cfg.Proxy != nil {
+		tr.Proxy = d.Cfg.Proxy.Proxy
+	}
+	switch in.Proxy {
+	case "":
+	case "none":
+		tr.Proxy = nil
+	default:
+		pu, err := url.Parse(in.Proxy)
+		if err != nil {
+			return nil, fmt.Errorf("proxy: %w", err)
+		}
+		tr.Proxy = http.ProxyURL(pu)
+	}
+	if in.UnixSocket != "" {
+		tr.Proxy = nil
+		tr.DialContext = func(ctx context.Context, _, _ string) (net.Conn, error) {
+			var dl net.Dialer
+			return dl.DialContext(ctx, "unix", in.UnixSocket)
+		}
+	}
+	return tr, nil
+}
+
+// newRequest builds the request with headers (a Host header sets the request host) and the
+// length of a file body.
+func newRequest(ctx context.Context, method string, u *url.URL, body io.Reader, headers map[string]string) (*http.Request, error) {
+	hreq, err := http.NewRequestWithContext(ctx, method, u.String(), body)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range headers {
+		if strings.EqualFold(k, "Host") {
+			hreq.Host = v
+			continue
+		}
+		hreq.Header.Set(k, v)
+	}
+	if f, ok := body.(*os.File); ok {
+		if st, err := f.Stat(); err == nil {
+			hreq.ContentLength = st.Size()
+		}
+	}
+	return hreq, nil
 }
 
 // checkURL checks whether the policy allows the URL's destination.

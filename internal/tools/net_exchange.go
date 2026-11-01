@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -72,20 +73,10 @@ func (d *Deps) netExchange(ctx context.Context, _ *mcp.CallToolRequest, in NetEx
 	timeout := time.Duration(orDefaultInt(in.TimeoutSec, 10)) * time.Second
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	network, addr, host := "tcp", "", cmp.Or(in.Host, "localhost")
-	if in.UnixSocket != "" {
-		network, addr = "unix", in.UnixSocket
-		if err := d.Policy.CheckUnixSocket(addr); err != nil {
-			return nil, NetExchangeOutput{}, err
-		}
-	} else {
-		if in.Port <= 0 || in.Port > 65535 {
-			return nil, NetExchangeOutput{}, errors.New("port is required (1-65535) unless unix_socket")
-		}
-		if err := d.Policy.CheckHost(host, in.Port); err != nil {
-			return nil, NetExchangeOutput{}, err
-		}
-		addr = net.JoinHostPort(host, strconv.Itoa(in.Port))
+	host := cmp.Or(in.Host, "localhost")
+	network, addr, err := d.exchangeAddress(in, host)
+	if err != nil {
+		return nil, NetExchangeOutput{}, err
 	}
 
 	start := time.Now()
@@ -121,6 +112,33 @@ func (d *Deps) netExchange(ctx context.Context, _ *mcp.CallToolRequest, in NetEx
 
 	max := clampMax(d.base64Budget(), in.MaxBytes)
 	idle := time.Duration(orDefaultInt(in.IdleMs, 1000)) * time.Millisecond
+	recv := receive(ctx, conn, max, idle, until, &out)
+	out.Truncated = len(recv) >= max
+	out.ReceivedBytes = len(recv)
+	if out.Received, out.ReceiveEncoding, err = encodeReceived(recv, in.ReceiveEncoding); err != nil {
+		return nil, NetExchangeOutput{}, err
+	}
+	out.DurationMs = time.Since(start).Milliseconds()
+	return nil, out, nil
+}
+
+// exchangeAddress checks the destination against the policy and returns where to dial.
+func (d *Deps) exchangeAddress(in NetExchangeInput, host string) (network, addr string, err error) {
+	if in.UnixSocket != "" {
+		return "unix", in.UnixSocket, d.Policy.CheckUnixSocket(in.UnixSocket)
+	}
+	if in.Port <= 0 || in.Port > 65535 {
+		return "", "", errors.New("port is required (1-65535) unless unix_socket")
+	}
+	if err := d.Policy.CheckHost(host, in.Port); err != nil {
+		return "", "", err
+	}
+	return "tcp", net.JoinHostPort(host, strconv.Itoa(in.Port)), nil
+}
+
+// receive reads up to max bytes until until matches, idle passes without data, the peer closes
+// or ctx ends, setting Matched and ClosedByPeer on out.
+func receive(ctx context.Context, conn net.Conn, max int, idle time.Duration, until *regexp.Regexp, out *NetExchangeOutput) []byte {
 	var recv []byte
 	buf := make([]byte, 32<<10)
 	for len(recv) < max {
@@ -141,9 +159,12 @@ func (d *Deps) netExchange(ctx context.Context, _ *mcp.CallToolRequest, in NetEx
 			break // idle timeout or overall timeout
 		}
 	}
-	out.Truncated = len(recv) >= max
-	out.ReceivedBytes = len(recv)
-	enc := cmp.Or(in.ReceiveEncoding, "auto")
+	return recv
+}
+
+// encodeReceived renders received bytes as text or base64; auto picks text for valid UTF-8.
+func encodeReceived(recv []byte, enc string) (string, string, error) {
+	enc = cmp.Or(enc, "auto")
 	if enc == "auto" {
 		enc = "base64"
 		if textenc.ValidTruncated(recv) {
@@ -152,13 +173,9 @@ func (d *Deps) netExchange(ctx context.Context, _ *mcp.CallToolRequest, in NetEx
 	}
 	switch enc {
 	case "text":
-		out.Received = strings.ToValidUTF8(string(recv), "�")
+		return strings.ToValidUTF8(string(recv), "\uFFFD"), enc, nil
 	case "base64":
-		out.Received = base64.StdEncoding.EncodeToString(recv)
-	default:
-		return nil, NetExchangeOutput{}, fmt.Errorf("unknown receive_encoding %q", in.ReceiveEncoding)
+		return base64.StdEncoding.EncodeToString(recv), enc, nil
 	}
-	out.ReceiveEncoding = enc
-	out.DurationMs = time.Since(start).Milliseconds()
-	return nil, out, nil
+	return "", "", fmt.Errorf("unknown receive_encoding %q", enc)
 }

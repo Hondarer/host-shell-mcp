@@ -3,6 +3,7 @@ package forward
 import (
 	"io"
 	"net"
+	"slices"
 	"time"
 
 	"github.com/hondarer/host-shell-mcp/internal/channel"
@@ -53,97 +54,34 @@ func socksReply(code string) byte {
 	return socksFailure
 }
 
+// socksOutcome is how a SOCKS handshake ended.
+type socksOutcome int
+
+const (
+	socksReady    socksOutcome = iota // a valid CONNECT request was read
+	socksGone                         // the client went away or broke the protocol; close silently
+	socksRejected                     // a rejection reply was written; record it and linger
+	socksIgnored                      // not SOCKS5 or 4; record it and close without a reply
+)
+
 // socks serves one SOCKS5 CONNECT without authentication; the target resolves domain names.
 // Every path that writes a rejection reply ends with lingerClose so that the reply arrives.
 func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
 	c.SetDeadline(time.Now().Add(m.timeout))
-	unsupported := func(host string, port int) {
-		m.record(f, id, host, port, "denied", "unsupported SOCKS request")
-	}
 	reply := func(code byte) error {
 		c.SetWriteDeadline(time.Now().Add(m.timeout))
 		_, err := c.Write([]byte{5, code, 0, 1, 0, 0, 0, 0, 0, 0})
 		return err
 	}
-	head := make([]byte, 2)
-	if _, err := io.ReadFull(c, head); err != nil {
+	host, port, outcome := socksHandshake(c, reply)
+	switch outcome {
+	case socksGone:
 		return
-	}
-	switch head[0] {
-	case 5:
-	case 4:
-		// SOCKS4 and 4a: "request rejected or failed".
-		c.Write([]byte{0, 0x5b, 0, 0, 0, 0, 0, 0})
-		unsupported("", 0)
-		lingerClose(c)
-		return
-	default:
-		unsupported("", 0)
-		return
-	}
-	methods := make([]byte, head[1])
-	if _, err := io.ReadFull(c, methods); err != nil {
-		return
-	}
-	noAuth := false
-	for _, b := range methods {
-		noAuth = noAuth || b == 0
-	}
-	if !noAuth {
-		c.Write([]byte{5, 0xff})
-		unsupported("", 0)
-		lingerClose(c)
-		return
-	}
-	if _, err := c.Write([]byte{5, 0}); err != nil {
-		return
-	}
-	req := make([]byte, 4)
-	if _, err := io.ReadFull(c, req); err != nil || req[0] != 5 {
-		return
-	}
-	var host string
-	switch req[3] {
-	case 1, 4:
-		ip := make(net.IP, 4)
-		if req[3] == 4 {
-			ip = make(net.IP, 16)
+	case socksIgnored, socksRejected:
+		m.record(f, id, host, port, "denied", "unsupported SOCKS request")
+		if outcome == socksRejected {
+			lingerClose(c)
 		}
-		if _, err := io.ReadFull(c, ip); err != nil {
-			return
-		}
-		host = ip.String()
-	case 3:
-		n := make([]byte, 1)
-		if _, err := io.ReadFull(c, n); err != nil {
-			return
-		}
-		name := make([]byte, n[0])
-		if _, err := io.ReadFull(c, name); err != nil {
-			return
-		}
-		host = string(name)
-	default:
-		reply(socksAddressUnsupport)
-		unsupported("", 0)
-		lingerClose(c)
-		return
-	}
-	pb := make([]byte, 2)
-	if _, err := io.ReadFull(c, pb); err != nil {
-		return
-	}
-	port := int(pb[0])<<8 | int(pb[1])
-	if req[1] != 1 {
-		reply(socksCommandUnsupport)
-		unsupported(host, port)
-		lingerClose(c)
-		return
-	}
-	if !validHost(host) || port == 0 {
-		reply(socksFailure)
-		unsupported(host, port)
-		lingerClose(c)
 		return
 	}
 	if !m.allowLocal.Allow(host, port) {
@@ -176,4 +114,86 @@ func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
 	c.SetDeadline(time.Time{})
 	m.record(f, id, host, port, "allowed", "connection established")
 	pipe(c, remote)
+}
+
+// socksHandshake negotiates no authentication and reads a CONNECT request (RFC 1928). It writes
+// the rejection replies of the handshake itself; host and port are set once the request is read.
+func socksHandshake(c net.Conn, reply func(byte) error) (host string, port int, outcome socksOutcome) {
+	head := make([]byte, 2)
+	if _, err := io.ReadFull(c, head); err != nil {
+		return "", 0, socksGone
+	}
+	switch head[0] {
+	case 5:
+	case 4:
+		// SOCKS4 and 4a: "request rejected or failed".
+		c.Write([]byte{0, 0x5b, 0, 0, 0, 0, 0, 0})
+		return "", 0, socksRejected
+	default:
+		return "", 0, socksIgnored
+	}
+	methods := make([]byte, head[1])
+	if _, err := io.ReadFull(c, methods); err != nil {
+		return "", 0, socksGone
+	}
+	if !slices.Contains(methods, 0) {
+		c.Write([]byte{5, 0xff})
+		return "", 0, socksRejected
+	}
+	if _, err := c.Write([]byte{5, 0}); err != nil {
+		return "", 0, socksGone
+	}
+	req := make([]byte, 4)
+	if _, err := io.ReadFull(c, req); err != nil || req[0] != 5 {
+		return "", 0, socksGone
+	}
+	host, ok := readSOCKSHost(c, req[3])
+	if !ok {
+		return "", 0, socksGone
+	}
+	if host == "" && req[3] != 3 {
+		reply(socksAddressUnsupport)
+		return "", 0, socksRejected
+	}
+	pb := make([]byte, 2)
+	if _, err := io.ReadFull(c, pb); err != nil {
+		return "", 0, socksGone
+	}
+	port = int(pb[0])<<8 | int(pb[1])
+	if req[1] != 1 {
+		reply(socksCommandUnsupport)
+		return host, port, socksRejected
+	}
+	if !validHost(host) || port == 0 {
+		reply(socksFailure)
+		return host, port, socksRejected
+	}
+	return host, port, socksReady
+}
+
+// readSOCKSHost reads the destination address of type atyp. It returns "" with ok true for an
+// unsupported address type, and ok false when the client went away.
+func readSOCKSHost(c net.Conn, atyp byte) (host string, ok bool) {
+	switch atyp {
+	case 1, 4:
+		ip := make(net.IP, 4)
+		if atyp == 4 {
+			ip = make(net.IP, 16)
+		}
+		if _, err := io.ReadFull(c, ip); err != nil {
+			return "", false
+		}
+		return ip.String(), true
+	case 3:
+		n := make([]byte, 1)
+		if _, err := io.ReadFull(c, n); err != nil {
+			return "", false
+		}
+		name := make([]byte, n[0])
+		if _, err := io.ReadFull(c, name); err != nil {
+			return "", false
+		}
+		return string(name), true
+	}
+	return "", true
 }

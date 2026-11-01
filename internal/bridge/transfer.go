@@ -265,56 +265,13 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 	if err != nil {
 		return nil, TransferOutput{}, err
 	}
-	dest := in.RemotePath
-	rstat, rexists, err := t.remoteStat(ctx, dest)
+	dest, rexists, err := t.pushDestination(ctx, in.LocalPath, in.RemotePath, info.IsDir())
 	if err != nil {
 		return nil, TransferOutput{}, err
 	}
-	if !info.IsDir() && (strings.HasSuffix(dest, "/") || strings.HasSuffix(dest, `\`) || (rexists && rstat == "dir")) {
-		dest = strings.TrimRight(dest, `/\`) + "/" + filepath.Base(in.LocalPath)
-		if rstat, rexists, err = t.remoteStat(ctx, dest); err != nil {
-			return nil, TransferOutput{}, err
-		}
-	}
-	switch {
-	case rexists && info.IsDir() && rstat != "dir":
-		return nil, TransferOutput{}, fmt.Errorf("remote %s exists and is not a directory", dest)
-	case rexists && !info.IsDir() && rstat != "file":
-		return nil, TransferOutput{}, fmt.Errorf("remote %s exists and is not a file", dest)
-	}
-
-	var files []localFile
-	if info.IsDir() {
-		err = filepath.WalkDir(in.LocalPath, func(p string, de fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			rel, _ := filepath.Rel(in.LocalPath, p)
-			rel = filepath.ToSlash(rel)
-			if rel == "." {
-				return nil
-			}
-			if excluded(rel, in.Exclude) {
-				if de.IsDir() {
-					return fs.SkipDir
-				}
-				return nil
-			}
-			if de.IsDir() {
-				return nil
-			}
-			fi, err := de.Info()
-			if err != nil {
-				return err
-			}
-			files = append(files, localFile{rel: rel, full: p, size: fi.Size(), mode: fi.Mode(), link: !fi.Mode().IsRegular()})
-			return nil
-		})
-		if err != nil {
-			return nil, TransferOutput{}, err
-		}
-	} else {
-		files = []localFile{{rel: filepath.Base(in.LocalPath), full: in.LocalPath, size: info.Size(), mode: info.Mode()}}
+	files, err := localFiles(in.LocalPath, info, in.Exclude)
+	if err != nil {
+		return nil, TransferOutput{}, err
 	}
 
 	remote := map[string]tools.ManifestEntry{}
@@ -363,6 +320,65 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 		return r
 	})
 	return nil, out, err
+}
+
+// pushDestination resolves where a push writes on the target. A file sent to a directory or to a
+// path ending in a separator lands inside it under its own name. exists reports whether dest is
+// already present with the matching type; a mismatched type is an error.
+func (t *transfer) pushDestination(ctx context.Context, localPath, remotePath string, isDir bool) (dest string, exists bool, err error) {
+	dest = remotePath
+	rstat, exists, err := t.remoteStat(ctx, dest)
+	if err != nil {
+		return "", false, err
+	}
+	if !isDir && (strings.HasSuffix(dest, "/") || strings.HasSuffix(dest, `\`) || (exists && rstat == "dir")) {
+		dest = strings.TrimRight(dest, `/\`) + "/" + filepath.Base(localPath)
+		if rstat, exists, err = t.remoteStat(ctx, dest); err != nil {
+			return "", false, err
+		}
+	}
+	switch {
+	case exists && isDir && rstat != "dir":
+		return "", false, fmt.Errorf("remote %s exists and is not a directory", dest)
+	case exists && !isDir && rstat != "file":
+		return "", false, fmt.Errorf("remote %s exists and is not a file", dest)
+	}
+	return dest, exists, nil
+}
+
+// localFiles lists the files a push sends: the file itself, or every file below the directory
+// whose path does not match exclude. Non-regular files are listed as links to be skipped.
+func localFiles(root string, info fs.FileInfo, exclude []string) ([]localFile, error) {
+	if !info.IsDir() {
+		return []localFile{{rel: filepath.Base(root), full: root, size: info.Size(), mode: info.Mode()}}, nil
+	}
+	var files []localFile
+	err := filepath.WalkDir(root, func(p string, de fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, p)
+		rel = filepath.ToSlash(rel)
+		if rel == "." {
+			return nil
+		}
+		if excluded(rel, exclude) {
+			if de.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if de.IsDir() {
+			return nil
+		}
+		fi, err := de.Info()
+		if err != nil {
+			return err
+		}
+		files = append(files, localFile{rel: rel, full: p, size: fi.Size(), mode: fi.Mode(), link: !fi.Mode().IsRegular()})
+		return nil
+	})
+	return files, err
 }
 
 // sendFile uploads a file in chunks to a temporary path, verifies its SHA-256, and renames it into place.
