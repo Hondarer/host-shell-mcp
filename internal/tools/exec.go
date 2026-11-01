@@ -253,13 +253,13 @@ func (d *Deps) jobRead(ctx context.Context, _ *mcp.CallToolRequest, in JobReadIn
 	if err != nil {
 		return nil, JobReadOutput{}, err
 	}
-	max := in.MaxBytes
-	if max <= 0 || max > d.Cfg.MaxOutputBytes {
-		max = d.Cfg.MaxOutputBytes
+	maxBytes := in.MaxBytes
+	if maxBytes <= 0 || maxBytes > d.Cfg.MaxOutputBytes {
+		maxBytes = d.Cfg.MaxOutputBytes
 	}
 	offset := in.Offset
 	if offset < 0 {
-		offset = max64(0, j.Status().Output+offset)
+		offset = max(0, j.Status().Output+offset)
 	}
 	var until *regexp.Regexp
 	if in.Until != "" {
@@ -284,7 +284,7 @@ func (d *Deps) jobRead(ctx context.Context, _ *mcp.CallToolRequest, in JobReadIn
 		out.Status, out.Output, out.NextOffset, out.CursorRow, out.CursorCol = st, text, st.Output, &row, &col
 		return nil, out, nil
 	}
-	data, next, dropped := j.Read(offset, max)
+	data, next, dropped := j.Read(offset, maxBytes)
 	if strip {
 		var pending int
 		data, pending = stripTerminal(data)
@@ -346,13 +346,6 @@ func waitForOutput(ctx context.Context, j *jobs.Job, offset int64, wait time.Dur
 		case <-tick.C:
 		}
 	}
-}
-
-func max64(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // JobIDInput is the input of tools that take only a job ID.

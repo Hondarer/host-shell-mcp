@@ -28,8 +28,6 @@ type Deps struct {
 
 	// enabled maps the exposed tool names to their groups. Used for help and the instructions.
 	enabled map[string]string
-	// catalog is used only when Catalog builds the list. Nothing is registered then.
-	catalog map[string]string
 
 	// confirmKey signs the binding between the user's confirmation answer and the call's arguments.
 	keyOnce    sync.Once
@@ -60,9 +58,12 @@ var readOnlyCapable = map[string]bool{"net_request_http": true, "net_exchange": 
 
 // Catalog returns the names and groups of all tools, including OS-specific ones.
 func Catalog() map[string]string {
-	d := &Deps{catalog: map[string]string{}}
-	Register(nil, d)
-	return d.catalog
+	r := definitions(&Deps{}, true)
+	catalog := make(map[string]string, len(r.tools))
+	for _, def := range r.tools {
+		catalog[def.tool.Name] = def.group
+	}
+	return catalog
 }
 
 // Enabled reports whether the tool is exposed.
@@ -81,22 +82,60 @@ func (d *Deps) groupEnabled(group string) bool {
 	return false
 }
 
-// onOS reports whether to register an OS-specific tool. Building the catalog includes all of them.
-func (d *Deps) onOS(goos string) bool {
-	return d.catalog != nil || runtime.GOOS == goos
+// Registry is the selected set of tools, ready to register after Instructions is built.
+type Registry struct {
+	d     *Deps
+	allOS bool
+	tools []toolDefinition
 }
 
-// Register registers all tools with the server.
-//
-// The descriptions are read by the agent. They say what a tool does, when to use it and what to combine it with.
-func Register(s *mcp.Server, d *Deps) {
+type toolDefinition struct {
+	tool     *mcp.Tool
+	group    string
+	register func(*mcp.Server)
+}
+
+func (r *Registry) onOS(goos string) bool {
+	return r.allOS || runtime.GOOS == goos
+}
+
+// Prepare selects tools and populates the metadata used by help and Instructions.
+// It does not register tools or resources with an MCP server.
+func Prepare(d *Deps) *Registry {
 	if d.Policy == nil {
 		d.Policy = policy.Unrestricted()
 	}
-	d.enabled = map[string]string{}
+	r := definitions(d, false)
+	d.enabled = make(map[string]string)
+	selected := r.tools[:0]
+	for _, def := range r.tools {
+		ro := def.tool.Annotations != nil && def.tool.Annotations.ReadOnlyHint
+		if def.group != groupCore {
+			if !d.Policy.Enabled(def.tool.Name, def.group, ro) ||
+				(d.Policy.ReadOnly && !ro && !readOnlyCapable[def.tool.Name]) {
+				continue
+			}
+		}
+		d.enabled[def.tool.Name] = def.group
+		selected = append(selected, def)
+	}
+	r.tools = selected
+	return r
+}
 
+// Register installs the prepared tools and help resources.
+func (r *Registry) Register(s *mcp.Server) {
+	for _, def := range r.tools {
+		def.register(s)
+	}
+	registerHelp(s, r.d)
+}
+
+// definitions collects tool descriptions and their typed handlers in one place.
+func definitions(d *Deps, allOS bool) *Registry {
+	r := &Registry{d: d, allOS: allOS}
 	// Usage
-	add(s, d, groupCore, &mcp.Tool{
+	add(r, groupCore, &mcp.Tool{
 		Name:  "help_get",
 		Title: "Usage guide",
 		Description: "Return usage guidance for host-shell: tool selection, argument details, examples, and active policy restrictions. " +
@@ -105,7 +144,7 @@ func Register(s *mcp.Server, d *Deps) {
 	}, d.helpGet)
 
 	// Running commands
-	add(s, d, groupExec, &mcp.Tool{
+	add(r, groupExec, &mcp.Tool{
 		Name:  "exec_run",
 		Title: "Run command",
 		Description: "Run a command on the remote host and wait for completion (up to timeout_sec), returning exit_code, stdout and stderr. " +
@@ -117,7 +156,7 @@ func Register(s *mcp.Server, d *Deps) {
 	}, d.execRun)
 
 	// Long-running commands
-	add(s, d, groupExec, &mcp.Tool{
+	add(r, groupExec, &mcp.Tool{
 		Name:  "job_start",
 		Title: "Start background job",
 		Description: "Start a background command and return its job id immediately (same arguments as exec_run; no timeout unless timeout_sec is set). " +
@@ -125,7 +164,7 @@ func Register(s *mcp.Server, d *Deps) {
 			"Set stdin_open to send input via job_write, or pty to run in a pseudo terminal (for password prompts, REPLs, ssh, top).",
 		Annotations: destructive(),
 	}, d.jobStart)
-	add(s, d, groupExec, &mcp.Tool{
+	add(r, groupExec, &mcp.Tool{
 		Name:  "job_read",
 		Title: "Read job output",
 		Description: "Read interleaved stdout/stderr of a background job from a byte offset and return its status (running, exit_code). " +
@@ -134,7 +173,7 @@ func Register(s *mcp.Server, d *Deps) {
 			"Strips ANSI escape sequences from pty jobs unless raw is set.",
 		Annotations: readOnly(),
 	}, d.jobRead)
-	add(s, d, groupExec, &mcp.Tool{
+	add(r, groupExec, &mcp.Tool{
 		Name:  "job_write",
 		Title: "Send input to job",
 		Description: "Write to stdin of a job started with stdin_open or pty, close stdin (close: true), or resize a pty (cols, rows). " +
@@ -142,14 +181,14 @@ func Register(s *mcp.Server, d *Deps) {
 			"Follow with job_read (using wait_sec and until/idle_ms) to read the response.",
 		Annotations: destructive(),
 	}, d.jobWrite)
-	add(s, d, groupExec, &mcp.Tool{
+	add(r, groupExec, &mcp.Tool{
 		Name:  "job_stop",
 		Title: "Stop job",
 		Description: "Stop or signal a background job: kill (default) terminates the process tree; Linux also supports process-group signals (interrupt, terminate, hangup, ...); " +
 			"in pty jobs interrupt sends Ctrl-C. Waits up to wait_sec and returns job status.",
 		Annotations: destructive(),
 	}, d.jobStop)
-	add(s, d, groupExec, &mcp.Tool{
+	add(r, groupExec, &mcp.Tool{
 		Name:        "job_list",
 		Title:       "List jobs",
 		Description: "List background jobs in this session with their status (retains the 50 most recent finished jobs; all jobs terminate when the session ends).",
@@ -157,8 +196,8 @@ func Register(s *mcp.Server, d *Deps) {
 	}, d.jobList)
 
 	// Running as root (not on Windows)
-	if d.catalog != nil || runtime.GOOS != "windows" {
-		add(s, d, groupExec, &mcp.Tool{
+	if r.allOS || runtime.GOOS != "windows" {
+		add(r, groupExec, &mcp.Tool{
 			Name:  "exec_sudo",
 			Title: "Run as root",
 			Description: "Run a shell command via sudo as root or user. Without password, uses sudo -n (requires NOPASSWD for sh; for command-specific sudoers rules, use exec_run with argv [\"sudo\", \"-n\", ...]). " +
@@ -168,19 +207,19 @@ func Register(s *mcp.Server, d *Deps) {
 	}
 
 	// File operations
-	add(s, d, groupFiles, &mcp.Tool{
+	add(r, groupFiles, &mcp.Tool{
 		Name:        "fs_list",
 		Title:       "List directory",
 		Description: "List entries in a single directory (name, type, size, mode, mod_time). Non-recursive; use search_find to search directory trees.",
 		Annotations: readOnly(),
 	}, d.fsList)
-	add(s, d, groupFiles, &mcp.Tool{
+	add(r, groupFiles, &mcp.Tool{
 		Name:        "fs_stat",
 		Title:       "File attributes",
 		Description: "Get type, size, mode, mod_time and symlink target of a path without following a final symlink.",
 		Annotations: readOnly(),
 	}, d.fsStat)
-	add(s, d, groupFiles, &mcp.Tool{
+	add(r, groupFiles, &mcp.Tool{
 		Name:  "fs_read",
 		Title: "Read file",
 		Description: "Read a file on the remote host. Line mode: line_start (1-based), line_count and optional line_numbers (continue with next_line). " +
@@ -188,7 +227,7 @@ func Register(s *mcp.Server, d *Deps) {
 			"Text mode decodes to UTF-8 (charset auto by default) and reports charset, bom and newline.",
 		Annotations: readOnly(),
 	}, d.fsRead)
-	add(s, d, groupFiles, &mcp.Tool{
+	add(r, groupFiles, &mcp.Tool{
 		Name:  "fs_edit",
 		Title: "Edit file",
 		Description: "Replace exact text in an existing file (prefer over fs_write for partial edits). old_string must match once unless replace_all is set; edits applies multiple replacements atomically. " +
@@ -196,7 +235,7 @@ func Register(s *mcp.Server, d *Deps) {
 			"Copy old_string from fs_read without line number prefixes.",
 		Annotations: destructive(),
 	}, d.fsEdit)
-	add(s, d, groupFiles, &mcp.Tool{
+	add(r, groupFiles, &mcp.Tool{
 		Name:  "fs_write",
 		Title: "Write file",
 		Description: "Create, overwrite, or update a file with text or base64 content. mode: overwrite (default), append, create. " +
@@ -204,33 +243,33 @@ func Register(s *mcp.Server, d *Deps) {
 			"charset, newline and bom control text encoding (default UTF-8). Use fs_edit for partial edits to existing files.",
 		Annotations: destructive(),
 	}, d.fsWrite)
-	add(s, d, groupFiles, &mcp.Tool{
+	add(r, groupFiles, &mcp.Tool{
 		Name:        "fs_mkdir",
 		Title:       "Create directory",
 		Description: "Create a directory and any missing parent directories (no-op if the directory already exists).",
 		Annotations: additive(true),
 	}, d.fsMkdir)
-	add(s, d, groupFiles, &mcp.Tool{
+	add(r, groupFiles, &mcp.Tool{
 		Name:  "fs_move",
 		Title: "Move or rename",
 		Description: "Move or rename a file or directory to destination (full target path). Fails if destination exists unless overwrite is set (files only). " +
 			"Falls back to copy-and-delete across file systems.",
 		Annotations: destructive(),
 	}, d.fsMove)
-	add(s, d, groupFiles, &mcp.Tool{
+	add(r, groupFiles, &mcp.Tool{
 		Name:  "fs_copy",
 		Title: "Copy",
 		Description: "Copy a file or directory tree (with recursive) to destination (full target path), preserving permissions, mtimes and symlinks. " +
 			"Fails if destination exists unless overwrite is set (replaces files, merges directories).",
 		Annotations: destructive(),
 	}, d.fsCopy)
-	add(s, d, groupFiles, &mcp.Tool{
+	add(r, groupFiles, &mcp.Tool{
 		Name:        "fs_remove",
 		Title:       "Delete",
 		Description: "Delete a file, symlink, empty directory, or directory tree (with recursive). Refuses filesystem roots and home directory; missing_ok ignores nonexistent paths.",
 		Annotations: destructive(),
 	}, d.fsRemove)
-	add(s, d, groupFiles, &mcp.Tool{
+	add(r, groupFiles, &mcp.Tool{
 		Name:        "fs_manifest",
 		Title:       "File hashes",
 		Description: "List regular files under a path with relative path, size, octal mode and SHA-256 hash (for incremental sync or verification).",
@@ -238,7 +277,7 @@ func Register(s *mcp.Server, d *Deps) {
 	}, d.fsManifest)
 
 	// Search
-	add(s, d, groupSearch, &mcp.Tool{
+	add(r, groupSearch, &mcp.Tool{
 		Name:  "search_grep",
 		Title: "Search file contents",
 		Description: "Search file contents recursively using a Go RE2 regex (or literal string). " +
@@ -246,7 +285,7 @@ func Register(s *mcp.Server, d *Deps) {
 			"Filters by include glob and gitignore, skips binary files and .git/.hg/.svn, and auto-decodes non-UTF-8 text encodings.",
 		Annotations: readOnly(),
 	}, d.searchGrep)
-	add(s, d, groupSearch, &mcp.Tool{
+	add(r, groupSearch, &mcp.Tool{
 		Name:  "search_find",
 		Title: "Find files",
 		Description: "Find files or directories recursively by glob (base name without '/', or relative path with '/'). " +
@@ -254,11 +293,11 @@ func Register(s *mcp.Server, d *Deps) {
 		Annotations: readOnly(),
 	}, d.searchFind)
 
-	registerNet(s, d)
-	registerAdmin(s, d)
+	registerNet(r, d)
+	registerAdmin(r, d)
 
 	// Environment information
-	add(s, d, groupCore, &mcp.Tool{
+	add(r, groupCore, &mcp.Tool{
 		Name:  "sys_get_info",
 		Title: "Host information",
 		Description: "Get remote host OS, architecture, hostname, user, home/working directories, path separator, default shell, default encodings, " +
@@ -266,28 +305,19 @@ func Register(s *mcp.Server, d *Deps) {
 		Annotations: readOnly(),
 	}, d.sysGetInfo)
 
-	if s != nil {
-		registerHelp(s, d)
-	}
+	return r
 }
 
-// add registers a tool wrapped with the policy check, user confirmation, redaction and the audit log.
-// Tools the user chose not to expose are not registered.
-func add[In, Out any](s *mcp.Server, d *Deps, group string, t *mcp.Tool, h mcp.ToolHandlerFor[In, Out]) {
-	if d.catalog != nil {
-		d.catalog[t.Name] = group
-		return
-	}
+// add collects a typed tool definition without registering it with the SDK.
+func add[In, Out any](r *Registry, group string, t *mcp.Tool, h mcp.ToolHandlerFor[In, Out]) {
+	r.tools = append(r.tools, toolDefinition{tool: t, group: group, register: func(s *mcp.Server) {
+		registerTool(s, r.d, group, t, h)
+	}})
+}
+
+// registerTool wraps a handler with policy, confirmation, redaction and audit logging.
+func registerTool[In, Out any](s *mcp.Server, d *Deps, group string, t *mcp.Tool, h mcp.ToolHandlerFor[In, Out]) {
 	ro := t.Annotations != nil && t.Annotations.ReadOnlyHint
-	if group != groupCore {
-		if !d.Policy.Enabled(t.Name, group, ro) {
-			return
-		}
-		if d.Policy.ReadOnly && !ro && !readOnlyCapable[t.Name] {
-			return
-		}
-	}
-	d.enabled[t.Name] = group
 	confirm := d.Policy.NeedsConfirm(t.Name, group, ro)
 	mcp.AddTool(s, t, func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		start := time.Now()

@@ -37,9 +37,8 @@ func New(cfg config.Config, al *audit.Logger) (s *mcp.Server, close func(), err 
 		Policy:       pol,
 	}
 	impl := &mcp.Implementation{Name: "host-shell", Title: "host-shell", Version: version.Version}
-	// Dry-register on a temporary server first so d.enabled is populated before building Instructions.
-	tools.Register(mcp.NewServer(impl, nil), d)
+	registry := tools.Prepare(d)
 	s = mcp.NewServer(impl, &mcp.ServerOptions{Instructions: tools.Instructions(d)})
-	tools.Register(s, d)
+	registry.Register(s)
 	return s, func() { jm.StopAll(5 * time.Second) }, nil
 }

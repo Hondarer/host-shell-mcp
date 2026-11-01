@@ -4,7 +4,7 @@ import "testing"
 
 func TestFinalToolNames(t *testing.T) {
 	catalog := Catalog()
-	for _, name := range []string{"help_get", "sys_get_info", "proc_list", "disk_list", "exec_sudo", "search_find", "net_request_http", "net_exchange", "net_list_listeners", "net_list_interfaces"} {
+	for _, name := range []string{"help_get", "sys_get_info", "proc_list", "disk_list", "exec_sudo", "search_find", "net_request_http", "net_exchange", "net_list_listeners", "net_list_interfaces", "reg_read", "reg_write", "reg_delete"} {
 		if _, ok := catalog[name]; !ok {
 			t.Errorf("missing tool %s", name)
 		}

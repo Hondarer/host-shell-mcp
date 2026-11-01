@@ -12,29 +12,29 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func registerAdmin(s *mcp.Server, d *Deps) {
-	add(s, d, groupAdmin, &mcp.Tool{
+func registerAdmin(r *Registry, d *Deps) {
+	add(r, groupAdmin, &mcp.Tool{
 		Name:  "proc_list",
 		Title: "List processes",
 		Description: "List running processes with pid, ppid, name, command line, user, state, start time and memory, ordered by pid. " +
 			"filter matches name or command line by substring; pid keeps one process and its descendants. Use proc_kill to end a process.",
 		Annotations: readOnly(),
 	}, d.procList)
-	add(s, d, groupAdmin, &mcp.Tool{
+	add(r, groupAdmin, &mcp.Tool{
 		Name:  "proc_kill",
 		Title: "Signal or kill process",
 		Description: "Send a signal to a process by pid (Linux: terminate by default, kill, interrupt, hangup, ...; Windows: kill). " +
 			"tree includes all descendants; sudo sends as root via sudo -n on Linux. Use job_stop for jobs started by host-shell.",
 		Annotations: destructive(),
 	}, d.procKill)
-	add(s, d, groupAdmin, &mcp.Tool{
+	add(r, groupAdmin, &mcp.Tool{
 		Name:  "svc_list",
 		Title: "List services",
 		Description: "List services with state and start mode: systemd units on Linux (user for --user units), Windows services on Windows. " +
 			"Filter by name/description substring and state (running, stopped, failed).",
 		Annotations: readOnly(),
 	}, d.svcList)
-	add(s, d, groupAdmin, &mcp.Tool{
+	add(r, groupAdmin, &mcp.Tool{
 		Name:  "svc_control",
 		Title: "Control service",
 		Description: "Query or control a service: status (details and recent log lines), start, stop, restart, reload (Linux), enable, disable. " +
@@ -42,7 +42,7 @@ func registerAdmin(s *mcp.Server, d *Deps) {
 			"Returns post-action status.",
 		Annotations: destructive(),
 	}, d.svcControl)
-	add(s, d, groupAdmin, &mcp.Tool{
+	add(r, groupAdmin, &mcp.Tool{
 		Name:  "log_query",
 		Title: "Query system logs",
 		Description: "Read structured system log entries: systemd journal on Linux (unit, priority), Windows Event Log on Windows (log, unit as provider, priority, event_id). " +
@@ -50,29 +50,29 @@ func registerAdmin(s *mcp.Server, d *Deps) {
 			"For plain log files use fs_read or search_grep.",
 		Annotations: readOnly(),
 	}, d.logQuery)
-	add(s, d, groupAdmin, &mcp.Tool{
+	add(r, groupAdmin, &mcp.Tool{
 		Name:        "disk_list",
 		Title:       "Disk usage",
 		Description: "List mounted file systems (Linux) or drives (Windows) with type, total, used and free space. all includes pseudo file systems.",
 		Annotations: readOnly(),
 	}, d.diskList)
 
-	if d.onOS("windows") {
-		add(s, d, groupAdmin, &mcp.Tool{
+	if r.onOS("windows") {
+		add(r, groupAdmin, &mcp.Tool{
 			Name:  "reg_read",
 			Title: "Read registry",
 			Description: "Read a Windows registry key (subkeys and values, or one value via value). Keys use roots HKLM, HKCU, HKCR, HKU, HKCC " +
 				"(e.g. HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion). view 32 or 64 selects the WOW64 view.",
 			Annotations: readOnly(),
 		}, d.regRead)
-		add(s, d, groupAdmin, &mcp.Tool{
+		add(r, groupAdmin, &mcp.Tool{
 			Name:  "reg_write",
 			Title: "Write registry",
 			Description: "Create or set a Windows registry value (creating the key if missing), or omit value to only create the key. " +
 				"type: REG_SZ (default), REG_EXPAND_SZ, REG_MULTI_SZ (string array), REG_DWORD, REG_QWORD (number), REG_BINARY (base64).",
 			Annotations: destructive(),
 		}, d.regWrite)
-		add(s, d, groupAdmin, &mcp.Tool{
+		add(r, groupAdmin, &mcp.Tool{
 			Name:        "reg_delete",
 			Title:       "Delete registry",
 			Description: "Delete a Windows registry value (with value) or key (recursive deletes subkeys).",

@@ -231,6 +231,35 @@ func TestTransfer(t *testing.T) {
 	if out.Unchanged != 5 {
 		t.Errorf("second pull: %+v", out)
 	}
+	// Pull uses the same conflict and dry-run rules as push.
+	localFile := filepath.Join(back, "a.txt")
+	if err := os.WriteFile(localFile, []byte("local change\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name                string
+		overwrite, dryRun   bool
+		transferred, failed int
+	}{
+		{name: "conflict", failed: 1},
+		{name: "dry-run conflict", dryRun: true, failed: 1},
+		{name: "dry-run overwrite", overwrite: true, dryRun: true, transferred: 1},
+		{name: "overwrite", overwrite: true, transferred: 1},
+	} {
+		t.Run("pull/"+tc.name, func(t *testing.T) {
+			out := call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": back, "remote_path": remote, "overwrite": tc.overwrite, "dry_run": tc.dryRun})
+			if out.Transferred != tc.transferred || out.Failed != tc.failed || out.Unchanged != 4 {
+				t.Fatalf("pull: %+v", out)
+			}
+			want := "local change\n"
+			if tc.overwrite && !tc.dryRun {
+				want = "changed\n"
+			}
+			if got, err := os.ReadFile(localFile); err != nil || string(got) != want {
+				t.Errorf("local contents = %q, %v, want %q", got, err, want)
+			}
+		})
+	}
 	single := filepath.Join(t.TempDir(), "one.txt")
 	call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": single, "remote_path": filepath.Join(remote, "a.txt")})
 	if b, _ := os.ReadFile(single); string(b) != "changed\n" {

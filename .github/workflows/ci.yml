@@ -35,9 +35,9 @@ jobs:
       - name: Test
         run: go test -count=1 -v ./... 2>&1 | grep -E '^(---|ok|FAIL|PASS|panic)|^[[:space:]]+[^[:space:]]+\.go:[0-9]+:'
         shell: bash
-      - name: Race check proxy and bridge
+      - name: Race check
         if: runner.os == 'Linux'
-        run: go test -race ./internal/clientproxy ./internal/bridge
+        run: go test -race ./...
       # Testing exec_sudo password handling requires an account without NOPASSWD sudo (unlike the default runner user).
       - name: Test sudo with a password
         if: runner.os == 'Linux'

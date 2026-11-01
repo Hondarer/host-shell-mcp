@@ -65,6 +65,45 @@ func TestToolSelection(t *testing.T) {
 	}
 }
 
+// The initialize instructions must reflect tool selection before any tool is called.
+func TestInstructionsMatchToolSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		options         policy.Options
+		read, run, edit bool
+	}{
+		{name: "files", options: policy.Options{Tools: "files"}, read: true, edit: true},
+		{name: "exec", options: policy.Options{Tools: "exec"}, run: true},
+		{name: "read-only", options: policy.Options{ReadOnly: true}, read: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cs := connectWith(t, tc.options, nil)
+			instructions := cs.InitializeResult().Instructions
+			names := toolNames(t, cs)
+			for _, check := range []struct {
+				tool, guidance string
+				want           bool
+			}{
+				{"fs_read", "Read files with fs_read:", tc.read},
+				{"exec_run", "Run commands with exec_run (", tc.run},
+				{"fs_edit", "Edit files with fs_edit (", tc.edit},
+			} {
+				if names[check.tool] != check.want || strings.Contains(instructions, check.guidance) != check.want {
+					t.Errorf("%s: exposed=%v, guidance=%v, want %v", check.tool, names[check.tool], strings.Contains(instructions, check.guidance), check.want)
+				}
+			}
+			resources, err := cs.ListResources(context.Background(), nil)
+			if err != nil || resources == nil || len(resources.Resources) == 0 {
+				t.Fatalf("help resources: %v, %v", resources, err)
+			}
+			res, err := cs.ReadResource(context.Background(), &mcp.ReadResourceParams{URI: "host-shell://help/overview"})
+			if err != nil || res == nil || len(res.Contents) == 0 || !strings.Contains(res.Contents[0].Text, "Tool groups") {
+				t.Fatalf("overview resource: %v, %v", res, err)
+			}
+		})
+	}
+}
+
 func TestPathPolicy(t *testing.T) {
 	dir := t.TempDir()
 	rw, ro := filepath.Join(dir, "rw"), filepath.Join(dir, "ro")

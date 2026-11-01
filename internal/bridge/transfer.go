@@ -185,20 +185,57 @@ func (o *TransferOutput) finish(start time.Time) {
 	}
 }
 
+// transferBatch keeps timing and the summary for a push or pull operation.
+type transferBatch struct {
+	start  time.Time
+	output TransferOutput
+}
+
+// run executes independent files while preserving source order in the output.
+// Each worker owns one result; only the cumulative byte count is shared.
+func (b transferBatch) run(ctx context.Context, req *mcp.CallToolRequest, parallel int, verb string, files []FileResult, copyFile func(int, FileResult, func(int64)) FileResult) (TransferOutput, error) {
+	var total int64
+	for _, f := range files {
+		total += f.Bytes
+	}
+	var done atomic.Int64
+	pr := newProgress(ctx, req)
+	err := forEach(ctx, len(files), parallel, func(i int) {
+		f := files[i]
+		files[i] = copyFile(i, f, func(n int64) {
+			pr.report(float64(done.Load()+n), float64(total), fmt.Sprintf("%s %s", verb, f.Path))
+		})
+		done.Add(f.Bytes)
+	})
+	if err != nil {
+		return TransferOutput{}, err
+	}
+	for _, r := range files {
+		b.output.add(r)
+	}
+	b.output.finish(b.start)
+	return b.output, nil
+}
+
+// transferStatus decides whether a file needs copying before any destination is changed.
+func transferStatus(in TransferInput, exists, identical bool, source string) (status, reason string) {
+	switch {
+	case exists && identical:
+		return "unchanged", ""
+	case exists && !in.Overwrite:
+		return "exists", "differs from the " + source + " file; set overwrite to replace it"
+	case in.DryRun:
+		return "would-send", ""
+	}
+	return "", ""
+}
+
 type localFile struct {
 	rel  string // slash-separated path relative to source
 	full string
 	size int64
 	mode fs.FileMode
 	link bool
-}
-
-// remoteEntry represents a single entry from fs_manifest.
-type remoteEntry struct {
-	Path   string `json:"path"`
-	Size   int64  `json:"size"`
-	Mode   string `json:"mode"`
-	SHA256 string `json:"sha256"`
 }
 
 func excluded(rel string, patterns []string) bool {
@@ -280,7 +317,7 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 		files = []localFile{{rel: filepath.Base(in.LocalPath), full: in.LocalPath, size: info.Size(), mode: info.Mode()}}
 	}
 
-	remote := map[string]remoteEntry{}
+	remote := map[string]tools.ManifestEntry{}
 	if rexists {
 		entries, err := t.manifest(ctx, dest)
 		if err != nil {
@@ -295,57 +332,37 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 	}
 
 	out := TransferOutput{Source: absLocal(in.LocalPath), Destination: dest}
-	var total int64
-	var done atomic.Int64
-	for _, f := range files {
-		total += f.size
-	}
-	pr := newProgress(ctx, req)
 	results := make([]FileResult, len(files))
-	err = forEach(ctx, len(files), parallel, func(i int) {
+	for i, f := range files {
+		results[i] = FileResult{Path: f.rel, Bytes: f.size}
+	}
+	out, err = (transferBatch{start: start, output: out}).run(ctx, req, parallel, "sending", results, func(i int, r FileResult, report func(int64)) FileResult {
 		f := files[i]
-		r := FileResult{Path: f.rel, Bytes: f.size}
-		defer func() { results[i] = r }()
 		target := dest
 		if info.IsDir() {
 			target = strings.TrimRight(dest, `/\`) + "/" + f.rel
 		}
 		if f.link {
 			r.Status = "skipped"
-			return
+			return r
 		}
 		sum, err := hashLocal(f.full)
 		if err != nil {
 			r.Status, r.Error = "error", err.Error()
-			return
+			return r
 		}
 		e, exists := remote[f.rel]
-		switch {
-		case exists && e.SHA256 == sum:
-			r.Status = "unchanged"
-		case exists && !in.Overwrite:
-			r.Status, r.Error = "exists", "differs from the local file; set overwrite to replace it"
-		case in.DryRun:
-			r.Status = "would-send"
-		default:
-			if err := t.sendFile(ctx, f, target, sum, func(n int64) {
-				pr.report(float64(done.Load()+n), float64(total), fmt.Sprintf("sending %s", f.rel))
-			}); err != nil {
+		r.Status, r.Error = transferStatus(in, exists, e.SHA256 == sum, "local")
+		if r.Status == "" {
+			if err := t.sendFile(ctx, f, target, sum, report); err != nil {
 				r.Status, r.Error = "error", err.Error()
 			} else {
 				r.Status = "sent"
 			}
 		}
-		done.Add(f.size)
+		return r
 	})
-	if err != nil {
-		return nil, TransferOutput{}, err
-	}
-	for _, r := range results {
-		out.add(r)
-	}
-	out.finish(start)
-	return nil, out, nil
+	return nil, out, err
 }
 
 // sendFile uploads a file in chunks to a temporary path, verifies its SHA-256, and renames it into place.
@@ -447,19 +464,14 @@ func (t *transfer) pull(ctx context.Context, req *mcp.CallToolRequest, in Transf
 	}
 	out := TransferOutput{Source: in.RemotePath, Destination: absLocal(dest)}
 	if isDir {
-		entries = slices.DeleteFunc(entries, func(e remoteEntry) bool { return excluded(e.Path, in.Exclude) })
+		entries = slices.DeleteFunc(entries, func(e tools.ManifestEntry) bool { return excluded(e.Path, in.Exclude) })
 	}
-	var total int64
-	var done atomic.Int64
-	for _, e := range entries {
-		total += e.Size
-	}
-	pr := newProgress(ctx, req)
 	results := make([]FileResult, len(entries))
-	err = forEach(ctx, len(entries), parallel, func(i int) {
+	for i, e := range entries {
+		results[i] = FileResult{Path: e.Path, Bytes: e.Size}
+	}
+	out, err = (transferBatch{start: start, output: out}).run(ctx, req, parallel, "fetching", results, func(i int, r FileResult, report func(int64)) FileResult {
 		e := entries[i]
-		r := FileResult{Path: e.Path, Bytes: e.Size}
-		defer func() { results[i] = r }()
 		src, target := in.RemotePath, dest
 		if isDir {
 			src = strings.TrimRight(in.RemotePath, `/\`) + "/" + e.Path
@@ -467,36 +479,21 @@ func (t *transfer) pull(ctx context.Context, req *mcp.CallToolRequest, in Transf
 		}
 		local, lerr := hashLocal(target)
 		exists := lerr == nil
-		switch {
-		case exists && local == e.SHA256:
-			r.Status = "unchanged"
-		case exists && !in.Overwrite:
-			r.Status, r.Error = "exists", "differs from the remote file; set overwrite to replace it"
-		case in.DryRun:
-			r.Status = "would-send"
-		default:
-			if err := t.fetchFile(ctx, src, target, e, func(n int64) {
-				pr.report(float64(done.Load()+n), float64(total), fmt.Sprintf("fetching %s", e.Path))
-			}); err != nil {
+		r.Status, r.Error = transferStatus(in, exists, local == e.SHA256, "remote")
+		if r.Status == "" {
+			if err := t.fetchFile(ctx, src, target, e, report); err != nil {
 				r.Status, r.Error = "error", err.Error()
 			} else {
 				r.Status = "sent"
 			}
 		}
-		done.Add(e.Size)
+		return r
 	})
-	if err != nil {
-		return nil, TransferOutput{}, err
-	}
-	for _, r := range results {
-		out.add(r)
-	}
-	out.finish(start)
-	return nil, out, nil
+	return nil, out, err
 }
 
 // fetchFile downloads a file in chunks to a temporary path, verifies its SHA-256, and renames it into place.
-func (t *transfer) fetchFile(ctx context.Context, src, target string, e remoteEntry, onProgress func(int64)) error {
+func (t *transfer) fetchFile(ctx context.Context, src, target string, e tools.ManifestEntry, onProgress func(int64)) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
@@ -582,12 +579,8 @@ func notExist(msg string) bool {
 	return strings.Contains(m, "no such file") || strings.Contains(m, "cannot find the") || strings.Contains(m, "does not exist")
 }
 
-func (t *transfer) manifest(ctx context.Context, p string) ([]remoteEntry, error) {
-	var m struct {
-		Files     []remoteEntry `json:"files"`
-		Truncated bool          `json:"truncated"`
-		Skipped   int           `json:"skipped"`
-	}
+func (t *transfer) manifest(ctx context.Context, p string) ([]tools.ManifestEntry, error) {
+	var m tools.FsManifestOutput
 	if err := callRemote(ctx, t.remote, "fs_manifest", map[string]any{"path": p, "exclude_dirs": []string{}, "max_files": 1000000}, &m); err != nil {
 		return nil, err
 	}
