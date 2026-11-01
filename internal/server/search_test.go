@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
 
 type grepOut struct {
@@ -23,7 +25,7 @@ func TestGrepMultiline(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n\nfunc a() {\n\treturn 1\n}\n\nfunc b() {\n}\n"), 0o644)
 
-	out := call[grepOut](t, cs, "search_grep", map[string]any{"pattern": `func a\(\) \{.*?\n\}`, "path": dir, "multiline": true, "context": 1})
+	out := testutil.Call[grepOut](t, cs, "search_grep", map[string]any{"pattern": `func a\(\) \{.*?\n\}`, "path": dir, "multiline": true, "context": 1})
 	if len(out.Matches) != 1 {
 		t.Fatalf("got %+v", out)
 	}
@@ -32,12 +34,12 @@ func TestGrepMultiline(t *testing.T) {
 		t.Errorf("match = %+v", m)
 	}
 	// ^ and $ match at line boundaries.
-	out = call[grepOut](t, cs, "search_grep", map[string]any{"pattern": `^\treturn 1$`, "path": dir, "multiline": true})
+	out = testutil.Call[grepOut](t, cs, "search_grep", map[string]any{"pattern": `^\treturn 1$`, "path": dir, "multiline": true})
 	if len(out.Matches) != 1 || out.Matches[0].Line != 4 || out.Matches[0].EndLine != 4 {
 		t.Errorf("anchored match = %+v", out.Matches)
 	}
 	// Without multiline the pattern spanning lines does not match.
-	out = call[grepOut](t, cs, "search_grep", map[string]any{"pattern": `func a\(\) \{\n`, "path": dir})
+	out = testutil.Call[grepOut](t, cs, "search_grep", map[string]any{"pattern": `func a\(\) \{\n`, "path": dir})
 	if len(out.Matches) != 0 {
 		t.Errorf("line mode matched %+v", out.Matches)
 	}
@@ -46,7 +48,7 @@ func TestGrepMultiline(t *testing.T) {
 	big, _ := os.Create(filepath.Join(dir, "big.txt"))
 	big.Truncate(33 << 20)
 	big.Close()
-	out = call[grepOut](t, cs, "search_grep", map[string]any{"pattern": "x", "path": dir, "multiline": true, "max_file_bytes": 64 << 20})
+	out = testutil.Call[grepOut](t, cs, "search_grep", map[string]any{"pattern": "x", "path": dir, "multiline": true, "max_file_bytes": 64 << 20})
 	if out.SkippedLarge != 1 || out.FilesScanned != 1 {
 		t.Errorf("large file: %+v", out)
 	}

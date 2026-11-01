@@ -121,7 +121,7 @@ func (d *Deps) procKill(ctx context.Context, _ *mcp.CallToolRequest, in ProcKill
 	}
 	out := ProcKillOutput{Signaled: pids}
 	for range 30 {
-		if !processAlive(in.PID) {
+		if !proc.Alive(in.PID) {
 			out.Exited = true
 			break
 		}

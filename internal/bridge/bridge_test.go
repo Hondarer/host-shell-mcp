@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,6 +20,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/config"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/server"
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
 
 // connectBridge wires an agent, bridge, and target host-shell over in-memory transports.
@@ -62,33 +62,9 @@ func connectBridge(t *testing.T, remotePolicy policy.Options, opt Options, copts
 	return cs
 }
 
-func call[T any](t *testing.T, cs *mcp.ClientSession, name string, args map[string]any) T {
-	t.Helper()
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.IsError {
-		t.Fatalf("%s returned error: %v", name, res.Content[0].(*mcp.TextContent).Text)
-	}
-	var out T
-	b, _ := json.Marshal(res.StructuredContent)
-	if err := json.Unmarshal(b, &out); err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
 func TestRelay(t *testing.T) {
 	cs := connectBridge(t, policy.Options{}, Options{}, nil)
-	res, err := cs.ListTools(context.Background(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := map[string]bool{}
-	for _, tool := range res.Tools {
-		names[tool.Name] = true
-	}
+	names := testutil.ToolSet(t, cs)
 	for _, n := range []string{"sys_get_info", "exec_run", "fs_read", "net_request_http", "transfer_push", "transfer_pull"} {
 		if !names[n] {
 			t.Errorf("tool %s missing", n)
@@ -97,7 +73,7 @@ func TestRelay(t *testing.T) {
 	if !strings.Contains(cs.InitializeResult().Instructions, "transfer_push") {
 		t.Error("instructions do not mention transfers")
 	}
-	info := call[struct {
+	info := testutil.Call[struct {
 		OS string `json:"os"`
 	}](t, cs, "sys_get_info", nil)
 	if info.OS != runtime.GOOS {
@@ -131,7 +107,7 @@ func TestRelayProgressAndConfirm(t *testing.T) {
 	}
 	f := filepath.Join(t.TempDir(), "x")
 	os.WriteFile(f, nil, 0o644)
-	call[map[string]any](t, cs, "fs_remove", map[string]any{"path": f})
+	testutil.Call[map[string]any](t, cs, "fs_remove", map[string]any{"path": f})
 	if asked.Load() != 1 {
 		t.Errorf("asked %d times", asked.Load())
 	}
@@ -173,7 +149,7 @@ func TestTransfer(t *testing.T) {
 	}
 	remote := filepath.Join(t.TempDir(), "remote")
 
-	out := call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": src, "remote_path": remote, "exclude": []string{".git"}})
+	out := testutil.Call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": src, "remote_path": remote, "exclude": []string{".git"}})
 	if out.Transferred != 4 || out.Failed != 0 {
 		t.Fatalf("push: %+v", out)
 	}
@@ -197,38 +173,38 @@ func TestTransfer(t *testing.T) {
 
 	// Re-pushing skips unchanged files and refuses modified files without overwrite.
 	os.WriteFile(filepath.Join(src, "a.txt"), []byte("changed\n"), 0o644)
-	out = call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": src, "remote_path": remote, "exclude": []string{".git"}})
+	out = testutil.Call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": src, "remote_path": remote, "exclude": []string{".git"}})
 	if out.Unchanged != 3 || out.Failed != 1 {
 		t.Errorf("second push: %+v", out)
 	}
-	out = call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": src, "remote_path": remote, "exclude": []string{".git"}, "overwrite": true, "dry_run": true})
+	out = testutil.Call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": src, "remote_path": remote, "exclude": []string{".git"}, "overwrite": true, "dry_run": true})
 	if out.Transferred != 1 {
 		t.Errorf("dry run: %+v", out)
 	}
 	if b, _ := os.ReadFile(filepath.Join(remote, "a.txt")); string(b) != "hello\n" {
 		t.Error("dry run changed the file")
 	}
-	out = call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": src, "remote_path": remote, "exclude": []string{".git"}, "overwrite": true})
+	out = testutil.Call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": src, "remote_path": remote, "exclude": []string{".git"}, "overwrite": true})
 	if out.Transferred != 1 || out.Failed != 0 {
 		t.Errorf("overwrite: %+v", out)
 	}
 
 	// Send a single file into an existing directory.
-	out = call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": filepath.Join(src, "sub", "deep", "b.go"), "remote_path": remote + "/"})
+	out = testutil.Call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": filepath.Join(src, "sub", "deep", "b.go"), "remote_path": remote + "/"})
 	if _, err := os.Stat(filepath.Join(remote, "b.go")); err != nil || out.Transferred != 1 {
 		t.Errorf("single file into dir: %+v %v", out, err)
 	}
 
 	// Pull it back.
 	back := filepath.Join(t.TempDir(), "back")
-	out = call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": back, "remote_path": remote})
+	out = testutil.Call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": back, "remote_path": remote})
 	if out.Failed != 0 || out.Transferred != 5 {
 		t.Fatalf("pull: %+v", out)
 	}
 	if got, _ := os.ReadFile(filepath.Join(back, "big.bin")); !bytes.Equal(got, big) {
 		t.Error("big.bin differs after pull")
 	}
-	out = call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": back, "remote_path": remote})
+	out = testutil.Call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": back, "remote_path": remote})
 	if out.Unchanged != 5 {
 		t.Errorf("second pull: %+v", out)
 	}
@@ -248,7 +224,7 @@ func TestTransfer(t *testing.T) {
 		{name: "overwrite", overwrite: true, transferred: 1},
 	} {
 		t.Run("pull/"+tc.name, func(t *testing.T) {
-			out := call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": back, "remote_path": remote, "overwrite": tc.overwrite, "dry_run": tc.dryRun})
+			out := testutil.Call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": back, "remote_path": remote, "overwrite": tc.overwrite, "dry_run": tc.dryRun})
 			if out.Transferred != tc.transferred || out.Failed != tc.failed || out.Unchanged != 4 {
 				t.Fatalf("pull: %+v", out)
 			}
@@ -262,7 +238,7 @@ func TestTransfer(t *testing.T) {
 		})
 	}
 	single := filepath.Join(t.TempDir(), "one.txt")
-	call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": single, "remote_path": filepath.Join(remote, "a.txt")})
+	testutil.Call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": single, "remote_path": filepath.Join(remote, "a.txt")})
 	if b, _ := os.ReadFile(single); string(b) != "changed\n" {
 		t.Errorf("single pull = %q", b)
 	}
@@ -277,7 +253,7 @@ func TestLocalPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !res.IsError || !strings.Contains(res.Content[0].(*mcp.TextContent).Text, "policy:") {
+	if !res.IsError || !strings.Contains(testutil.Text(res), "policy:") {
 		t.Errorf("push outside allowed path: %+v", res.Content)
 	}
 }
@@ -295,7 +271,7 @@ func TestTransferParallel(t *testing.T) {
 	var lists [][]string
 	for _, parallel := range []int{1, 4} {
 		remote := filepath.Join(t.TempDir(), "remote")
-		out := call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": src, "remote_path": remote, "parallel": parallel})
+		out := testutil.Call[transferOut](t, cs, "transfer_push", map[string]any{"local_path": src, "remote_path": remote, "parallel": parallel})
 		if out.Transferred != 41 || out.Failed != 0 {
 			t.Fatalf("parallel %d: %+v", parallel, out)
 		}
@@ -308,7 +284,7 @@ func TestTransferParallel(t *testing.T) {
 			t.Errorf("parallel %d: big.bin differs", parallel)
 		}
 		back := filepath.Join(t.TempDir(), "back")
-		if out := call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": back, "remote_path": remote, "parallel": parallel}); out.Transferred != 41 || out.Failed != 0 {
+		if out := testutil.Call[transferOut](t, cs, "transfer_pull", map[string]any{"local_path": back, "remote_path": remote, "parallel": parallel}); out.Transferred != 41 || out.Failed != 0 {
 			t.Errorf("pull parallel %d: %+v", parallel, out)
 		}
 	}

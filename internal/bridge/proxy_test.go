@@ -8,12 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/channel"
 	"github.com/hondarer/host-shell-mcp/internal/clientproxy"
 	"github.com/hondarer/host-shell-mcp/internal/config"
 	"github.com/hondarer/host-shell-mcp/internal/server"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
 
 func TestProxySessionIntegration(t *testing.T) {
@@ -48,18 +50,18 @@ func TestProxySessionIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cs.Close()
-	info := call[struct {
+	info := testutil.Call[struct {
 		ClientProxy bool   `json:"client_proxy"`
 		File        string `json:"proxy_url_file"`
 	}](t, cs, "sys_get_info", nil)
 	if !info.ClientProxy || info.File != target.File {
 		t.Fatalf("info %+v", info)
 	}
-	status := call[clientproxy.Status](t, cs, "proxy_status", nil)
+	status := testutil.Call[clientproxy.Status](t, cs, "proxy_status", nil)
 	if status.State != "ready" {
 		t.Fatalf("status %+v", status)
 	}
-	content := call[struct {
+	content := testutil.Call[struct {
 		Content string `json:"content"`
 	}](t, cs, "fs_read", map[string]any{"path": target.File})
 	if strings.Contains(content.Content, target.Secret()) || !strings.Contains(content.Content, "[REDACTED]") {
@@ -69,7 +71,7 @@ func TestProxySessionIntegration(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		command = "$env:HTTP_PROXY"
 	}
-	out := call[struct {
+	out := testutil.Call[struct {
 		Stdout string `json:"stdout"`
 	}](t, cs, "exec_run", map[string]any{"command": command})
 	if strings.Contains(out.Stdout, target.Secret()) || !strings.Contains(out.Stdout, "[REDACTED]") {
@@ -83,7 +85,7 @@ func TestProxySessionIntegration(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("HTTP tool error: %v", res.Content)
 	}
-	status = call[clientproxy.Status](t, cs, "proxy_status", nil)
+	status = testutil.Call[clientproxy.Status](t, cs, "proxy_status", nil)
 	if len(status.Events) == 0 || status.Events[0].Status != "denied" {
 		t.Fatalf("missing denial %+v", status)
 	}

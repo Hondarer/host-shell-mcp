@@ -18,6 +18,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/forward"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/server"
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
 
 // connectForward runs an agent, a bridge and a target that permits the given directions.
@@ -67,19 +68,6 @@ func connectForward(t *testing.T, local, remote bool, opt Options) (*mcp.ClientS
 	}
 }
 
-func toolNames(t *testing.T, cs *mcp.ClientSession) []string {
-	t.Helper()
-	res, err := cs.ListTools(context.Background(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var names []string
-	for _, tool := range res.Tools {
-		names = append(names, tool.Name)
-	}
-	return names
-}
-
 func TestForwardToolExposure(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -96,7 +84,7 @@ func TestForwardToolExposure(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			names := toolNames(t, cs)
+			names := testutil.ToolNames(t, cs)
 			for _, n := range tc.tools {
 				if !slices.Contains(names, n) {
 					t.Errorf("%s missing", n)
@@ -134,8 +122,8 @@ func TestForwardSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	remote := call[forward.Info](t, cs, "forward_open", map[string]any{"direction": "remote", "host": "127.0.0.1", "port": port})
-	info := call[struct {
+	remote := testutil.Call[forward.Info](t, cs, "forward_open", map[string]any{"direction": "remote", "host": "127.0.0.1", "port": port})
+	info := testutil.Call[struct {
 		Local   bool                    `json:"forward_local"`
 		Remote  bool                    `json:"forward_remote"`
 		Forward []forward.RemoteForward `json:"remote_forwards"`
@@ -143,7 +131,7 @@ func TestForwardSession(t *testing.T) {
 	if !info.Local || !info.Remote || len(info.Forward) != 1 || info.Forward[0].ForwardID != remote.ForwardID {
 		t.Fatalf("sys_get_info %+v", info)
 	}
-	local := call[forward.Info](t, cs, "forward_open", map[string]any{"direction": "local", "host": "127.0.0.1", "port": port})
+	local := testutil.Call[forward.Info](t, cs, "forward_open", map[string]any{"direction": "local", "host": "127.0.0.1", "port": port})
 	for _, p := range []int{local.ListenPort, remote.ListenPort} {
 		c, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(p)), time.Second)
 		if err != nil {
@@ -157,15 +145,15 @@ func TestForwardSession(t *testing.T) {
 		}
 		c.Close()
 	}
-	status := call[forward.Status](t, cs, "forward_status", nil)
+	status := testutil.Call[forward.Status](t, cs, "forward_status", nil)
 	if status.State != "ready" || len(status.Forwards) != 2 || len(status.Events) == 0 {
 		t.Fatalf("status %+v", status)
 	}
 	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: "forward_open", Arguments: map[string]any{"direction": "local", "host": "denied.example", "port": 80}})
-	if err != nil || !res.IsError || !strings.Contains(res.Content[0].(*mcp.TextContent).Text, "--forward-allow-local") {
+	if err != nil || !res.IsError || !strings.Contains(testutil.Text(res), "--forward-allow-local") {
 		t.Fatalf("denied open: %v %+v", err, res)
 	}
-	call[forward.CloseInput](t, cs, "forward_close", map[string]any{"forward_id": remote.ForwardID})
+	testutil.Call[forward.CloseInput](t, cs, "forward_close", map[string]any{"forward_id": remote.ForwardID})
 }
 
 func TestForwardNotPermitted(t *testing.T) {
@@ -178,7 +166,7 @@ func TestForwardNotPermitted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	info := call[struct {
+	info := testutil.Call[struct {
 		Local bool `json:"forward_local"`
 	}](t, cs, "sys_get_info", nil)
 	if !info.Local {

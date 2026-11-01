@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
 
 // leftovers returns temporary files of atomic writes left in dir.
@@ -21,19 +23,19 @@ func TestAtomicWrite(t *testing.T) {
 	path := filepath.Join(dir, "app.conf")
 	os.WriteFile(path, []byte("old\n"), 0o640)
 
-	call[map[string]any](t, cs, "fs_write", map[string]any{"path": path, "content": "new\n", "atomic": true})
+	testutil.Call[map[string]any](t, cs, "fs_write", map[string]any{"path": path, "content": "new\n", "atomic": true})
 	if b, _ := os.ReadFile(path); string(b) != "new\n" {
 		t.Fatalf("content = %q", b)
 	}
 	if fi, _ := os.Stat(path); runtime.GOOS != "windows" && fi.Mode().Perm() != 0o640 {
 		t.Errorf("mode = %v, want 0640", fi.Mode().Perm())
 	}
-	call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "old_string": "new", "new_string": "edited", "atomic": true})
+	testutil.Call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "old_string": "new", "new_string": "edited", "atomic": true})
 	if b, _ := os.ReadFile(path); string(b) != "edited\n" {
 		t.Fatalf("content after fs_edit = %q", b)
 	}
 	fresh := filepath.Join(dir, "fresh.txt")
-	call[map[string]any](t, cs, "fs_write", map[string]any{"path": fresh, "content": "x", "atomic": true})
+	testutil.Call[map[string]any](t, cs, "fs_write", map[string]any{"path": fresh, "content": "x", "atomic": true})
 	if b, _ := os.ReadFile(fresh); string(b) != "x" {
 		t.Errorf("new file = %q", b)
 	}
@@ -42,7 +44,7 @@ func TestAtomicWrite(t *testing.T) {
 		{"path": path, "content": "x", "atomic": true, "mode": "create"},
 		{"path": path, "content": "x", "atomic": true, "offset": 0},
 	} {
-		if msg := callErr(t, cs, "fs_write", args); !strings.Contains(msg, "atomic") {
+		if msg := testutil.CallErr(t, cs, "fs_write", args); !strings.Contains(msg, "atomic") {
 			t.Errorf("%v: %s", args, msg)
 		}
 	}
@@ -61,7 +63,7 @@ func TestAtomicWriteUnix(t *testing.T) {
 	link := filepath.Join(dir, "link.conf")
 	os.WriteFile(target, []byte("old"), 0o600)
 	os.Symlink("real.conf", link)
-	call[map[string]any](t, cs, "fs_write", map[string]any{"path": link, "content": "via link", "atomic": true})
+	testutil.Call[map[string]any](t, cs, "fs_write", map[string]any{"path": link, "content": "via link", "atomic": true})
 	if fi, err := os.Lstat(link); err != nil || fi.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("the link was replaced: %v", err)
 	}
@@ -77,7 +79,7 @@ func TestAtomicWriteUnix(t *testing.T) {
 	if out, err := exec.Command("sudo", "-n", "sh", "-c", "echo theirs > "+other+" && chown nobody "+other+" && chmod 666 "+other).CombinedOutput(); err != nil {
 		t.Fatalf("prepare: %v %s", err, out)
 	}
-	if msg := callErr(t, cs, "fs_write", map[string]any{"path": other, "content": "mine", "atomic": true}); !strings.Contains(msg, "owner") {
+	if msg := testutil.CallErr(t, cs, "fs_write", map[string]any{"path": other, "content": "mine", "atomic": true}); !strings.Contains(msg, "owner") {
 		t.Errorf("error = %s", msg)
 	}
 	if b, _ := os.ReadFile(other); string(b) != "theirs\n" {

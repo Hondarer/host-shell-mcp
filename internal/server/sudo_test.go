@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
 
 type sudoOut struct {
@@ -26,7 +28,7 @@ func TestSudoPasswordNotLeaked(t *testing.T) {
 	before, _ := filepath.Glob(filepath.Join(os.TempDir(), "host-shell-askpass-*"))
 	cs := connect(t)
 	const secret = "pw-not-for-the-command"
-	out := call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "cat; echo " + secret, "stdin": "hello\n", "password": secret})
+	out := testutil.Call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "cat; echo " + secret, "stdin": "hello\n", "password": secret})
 	if out.ExitCode != 0 || out.Stdout != "hello\n[REDACTED]\n" {
 		t.Fatalf("got %+v", out)
 	}
@@ -47,15 +49,15 @@ func TestSudoPassword(t *testing.T) {
 	}
 	cs := connect(t)
 	// Test failure cases before the valid password, as sudo caches successful authentication.
-	out := call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "id -un"})
+	out := testutil.Call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "id -un"})
 	if out.ExitCode == 0 || !strings.Contains(out.Stderr, "password") {
 		t.Errorf("without a password: %+v", out)
 	}
-	out = call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "id -un", "password": "wrong-" + password})
+	out = testutil.Call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "id -un", "password": "wrong-" + password})
 	if out.ExitCode == 0 {
 		t.Errorf("with a wrong password: %+v", out)
 	}
-	out = call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "id -un", "password": password})
+	out = testutil.Call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "id -un", "password": password})
 	if out.ExitCode != 0 || strings.TrimSpace(out.Stdout) != "root" || strings.Contains(out.Stderr, password) {
 		t.Errorf("with the password: %+v", out)
 	}

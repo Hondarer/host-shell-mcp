@@ -34,16 +34,6 @@ func killProcess(_ context.Context, _ *Deps, pid int, sig string, tree, sudo boo
 	return []int{pid}, nil
 }
 
-func processAlive(pid int) bool {
-	h, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
-	if err != nil {
-		return false
-	}
-	defer windows.CloseHandle(h)
-	ev, _ := windows.WaitForSingleObject(h, 0)
-	return ev == uint32(windows.WAIT_TIMEOUT)
-}
-
 // ---- svc_list / svc_control ----
 
 // connectSCM opens the Service Control Manager with read/enumerate rights so non-admin users can list and query services

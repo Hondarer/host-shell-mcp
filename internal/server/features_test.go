@@ -22,23 +22,12 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/hondarer/host-shell-mcp/internal/policy"
+	"github.com/hondarer/host-shell-mcp/internal/proc"
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
 
-func toolNames(t *testing.T, cs *mcp.ClientSession) map[string]bool {
-	t.Helper()
-	res, err := cs.ListTools(context.Background(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := map[string]bool{}
-	for _, tool := range res.Tools {
-		names[tool.Name] = true
-	}
-	return names
-}
-
 func TestToolSelection(t *testing.T) {
-	names := toolNames(t, connectWith(t, policy.Options{Tools: "files,-fs_remove"}, nil))
+	names := testutil.ToolSet(t, connectWith(t, policy.Options{Tools: "files,-fs_remove"}, nil))
 	for name, want := range map[string]bool{"help_get": true, "sys_get_info": true, "fs_read": true, "fs_remove": false, "exec_run": false, "net_request_http": false} {
 		if names[name] != want {
 			t.Errorf("tool %s present = %v, want %v", name, names[name], want)
@@ -46,17 +35,17 @@ func TestToolSelection(t *testing.T) {
 	}
 
 	cs := connectWith(t, policy.Options{ReadOnly: true}, nil)
-	names = toolNames(t, cs)
+	names = testutil.ToolSet(t, cs)
 	for name, want := range map[string]bool{"fs_read": true, "fs_write": false, "exec_run": false, "job_read": true, "net_request_http": true, "net_check": true, "svc_control": false} {
 		if names[name] != want {
 			t.Errorf("read-only: tool %s present = %v, want %v", name, names[name], want)
 		}
 	}
-	if msg := callErr(t, cs, "net_request_http", map[string]any{"url": "http://localhost:1/", "method": "POST"}); !strings.Contains(msg, "read-only") {
+	if msg := testutil.CallErr(t, cs, "net_request_http", map[string]any{"url": "http://localhost:1/", "method": "POST"}); !strings.Contains(msg, "read-only") {
 		t.Errorf("POST in read-only mode: %s", msg)
 	}
 
-	info := call[struct {
+	info := testutil.Call[struct {
 		ToolGroups   []string `json:"tool_groups"`
 		Restrictions []string `json:"restrictions"`
 	}](t, cs, "sys_get_info", nil)
@@ -79,7 +68,7 @@ func TestInstructionsMatchToolSelection(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cs := connectWith(t, tc.options, nil)
 			instructions := cs.InitializeResult().Instructions
-			names := toolNames(t, cs)
+			names := testutil.ToolSet(t, cs)
 			for _, check := range []struct {
 				tool, guidance string
 				want           bool
@@ -113,8 +102,8 @@ func TestPathPolicy(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "secret.txt"), []byte("x\n"), 0o644)
 	cs := connectWith(t, policy.Options{AllowPaths: []string{rw}, AllowReadPaths: []string{ro}}, nil)
 
-	call[map[string]any](t, cs, "fs_read", map[string]any{"path": filepath.Join(ro, "a.txt")})
-	call[map[string]any](t, cs, "fs_write", map[string]any{"path": filepath.Join(rw, "b.txt"), "content": "ok"})
+	testutil.Call[map[string]any](t, cs, "fs_read", map[string]any{"path": filepath.Join(ro, "a.txt")})
+	testutil.Call[map[string]any](t, cs, "fs_write", map[string]any{"path": filepath.Join(rw, "b.txt"), "content": "ok"})
 	for _, c := range []struct {
 		tool string
 		args map[string]any
@@ -125,7 +114,7 @@ func TestPathPolicy(t *testing.T) {
 		{"search_grep", map[string]any{"pattern": "x", "path": dir}},
 		{"exec_run", map[string]any{"argv": []string{"pwd"}, "cwd": dir}},
 	} {
-		if msg := callErr(t, cs, c.tool, c.args); !strings.HasPrefix(msg, "policy:") {
+		if msg := testutil.CallErr(t, cs, c.tool, c.args); !strings.HasPrefix(msg, "policy:") {
 			t.Errorf("%s: %s", c.tool, msg)
 		}
 	}
@@ -136,22 +125,22 @@ func TestCommandPolicy(t *testing.T) {
 		t.Skip("uses Unix programs")
 	}
 	cs := connectWith(t, policy.Options{AllowCommands: []string{"echo"}, DenyCommands: []string{"forbidden"}, UnsetEnv: []string{"HS_SECRET"}}, nil)
-	out := call[struct {
+	out := testutil.Call[struct {
 		Stdout string `json:"stdout"`
 	}](t, cs, "exec_run", map[string]any{"argv": []string{"echo", "hi"}})
 	if strings.TrimSpace(out.Stdout) != "hi" {
 		t.Errorf("stdout = %q", out.Stdout)
 	}
-	if msg := callErr(t, cs, "exec_run", map[string]any{"command": "echo hi"}); !strings.Contains(msg, `"sh" is not allowed`) {
+	if msg := testutil.CallErr(t, cs, "exec_run", map[string]any{"command": "echo hi"}); !strings.Contains(msg, `"sh" is not allowed`) {
 		t.Errorf("shell: %s", msg)
 	}
-	if msg := callErr(t, cs, "exec_run", map[string]any{"argv": []string{"echo", "forbidden"}}); !strings.Contains(msg, "denied") {
+	if msg := testutil.CallErr(t, cs, "exec_run", map[string]any{"argv": []string{"echo", "forbidden"}}); !strings.Contains(msg, "denied") {
 		t.Errorf("deny: %s", msg)
 	}
 
 	t.Setenv("HS_SECRET", "s3cr3t")
 	cs = connectWith(t, policy.Options{UnsetEnv: []string{"HS_*"}}, nil)
-	out = call[struct {
+	out = testutil.Call[struct {
 		Stdout string `json:"stdout"`
 	}](t, cs, "exec_run", map[string]any{"command": "echo \"[$HS_SECRET]\""})
 	if strings.TrimSpace(out.Stdout) != "[]" {
@@ -163,7 +152,7 @@ func TestRedact(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "app.env")
 	os.WriteFile(path, []byte("DB_PASSWORD=hunter2\nUSER=app\n"), 0o644)
 	cs := connectWith(t, policy.Options{Redact: true}, nil)
-	out := call[struct {
+	out := testutil.Call[struct {
 		Content string `json:"content"`
 	}](t, cs, "fs_read", map[string]any{"path": path})
 	if strings.Contains(out.Content, "hunter2") || !strings.Contains(out.Content, "DB_PASSWORD=[REDACTED]") || !strings.Contains(out.Content, "USER=app") {
@@ -184,18 +173,18 @@ func TestConfirm(t *testing.T) {
 			return &mcp.ElicitResult{Action: answer, Content: map[string]any{"approve": true}}, nil
 		},
 	})
-	call[map[string]any](t, cs, "fs_write", map[string]any{"path": path, "content": "x"})
+	testutil.Call[map[string]any](t, cs, "fs_write", map[string]any{"path": path, "content": "x"})
 	answer = "decline"
-	if msg := callErr(t, cs, "fs_write", map[string]any{"path": path, "content": "y"}); !strings.Contains(msg, "did not allow") {
+	if msg := testutil.CallErr(t, cs, "fs_write", map[string]any{"path": path, "content": "y"}); !strings.Contains(msg, "did not allow") {
 		t.Errorf("decline: %s", msg)
 	}
-	call[map[string]any](t, cs, "fs_read", map[string]any{"path": path}) // not subject to confirmation
+	testutil.Call[map[string]any](t, cs, "fs_read", map[string]any{"path": path}) // not subject to confirmation
 	if asked.Load() != 2 {
 		t.Errorf("asked %d times", asked.Load())
 	}
 	// Clients without elicitation support do not run it.
 	cs = connectWith(t, policy.Options{Confirm: "destructive"}, nil)
-	if msg := callErr(t, cs, "fs_write", map[string]any{"path": path, "content": "z"}); !strings.Contains(msg, "requires confirmation") {
+	if msg := testutil.CallErr(t, cs, "fs_write", map[string]any{"path": path, "content": "z"}); !strings.Contains(msg, "requires confirmation") {
 		t.Errorf("no elicitation: %s", msg)
 	}
 	if b, _ := os.ReadFile(path); string(b) != "x" {
@@ -239,22 +228,12 @@ func TestProgressAndCancel(t *testing.T) {
 	b, _ := os.ReadFile(pidFile)
 	pid, _ := strconv.Atoi(strings.TrimSpace(string(b)))
 	deadline := time.Now().Add(5 * time.Second)
-	for pid > 0 && processExists(pid) {
+	for pid > 0 && proc.Alive(pid) {
 		if time.Now().After(deadline) {
 			t.Fatalf("process %d still running after cancel", pid)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-}
-
-func processExists(pid int) bool {
-	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-	if err != nil {
-		return false
-	}
-	s := string(b)
-	i := strings.LastIndexByte(s, ')')
-	return i < 0 || len(s) < i+3 || s[i+2] != 'Z'
 }
 
 func TestNetRequestHTTP(t *testing.T) {
@@ -286,30 +265,30 @@ func TestNetRequestHTTP(t *testing.T) {
 		SavedTo      string            `json:"saved_to"`
 		FinalURL     string            `json:"final_url"`
 	}
-	out := call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/json"})
+	out := testutil.Call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/json"})
 	if out.Status != 200 || out.Body != `{"ok":true}` || out.BodyEncoding != "text" {
 		t.Errorf("json: %+v", out)
 	}
-	out = call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/echo", "method": "PUT", "headers": map[string]string{"X-Test": "h"}, "body": "payload"})
+	out = testutil.Call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/echo", "method": "PUT", "headers": map[string]string{"X-Test": "h"}, "body": "payload"})
 	if out.Body != "PUT h payload" {
 		t.Errorf("echo: %+v", out)
 	}
-	out = call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/bin"})
+	out = testutil.Call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/bin"})
 	if out.BodyEncoding != "base64" || out.Body != "AAEC/w==" {
 		t.Errorf("bin: %+v", out)
 	}
-	out = call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/redirect"})
+	out = testutil.Call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/redirect"})
 	if out.Status != 200 || !strings.HasSuffix(out.FinalURL, "/json") {
 		t.Errorf("redirect: %+v", out)
 	}
 	save := filepath.Join(t.TempDir(), "dl.bin")
-	out = call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/bin", "save_to": save})
+	out = testutil.Call[httpOut](t, cs, "net_request_http", map[string]any{"url": srv.URL + "/bin", "save_to": save})
 	if b, _ := os.ReadFile(save); len(b) != 4 || out.Body != "" || out.BodyBytes != 4 {
 		t.Errorf("save_to: %+v %v", out, b)
 	}
 
 	cs = connectWith(t, policy.Options{AllowHosts: []string{"example.invalid"}}, nil)
-	if msg := callErr(t, cs, "net_request_http", map[string]any{"url": srv.URL + "/json"}); !strings.Contains(msg, "policy:") {
+	if msg := testutil.CallErr(t, cs, "net_request_http", map[string]any{"url": srv.URL + "/json"}); !strings.Contains(msg, "policy:") {
 		t.Errorf("allow-host: %s", msg)
 	}
 }
@@ -337,7 +316,7 @@ func TestNetExchangeAndCheck(t *testing.T) {
 	}()
 	port := ln.Addr().(*net.TCPAddr).Port
 	cs := connect(t)
-	out := call[struct {
+	out := testutil.Call[struct {
 		Received string `json:"received"`
 		Matched  bool   `json:"matched"`
 	}](t, cs, "net_exchange", map[string]any{"host": "127.0.0.1", "port": port, "send": "PING\r\n", "until": "ECHO PING\r\n"})
@@ -345,10 +324,8 @@ func TestNetExchangeAndCheck(t *testing.T) {
 		t.Errorf("net_exchange: %+v", out)
 	}
 
-	closed, _ := net.Listen("tcp", "127.0.0.1:0")
-	closedPort := closed.Addr().(*net.TCPAddr).Port
-	closed.Close()
-	chk := call[struct {
+	closedPort := testutil.FreePort(t)
+	chk := testutil.Call[struct {
 		Results []struct {
 			Target    string `json:"target"`
 			Connected *bool  `json:"connected"`
@@ -361,7 +338,7 @@ func TestNetExchangeAndCheck(t *testing.T) {
 	}
 
 	if runtime.GOOS == "linux" || runtime.GOOS == "windows" {
-		ls := call[struct {
+		ls := testutil.Call[struct {
 			Listeners []struct {
 				Port int `json:"port"`
 				PID  int `json:"pid"`
@@ -371,7 +348,7 @@ func TestNetExchangeAndCheck(t *testing.T) {
 			t.Errorf("net_list_listeners: %+v (pid %d)", ls, os.Getpid())
 		}
 	}
-	ifs := call[struct {
+	ifs := testutil.Call[struct {
 		Interfaces []struct {
 			Name string `json:"name"`
 		} `json:"interfaces"`
@@ -401,28 +378,28 @@ func TestPTYJob(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		args = map[string]any{"pty": true, "argv": []string{"powershell", "-NoProfile", "-Command", `$n = Read-Host 'name'; Write-Output "hello $n"`}}
 	}
-	st := call[jobStatus](t, cs, "job_start", args)
+	st := testutil.Call[jobStatus](t, cs, "job_start", args)
 	if !st.PTY {
 		t.Fatalf("status = %+v", st)
 	}
-	r := call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 20, "until": `name`})
+	r := testutil.Call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 20, "until": `name`})
 	if !r.Matched {
-		raw := call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "raw": true})
+		raw := testutil.Call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "raw": true})
 		t.Fatalf("prompt not seen: %q; status %+v; raw output (%d bytes): %q", r.Output, raw.Status, len(raw.Output), raw.Output)
 	}
 	if runtime.GOOS != "windows" && !strings.Contains(r.Output, "TTY") {
 		t.Errorf("not a terminal: %q", r.Output)
 	}
-	call[map[string]any](t, cs, "job_write", map[string]any{"id": st.ID, "input": "bob\r"})
-	r = call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "offset": r.NextOffset, "wait_sec": 20, "until": "hello bob"})
+	testutil.Call[map[string]any](t, cs, "job_write", map[string]any{"id": st.ID, "input": "bob\r"})
+	r = testutil.Call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "offset": r.NextOffset, "wait_sec": 20, "until": "hello bob"})
 	if !r.Matched || strings.Contains(r.Output, "\x1b") {
-		raw := call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "raw": true})
+		raw := testutil.Call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "raw": true})
 		t.Errorf("answer: %+v; raw output (%d bytes): %q", r, len(raw.Output), raw.Output)
 	}
-	r = call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 20, "until": "^$x"})
+	r = testutil.Call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 20, "until": "^$x"})
 	deadline := time.Now().Add(20 * time.Second)
 	for r.Status.Running && time.Now().Before(deadline) {
-		r = call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "offset": r.NextOffset, "wait_sec": 5})
+		r = testutil.Call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "offset": r.NextOffset, "wait_sec": 5})
 	}
 	if r.Status.Running || r.Status.ExitCode == nil || *r.Status.ExitCode != 0 {
 		t.Errorf("end: %+v", r.Status)
@@ -434,24 +411,24 @@ func TestJobSignalAndIdle(t *testing.T) {
 		t.Skip("signals are Linux only")
 	}
 	cs := connect(t)
-	st := call[jobStatus](t, cs, "job_start", map[string]any{"command": `trap 'echo got INT; exit 3' INT; echo ready; while :; do sleep 0.1; done`})
-	call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 10, "until": "ready"})
-	end := call[jobStatus](t, cs, "job_stop", map[string]any{"id": st.ID, "signal": "interrupt"})
+	st := testutil.Call[jobStatus](t, cs, "job_start", map[string]any{"command": `trap 'echo got INT; exit 3' INT; echo ready; while :; do sleep 0.1; done`})
+	testutil.Call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 10, "until": "ready"})
+	end := testutil.Call[jobStatus](t, cs, "job_stop", map[string]any{"id": st.ID, "signal": "interrupt"})
 	if end.Running || end.ExitCode == nil || *end.ExitCode != 3 {
 		t.Errorf("after interrupt: %+v", end)
 	}
 
-	st = call[jobStatus](t, cs, "job_start", map[string]any{"command": `echo a; sleep 3; echo b`})
+	st = testutil.Call[jobStatus](t, cs, "job_start", map[string]any{"command": `echo a; sleep 3; echo b`})
 	start := time.Now()
-	r := call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 10, "idle_ms": 300})
+	r := testutil.Call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 10, "idle_ms": 300})
 	if strings.TrimSpace(r.Output) != "a" || time.Since(start) > 2500*time.Millisecond {
 		t.Errorf("idle: %q after %s", r.Output, time.Since(start))
 	}
-	tail := call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "offset": -2})
+	tail := testutil.Call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "offset": -2})
 	if tail.Output != "a\n" {
 		t.Errorf("tail = %q", tail.Output)
 	}
-	call[jobStatus](t, cs, "job_stop", map[string]any{"id": st.ID})
+	testutil.Call[jobStatus](t, cs, "job_stop", map[string]any{"id": st.ID})
 }
 
 func TestAdmin(t *testing.T) {
@@ -459,7 +436,7 @@ func TestAdmin(t *testing.T) {
 		t.Skip("admin tools are implemented for Linux and Windows")
 	}
 	cs := connect(t)
-	disks := call[struct {
+	disks := testutil.Call[struct {
 		Disks []struct {
 			Mount      string `json:"mount"`
 			TotalBytes uint64 `json:"total_bytes"`
@@ -480,7 +457,7 @@ func TestAdmin(t *testing.T) {
 		t.Fatal(err)
 	}
 	go cmd.Wait()
-	k := call[struct {
+	k := testutil.Call[struct {
 		Exited bool `json:"exited"`
 	}](t, cs, "proc_kill", map[string]any{"pid": cmd.Process.Pid})
 	if !k.Exited {
@@ -494,9 +471,9 @@ func TestAdmin(t *testing.T) {
 	}
 	if res.IsError {
 		if runtime.GOOS == "windows" {
-			t.Errorf("svc_list: %v", res.Content[0].(*mcp.TextContent).Text)
+			t.Errorf("svc_list: %v", testutil.Text(res))
 		} else {
-			t.Logf("svc_list unavailable: %v", res.Content[0].(*mcp.TextContent).Text)
+			t.Logf("svc_list unavailable: %v", testutil.Text(res))
 		}
 	} else {
 		var out struct {
@@ -521,18 +498,18 @@ func TestAdmin(t *testing.T) {
 	}
 	if res.IsError {
 		if runtime.GOOS == "windows" {
-			t.Errorf("log_query: %v", res.Content[0].(*mcp.TextContent).Text)
+			t.Errorf("log_query: %v", testutil.Text(res))
 		} else {
-			t.Logf("log_query unavailable: %v", res.Content[0].(*mcp.TextContent).Text)
+			t.Logf("log_query unavailable: %v", testutil.Text(res))
 		}
 	}
 
 	if runtime.GOOS == "windows" {
 		key := `HKCU\Software\host-shell-test`
-		call[map[string]any](t, cs, "reg_write", map[string]any{"key": key, "value": "s", "data": "text"})
-		call[map[string]any](t, cs, "reg_write", map[string]any{"key": key, "value": "n", "type": "REG_DWORD", "data": 7})
-		call[map[string]any](t, cs, "reg_write", map[string]any{"key": key, "value": "m", "type": "REG_MULTI_SZ", "data": []string{"a", "b"}})
-		rd := call[struct {
+		testutil.Call[map[string]any](t, cs, "reg_write", map[string]any{"key": key, "value": "s", "data": "text"})
+		testutil.Call[map[string]any](t, cs, "reg_write", map[string]any{"key": key, "value": "n", "type": "REG_DWORD", "data": 7})
+		testutil.Call[map[string]any](t, cs, "reg_write", map[string]any{"key": key, "value": "m", "type": "REG_MULTI_SZ", "data": []string{"a", "b"}})
+		rd := testutil.Call[struct {
 			Values []struct {
 				Name string `json:"name"`
 				Type string `json:"type"`
@@ -542,7 +519,7 @@ func TestAdmin(t *testing.T) {
 		if len(rd.Values) != 3 {
 			t.Errorf("reg_read: %+v", rd)
 		}
-		call[map[string]any](t, cs, "reg_delete", map[string]any{"key": key, "recursive": true})
-		callErr(t, cs, "reg_read", map[string]any{"key": key})
+		testutil.Call[map[string]any](t, cs, "reg_delete", map[string]any{"key": key, "recursive": true})
+		testutil.CallErr(t, cs, "reg_read", map[string]any{"key": key})
 	}
 }

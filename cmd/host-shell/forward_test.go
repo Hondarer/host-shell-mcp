@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +14,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
 
 func build(t *testing.T) string {
@@ -24,18 +25,6 @@ func build(t *testing.T) string {
 		t.Fatalf("build: %v: %s", e, out)
 	}
 	return binary
-}
-
-func callTool(t *testing.T, cs *mcp.ClientSession, name string, args map[string]any) map[string]any {
-	t.Helper()
-	res, e := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
-	if e != nil || res.IsError {
-		t.Fatalf("%s: %v %+v", name, e, res)
-	}
-	b, _ := json.Marshal(res.StructuredContent)
-	var out map[string]any
-	json.Unmarshal(b, &out)
-	return out
 }
 
 func echoOnce(t *testing.T, port int) {
@@ -82,15 +71,15 @@ func TestForwardStdio(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer cs.Close()
-	if callTool(t, cs, "proxy_status", nil)["state"] != "ready" {
+	if testutil.Call[map[string]any](t, cs, "proxy_status", nil)["state"] != "ready" {
 		t.Fatal("proxy not ready")
 	}
-	status := callTool(t, cs, "forward_status", nil)
+	status := testutil.Call[map[string]any](t, cs, "forward_status", nil)
 	local := int(status["forwards"].([]any)[0].(map[string]any)["listen_port"].(float64))
 	echoOnce(t, local)
-	remote := callTool(t, cs, "forward_open", map[string]any{"direction": "remote", "host": "127.0.0.1", "port": l.Addr().(*net.TCPAddr).Port})
+	remote := testutil.Call[map[string]any](t, cs, "forward_open", map[string]any{"direction": "remote", "host": "127.0.0.1", "port": l.Addr().(*net.TCPAddr).Port})
 	echoOnce(t, int(remote["listen_port"].(float64)))
-	info := callTool(t, cs, "sys_get_info", nil)
+	info := testutil.Call[map[string]any](t, cs, "sys_get_info", nil)
 	if info["client_proxy"] != true || info["forward_local"] != true || len(info["remote_forwards"].([]any)) != 1 {
 		t.Fatalf("sys_get_info %v", info)
 	}
@@ -98,7 +87,7 @@ func TestForwardStdio(t *testing.T) {
 		t.Fatalf("listen ports restricted without --allow-forward-remote-port: %v", info["restrictions"])
 	}
 	// Ordinary tools keep working beside forwarded traffic.
-	if out := callTool(t, cs, "fs_list", map[string]any{"path": "."}); out == nil {
+	if out := testutil.Call[map[string]any](t, cs, "fs_list", map[string]any{"path": "."}); out == nil {
 		t.Fatal("fs_list")
 	}
 }
@@ -134,7 +123,7 @@ func TestForwardStdioPermissions(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer cs.Close()
-	info := callTool(t, cs, "sys_get_info", nil)
+	info := testutil.Call[map[string]any](t, cs, "sys_get_info", nil)
 	if info["forward_remote"] != true {
 		t.Fatal("permission not reported")
 	}

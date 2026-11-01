@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -19,6 +18,7 @@ import (
 
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/channel"
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
 
 // auditRecords reads the records with message msg from the daily audit files written for base.
@@ -61,12 +61,7 @@ func TestAuditProxyConnect(t *testing.T) {
 	defer plain.Close()
 	secure := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok")) }))
 	defer secure.Close()
-	closed, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	closedPort := closed.Addr().(*net.TCPAddr).Port
-	closed.Close()
+	closedPort := testutil.FreePort(t)
 	target, log := auditTarget(t, []string{"127.0.0.1:*"})
 	c := proxyClient(t, target)
 	for _, u := range []string{plain.URL + "/private/path?token=query-secret", secure.URL + "/", "http://denied.example/", "http://127.0.0.1:" + strconv.Itoa(closedPort) + "/", "https://127.0.0.1:" + strconv.Itoa(closedPort) + "/"} {
@@ -93,7 +88,7 @@ func TestAuditProxyConnect(t *testing.T) {
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("proxy_connect records:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 	}
-	b, _ := os.ReadFile(auditFileName(t, log))
+	b, _ := os.ReadFile(testutil.AuditFile(t, log))
 	for _, secret := range []string{"private", "query-secret", "header-secret", target.Secret()} {
 		if strings.Contains(string(b), secret) {
 			t.Fatalf("audit recorded %q: %s", secret, b)
@@ -115,15 +110,6 @@ func TestAuditProxyConnect(t *testing.T) {
 			t.Errorf("%v: %s, want %s", err, got, want)
 		}
 	}
-}
-
-func auditFileName(t *testing.T, base string) string {
-	t.Helper()
-	m, _ := filepath.Glob(strings.TrimSuffix(base, ".log") + "*")
-	if len(m) == 0 {
-		t.Fatal("no audit file")
-	}
-	return m[0]
 }
 
 func TestAuditAuthFailures(t *testing.T) {
@@ -174,7 +160,7 @@ func TestAuditAuthFailures(t *testing.T) {
 	check(1, 2, 1)
 	target.Close() // the session end records what is still counted
 	check(1, 2, 1, 1)
-	b, _ := os.ReadFile(auditFileName(t, log))
+	b, _ := os.ReadFile(testutil.AuditFile(t, log))
 	if strings.Contains(string(b), "secret-destination") || len(auditRecords(t, log, "proxy_connect")) != 0 {
 		t.Fatalf("unauthenticated requests recorded: %s", b)
 	}

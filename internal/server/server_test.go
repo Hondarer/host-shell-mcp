@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -14,6 +13,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/config"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
@@ -26,7 +26,6 @@ func connect(t *testing.T) *mcp.ClientSession {
 // connectWith connects with the given restrictions and client options.
 func connectWith(t *testing.T, po policy.Options, copts *mcp.ClientOptions) *mcp.ClientSession {
 	t.Helper()
-	ctx := context.Background()
 	cfg := config.Default()
 	cfg.LogFile = filepath.Join(t.TempDir(), "audit.log")
 	cfg.Policy = po
@@ -39,64 +38,16 @@ func connectWith(t *testing.T, po policy.Options, copts *mcp.ClientOptions) *mcp
 		t.Fatal(err)
 	}
 	s, closeServer := New(cfg, pol, al)
-	st, ct := mcp.NewInMemoryTransports()
-	ss, err := s.Connect(ctx, st, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test"}, copts).Connect(ctx, ct, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
 	t.Cleanup(func() {
-		cs.Close()
-		ss.Wait()
 		closeServer()
 		al.Close()
 	})
-	return cs
-}
-
-// callErr calls a tool, checks that it fails and returns the error text.
-func callErr(t *testing.T, cs *mcp.ClientSession, name string, args map[string]any) string {
-	t.Helper()
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !res.IsError {
-		t.Fatalf("%s %v should fail", name, args)
-	}
-	return res.Content[0].(*mcp.TextContent).Text
-}
-
-func call[T any](t *testing.T, cs *mcp.ClientSession, name string, args map[string]any) T {
-	t.Helper()
-	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.IsError {
-		t.Fatalf("%s returned error: %v", name, res.Content[0].(*mcp.TextContent).Text)
-	}
-	var out T
-	b, _ := json.Marshal(res.StructuredContent)
-	if err := json.Unmarshal(b, &out); err != nil {
-		t.Fatal(err)
-	}
-	return out
+	return testutil.Connect(t, s, copts)
 }
 
 func TestListTools(t *testing.T) {
 	cs := connect(t)
-	res, err := cs.ListTools(context.Background(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	names := map[string]bool{}
-	for _, tool := range res.Tools {
-		names[tool.Name] = true
-	}
+	names := testutil.ToolSet(t, cs)
 	for _, want := range []string{"help_get", "exec_run", "job_start", "job_read", "job_write", "fs_read", "fs_edit", "fs_write",
 		"fs_mkdir", "fs_move", "fs_copy", "fs_remove", "search_grep", "search_find", "fs_manifest", "sys_get_info"} {
 		if !names[want] {
@@ -111,7 +62,7 @@ func TestExecRun(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		cmd = "Write-Output hello; exit 3"
 	}
-	out := call[struct {
+	out := testutil.Call[struct {
 		ExitCode int    `json:"exit_code"`
 		Stdout   string `json:"stdout"`
 	}](t, cs, "exec_run", map[string]any{"command": cmd})
@@ -124,9 +75,9 @@ func TestWriteReadAndGrep(t *testing.T) {
 	cs := connect(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "a.txt")
-	call[map[string]any](t, cs, "fs_write", map[string]any{"path": path, "content": "one\ntwo\nthree\n"})
+	testutil.Call[map[string]any](t, cs, "fs_write", map[string]any{"path": path, "content": "one\ntwo\nthree\n"})
 
-	read := call[struct {
+	read := testutil.Call[struct {
 		Content  string `json:"content"`
 		NextLine int    `json:"next_line"`
 	}](t, cs, "fs_read", map[string]any{"path": path, "line_start": 2, "line_count": 1})
@@ -134,7 +85,7 @@ func TestWriteReadAndGrep(t *testing.T) {
 		t.Fatalf("fs_read got %+v", read)
 	}
 
-	grep := call[struct {
+	grep := testutil.Call[struct {
 		Matches []struct {
 			Line int `json:"line"`
 		} `json:"matches"`
@@ -151,10 +102,10 @@ func TestWriteReadAndGrep(t *testing.T) {
 func TestWriteAtOffset(t *testing.T) {
 	cs := connect(t)
 	path := filepath.Join(t.TempDir(), "b.bin")
-	call[map[string]any](t, cs, "fs_write", map[string]any{"path": path, "content": "hello world"})
+	testutil.Call[map[string]any](t, cs, "fs_write", map[string]any{"path": path, "content": "hello world"})
 
 	// Replace only a range in the middle; the file is not truncated.
-	out := call[struct {
+	out := testutil.Call[struct {
 		BytesWritten int   `json:"bytes_written"`
 		Size         int64 `json:"size"`
 	}](t, cs, "fs_write", map[string]any{"path": path, "content": "V09STEQ=", "encoding": "base64", "offset": 6})
@@ -166,7 +117,7 @@ func TestWriteAtOffset(t *testing.T) {
 	}
 
 	// Writing past the end fills the gap with zeros.
-	call[map[string]any](t, cs, "fs_write", map[string]any{"path": path, "content": "!", "offset": 13})
+	testutil.Call[map[string]any](t, cs, "fs_write", map[string]any{"path": path, "content": "!", "offset": 13})
 	if b, _ := os.ReadFile(path); string(b) != "hello WORLD\x00\x00!" {
 		t.Fatalf("file content = %q", b)
 	}
@@ -190,7 +141,7 @@ func TestEncodingConversion(t *testing.T) {
 	dir := t.TempDir()
 
 	// Command output: detected per line.
-	run := call[struct {
+	run := testutil.Call[struct {
 		Stdout         string `json:"stdout"`
 		StdoutEncoding string `json:"stdout_encoding"`
 	}](t, cs, "exec_run", map[string]any{"command": `printf 'utf-8: 日本語\nsjis: \223\372\226\173\214\352\n'`})
@@ -200,7 +151,7 @@ func TestEncodingConversion(t *testing.T) {
 
 	// Write: convert to Shift_JIS and CRLF.
 	sjisPath := filepath.Join(dir, "sjis.txt")
-	call[map[string]any](t, cs, "fs_write", map[string]any{"path": sjisPath, "content": "一行目\n日本語\n", "charset": "shift_jis", "newline": "crlf"})
+	testutil.Call[map[string]any](t, cs, "fs_write", map[string]any{"path": sjisPath, "content": "一行目\n日本語\n", "charset": "shift_jis", "newline": "crlf"})
 	if b, _ := os.ReadFile(sjisPath); !strings.HasSuffix(string(b), "\x93\xfa\x96\x7b\x8c\xea\r\n") {
 		t.Fatalf("file content = %x", b)
 	}
@@ -214,14 +165,14 @@ func TestEncodingConversion(t *testing.T) {
 		NextOffset int64  `json:"next_offset"`
 	}
 	for _, args := range []map[string]any{{"path": sjisPath}, {"path": sjisPath, "line_start": 1}} {
-		r := call[readOut](t, cs, "fs_read", args)
+		r := testutil.Call[readOut](t, cs, "fs_read", args)
 		if r.Content != "一行目\r\n日本語\r\n" || r.Charset != "shift_jis" || r.Newline != "crlf" {
 			t.Fatalf("fs_read %v got %+v", args, r)
 		}
 	}
 
 	// Search: matches Japanese text in a Shift_JIS file.
-	grep := call[struct {
+	grep := testutil.Call[struct {
 		Matches []Match `json:"matches"`
 	}](t, cs, "search_grep", map[string]any{"pattern": "本語", "path": dir})
 	if len(grep.Matches) != 1 || grep.Matches[0].Line != 2 || grep.Matches[0].Charset != "shift_jis" {
@@ -230,18 +181,18 @@ func TestEncodingConversion(t *testing.T) {
 
 	// UTF-16 and BOM: detected by the BOM, which is not included in the content.
 	u16Path := filepath.Join(dir, "u16.txt")
-	call[map[string]any](t, cs, "fs_write", map[string]any{"path": u16Path, "content": "あ\n", "charset": "utf-16le", "bom": true})
+	testutil.Call[map[string]any](t, cs, "fs_write", map[string]any{"path": u16Path, "content": "あ\n", "charset": "utf-16le", "bom": true})
 	if b, _ := os.ReadFile(u16Path); string(b) != "\xff\xfe\x42\x30\x0a\x00" {
 		t.Fatalf("file content = %x", b)
 	}
-	if r := call[readOut](t, cs, "fs_read", map[string]any{"path": u16Path}); r.Content != "あ\n" || r.Charset != "utf-16le" || !r.BOM {
+	if r := testutil.Call[readOut](t, cs, "fs_read", map[string]any{"path": u16Path}); r.Content != "あ\n" || r.Charset != "utf-16le" || !r.BOM {
 		t.Fatalf("fs_read utf-16 got %+v", r)
 	}
 
 	// A character split at the end of the range is left for the next read.
 	u8Path := filepath.Join(dir, "u8.txt")
 	os.WriteFile(u8Path, []byte("日本語"), 0o644)
-	if r := call[readOut](t, cs, "fs_read", map[string]any{"path": u8Path, "length": 4}); r.Content != "日" || r.NextOffset != 3 || r.Charset != "utf-8" {
+	if r := testutil.Call[readOut](t, cs, "fs_read", map[string]any{"path": u8Path, "length": 4}); r.Content != "日" || r.NextOffset != 3 || r.Charset != "utf-8" {
 		t.Fatalf("fs_read range got %+v", r)
 	}
 
@@ -272,7 +223,7 @@ func TestUTF16WithoutBOM(t *testing.T) {
 	path := filepath.Join(dir, "u16.txt")
 	os.WriteFile(path, data, 0o644)
 
-	r := call[struct {
+	r := testutil.Call[struct {
 		Content string `json:"content"`
 		Charset string `json:"charset"`
 		BOM     bool   `json:"bom"`
@@ -280,13 +231,13 @@ func TestUTF16WithoutBOM(t *testing.T) {
 	if r.Content != text || r.Charset != "utf-16le" || r.BOM {
 		t.Fatalf("fs_read got %+v", r)
 	}
-	grep := call[struct {
+	grep := testutil.Call[struct {
 		Matches []Match `json:"matches"`
 	}](t, cs, "search_grep", map[string]any{"pattern": "二行目", "path": dir})
 	if len(grep.Matches) != 1 || grep.Matches[0].Line != 2 || grep.Matches[0].Charset != "utf-16le" {
 		t.Fatalf("search_grep got %+v", grep)
 	}
-	ed := call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "old_string": "二行目", "new_string": "2 行目"})
+	ed := testutil.Call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "old_string": "二行目", "new_string": "2 行目"})
 	if ed.Charset != "utf-16le" {
 		t.Fatalf("fs_edit got %+v", ed)
 	}
@@ -296,7 +247,7 @@ func TestUTF16WithoutBOM(t *testing.T) {
 	}
 
 	if runtime.GOOS != "windows" {
-		run := call[struct {
+		run := testutil.Call[struct {
 			Stdout         string `json:"stdout"`
 			StdoutEncoding string `json:"stdout_encoding"`
 		}](t, cs, "exec_run", map[string]any{"command": "cat " + path})

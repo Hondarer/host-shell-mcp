@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"regexp"
-	"syscall"
 
 	"github.com/hondarer/host-shell-mcp/internal/proc"
 )
@@ -19,8 +18,6 @@ func killProcess(_ context.Context, _ *Deps, pid int, sig string, _, sudo bool) 
 	}
 	return []int{pid}, proc.Signal(pid, sig, false)
 }
-
-func processAlive(pid int) bool { return syscall.Kill(pid, 0) == nil }
 
 func listServices(context.Context, *Deps, bool) ([]Service, error) { return nil, errAdminUnsupported }
 

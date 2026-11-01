@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/hondarer/host-shell-mcp/internal/channel"
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
 
 func pair(t *testing.T, rules []string) (*Target, *Gateway, *channel.Conn, *channel.Conn) {
@@ -419,15 +421,10 @@ func TestConcurrentConnectionLimit(t *testing.T) {
 	for c := range connections {
 		c.Close()
 	}
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
+	testutil.WaitFor(t, time.Second, "connections not released", func() bool {
 		status, _ = g.Status(StatusInput{})
-		if status.ActiveConnections == 0 {
-			return
-		}
-		time.Sleep(time.Millisecond)
-	}
-	t.Fatal("connections not released")
+		return status.ActiveConnections == 0
+	})
 }
 
 func TestIdleHTTPConnectionLimit(t *testing.T) {
@@ -460,15 +457,8 @@ func TestIdleHTTPConnectionLimit(t *testing.T) {
 	if !strings.Contains(string(buf[:n]), "503") {
 		t.Fatalf("capacity response: %q", buf[:n])
 	}
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
+	testutil.WaitFor(t, time.Second, "capacity diagnostic missing", func() bool {
 		s, _ := g.Status(StatusInput{})
-		for _, ev := range s.Events {
-			if ev.Reason == "connection limit reached" {
-				return
-			}
-		}
-		time.Sleep(time.Millisecond)
-	}
-	t.Fatal("capacity diagnostic missing")
+		return slices.ContainsFunc(s.Events, func(ev Event) bool { return ev.Reason == "connection limit reached" })
+	})
 }

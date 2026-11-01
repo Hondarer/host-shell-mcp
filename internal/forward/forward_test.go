@@ -20,6 +20,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/channel"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
 
 func TestParseSpec(t *testing.T) {
@@ -158,16 +159,6 @@ func echoServer(t *testing.T, network, addr string) int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
-func closedPort(t *testing.T) int {
-	l, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := l.Addr().(*net.TCPAddr).Port
-	l.Close()
-	return port
-}
-
 var payload = bytes.Repeat([]byte{0, 255, 13, 10, 'x'}, 300000)
 
 func roundTrip(t *testing.T, c net.Conn) {
@@ -255,7 +246,7 @@ func TestPersistentForwards(t *testing.T) {
 	if err := s.manager.CloseForward(1); err == nil {
 		t.Fatal("persistent forward closed")
 	}
-	b, _ := os.ReadFile(auditFile(t, s.log))
+	b, _ := os.ReadFile(testutil.AuditFile(t, s.log))
 	text := string(b)
 	for _, want := range []string{`"msg":"forward_listen"`, `"msg":"forward_connect"`, `"direction":"local"`, `"result":"allowed"`} {
 		if !strings.Contains(text, want) {
@@ -265,16 +256,6 @@ func TestPersistentForwards(t *testing.T) {
 	if strings.Contains(text, "xxxxx") {
 		t.Fatal("audit recorded forwarded data")
 	}
-}
-
-// auditFile resolves the daily file the logger writes for base.
-func auditFile(t *testing.T, base string) string {
-	t.Helper()
-	m, _ := filepath.Glob(strings.TrimSuffix(base, ".log") + "*")
-	if len(m) == 0 {
-		t.Fatal("no audit file")
-	}
-	return m[0]
 }
 
 func socksConnect(t *testing.T, port int, atyp byte, addr []byte, dport int, cmd byte) (net.Conn, byte) {
@@ -337,7 +318,7 @@ func TestSOCKS(t *testing.T) {
 	}{
 		{3, []byte("not-in-rules.example"), 80, 1, socksNotAllowed, "destination not allowed"},
 		{3, []byte("denied-by-target.example"), 80, 1, socksNotAllowed, "destination not allowed by target"},
-		{1, []byte{127, 0, 0, 1}, closedPort(t), 1, socksRefused, "connection refused"},
+		{1, []byte{127, 0, 0, 1}, testutil.FreePort(t), 1, socksRefused, "connection refused"},
 		{1, []byte{127, 0, 0, 1}, port, 2, socksCommandUnsupport, "unsupported SOCKS request"},
 	} {
 		c, code := socksConnect(t, sp, tc.atyp, tc.addr, tc.port, tc.cmd)
@@ -418,7 +399,7 @@ func TestForwardTools(t *testing.T) {
 	if err = s.manager.CloseForward(remote.ForwardID); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, func() bool { return len(s.target.Info().RemoteForwards) == 0 })
+	testutil.WaitFor(t, 5*time.Second, "condition not met", func() bool { return len(s.target.Info().RemoteForwards) == 0 })
 	if err = s.manager.CloseForward(remote.ForwardID); err == nil {
 		t.Fatal("closed twice")
 	}
@@ -446,17 +427,6 @@ func TestForwardTools(t *testing.T) {
 	}
 }
 
-func waitFor(t *testing.T, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatal("condition not met")
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-}
-
 func TestRemoteFailuresAndRelease(t *testing.T) {
 	before := runtime.NumGoroutine()
 	busy, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -469,7 +439,7 @@ func TestRemoteFailuresAndRelease(t *testing.T) {
 		t.Fatal("busy persistent port accepted")
 	}
 	func() {
-		s := start(t, sessionOptions{specs: []Spec{{Remote, "127.0.0.1", 0, "127.0.0.1", closedPort(t)}}, remote: true})
+		s := start(t, sessionOptions{specs: []Spec{{Remote, "127.0.0.1", 0, "127.0.0.1", testutil.FreePort(t)}}, remote: true})
 		c := dial(t, "127.0.0.1", s.forward(t, 1).ListenPort)
 		c.SetDeadline(time.Now().Add(5 * time.Second))
 		if _, err := c.Read(make([]byte, 1)); err == nil {
@@ -480,9 +450,9 @@ func TestRemoteFailuresAndRelease(t *testing.T) {
 			t.Fatalf("event %+v", e)
 		}
 		s.bridge.Close()
-		waitFor(t, func() bool { return len(s.target.Info().RemoteForwards) == 0 })
+		testutil.WaitFor(t, 5*time.Second, "condition not met", func() bool { return len(s.target.Info().RemoteForwards) == 0 })
 	}()
-	waitFor(t, func() bool { return runtime.NumGoroutine() <= before+2 })
+	testutil.WaitFor(t, 5*time.Second, "condition not met", func() bool { return runtime.NumGoroutine() <= before+2 })
 }
 
 func TestStatusPaging(t *testing.T) {
@@ -588,16 +558,6 @@ func TestParsePorts(t *testing.T) {
 	}
 }
 
-func freePort(t *testing.T) int {
-	t.Helper()
-	l, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
-}
-
 func TestRemotePortRanges(t *testing.T) {
 	port := echoServer(t, "tcp4", "127.0.0.1:0")
 	busy, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -605,7 +565,7 @@ func TestRemotePortRanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer busy.Close()
-	taken, free, outside := busy.Addr().(*net.TCPAddr).Port, freePort(t), freePort(t)
+	taken, free, outside := busy.Addr().(*net.TCPAddr).Port, testutil.FreePort(t), testutil.FreePort(t)
 	ranges := Ports{{taken, taken}, {free, free}}
 	s := start(t, sessionOptions{allowRemote: []string{"127.0.0.1:" + strconv.Itoa(port)}, remote: true, remotePorts: ranges})
 	ctx := context.Background()
@@ -625,14 +585,14 @@ func TestRemotePortRanges(t *testing.T) {
 	}
 	// An explicit port in the ranges is accepted.
 	s.manager.CloseForward(f.ForwardID)
-	waitFor(t, func() bool { return len(s.target.Info().RemoteForwards) == 0 })
+	testutil.WaitFor(t, 5*time.Second, "condition not met", func() bool { return len(s.target.Info().RemoteForwards) == 0 })
 	if f, err = s.manager.Open(ctx, OpenInput{Direction: Remote, ListenPort: free, Host: "127.0.0.1", Port: port}); err != nil || f.ListenPort != free {
 		t.Fatalf("port in the ranges: %+v %v", f, err)
 	}
 	if got := s.target.Info().RemotePorts.String(); got != ranges.String() {
 		t.Fatalf("info ports %q", got)
 	}
-	b, _ := os.ReadFile(auditFile(t, s.log))
+	b, _ := os.ReadFile(testutil.AuditFile(t, s.log))
 	if !strings.Contains(string(b), `"address":"127.0.0.1:`+strconv.Itoa(outside)+`","result":"denied","reason":"listen port not allowed"`) {
 		t.Fatalf("audit lacks the refusal: %s", b)
 	}
@@ -740,7 +700,7 @@ func TestCloseRecordsUnlisten(t *testing.T) {
 		}
 		s.targetConn.Close()
 		s.target.Close()
-		b, _ := os.ReadFile(auditFile(t, s.log))
+		b, _ := os.ReadFile(testutil.AuditFile(t, s.log))
 		if n := strings.Count(string(b), `"msg":"forward_unlisten"`); n != listeners {
 			t.Fatalf("%d forward_unlisten records after Close: %s", n, b)
 		}
@@ -748,7 +708,7 @@ func TestCloseRecordsUnlisten(t *testing.T) {
 }
 
 func TestPersistentRemotePortNotAllowed(t *testing.T) {
-	free, outside := freePort(t), freePort(t)
+	free, outside := testutil.FreePort(t), testutil.FreePort(t)
 	var err error
 	start(t, sessionOptions{specs: []Spec{{Remote, "127.0.0.1", outside, "127.0.0.1", 1}}, remote: true, remotePorts: Ports{{free, free}}, negotiation: &err})
 	if err == nil || !strings.Contains(err.Error(), "--forward-remote on target 127.0.0.1:"+strconv.Itoa(outside)+": listen failed: listen port not allowed by target (see sys_get_info restrictions)") {

@@ -69,12 +69,6 @@ func descendants(pid int) []int {
 	return descendantPIDs(parents, pid)
 }
 
-// processAlive reports whether pid is running; zombies count as exited.
-func processAlive(pid int) bool {
-	st, ok := readStat(pid)
-	return ok && st.state != "Z"
-}
-
 // ---- svc_list / svc_control ----
 
 func systemctl(user bool, args ...string) []string {

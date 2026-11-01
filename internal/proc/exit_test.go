@@ -65,13 +65,13 @@ func TestChildrenEndWhenKilled(t *testing.T) {
 		parent.Process.Kill()
 		t.Fatalf("child said %q", line)
 	}
-	if !alive(pid) {
+	if !Alive(pid) {
 		t.Fatalf("command %d is not running", pid)
 	}
 	parent.Process.Kill() // SIGKILL or TerminateProcess: no chance to clean up
 	parent.Wait()
 	deadline := time.Now().Add(10 * time.Second)
-	for alive(pid) {
+	for Alive(pid) {
 		if time.Now().After(deadline) {
 			Signal(pid, "kill", false)
 			t.Fatalf("command %d survived the killed host-shell", pid)

@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"runtime"
 	"testing"
+
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
 
 type procOut struct {
@@ -32,7 +34,7 @@ func TestProcList(t *testing.T) {
 	}
 	defer func() { child.Process.Kill(); child.Wait() }()
 
-	out := call[procOut](t, cs, "proc_list", map[string]any{"pid": os.Getpid()})
+	out := testutil.Call[procOut](t, cs, "proc_list", map[string]any{"pid": os.Getpid()})
 	if len(out.Processes) < 2 {
 		t.Fatalf("got %+v", out)
 	}
@@ -52,11 +54,11 @@ func TestProcList(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		name = "ping"
 	}
-	out = call[procOut](t, cs, "proc_list", map[string]any{"filter": name, "pid": os.Getpid()})
+	out = testutil.Call[procOut](t, cs, "proc_list", map[string]any{"filter": name, "pid": os.Getpid()})
 	if len(out.Processes) != 1 || out.Processes[0].PID != child.Process.Pid {
 		t.Errorf("filter: %+v", out.Processes)
 	}
-	out = call[procOut](t, cs, "proc_list", map[string]any{"max": 1})
+	out = testutil.Call[procOut](t, cs, "proc_list", map[string]any{"max": 1})
 	if len(out.Processes) != 1 || !out.Truncated || out.Total < 2 {
 		t.Errorf("max: %+v", out)
 	}

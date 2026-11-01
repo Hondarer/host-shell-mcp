@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
 
 type editOut struct {
@@ -27,7 +29,7 @@ func TestEdit(t *testing.T) {
 	os.WriteFile(path, []byte(orig), 0o644)
 
 	// An LF search string matches a CRLF file, which is written back with CRLF.
-	out := call[editOut](t, cs, "fs_edit", map[string]any{"path": path,
+	out := testutil.Call[editOut](t, cs, "fs_edit", map[string]any{"path": path,
 		"old_string": "int main() {\n\treturn a;\n", "new_string": "int main() {\n\tint c = a + b;\n\treturn c;\n"})
 	want := "int a = 1;\r\nint b = 1;\r\n\r\nint main() {\r\n\tint c = a + b;\r\n\treturn c;\r\n}\r\n"
 	if b, _ := os.ReadFile(path); string(b) != want {
@@ -38,29 +40,29 @@ func TestEdit(t *testing.T) {
 	}
 
 	// Multiple matches are an error that shows their lines.
-	if msg := callErr(t, cs, "fs_edit", map[string]any{"path": path, "old_string": "= 1;", "new_string": "= 2;"}); !strings.Contains(msg, "lines 1, 2") {
+	if msg := testutil.CallErr(t, cs, "fs_edit", map[string]any{"path": path, "old_string": "= 1;", "new_string": "= 2;"}); !strings.Contains(msg, "lines 1, 2") {
 		t.Fatalf("error = %s", msg)
 	}
 	// Candidates that differ only in whitespace are shown with their lines.
-	if msg := callErr(t, cs, "fs_edit", map[string]any{"path": path, "old_string": "int  b = 1;", "new_string": "x"}); !strings.Contains(msg, "line 2") {
+	if msg := testutil.CallErr(t, cs, "fs_edit", map[string]any{"path": path, "old_string": "int  b = 1;", "new_string": "x"}); !strings.Contains(msg, "line 2") {
 		t.Fatalf("error = %s", msg)
 	}
 	// If a later replacement fails, nothing is written.
 	before, _ := os.ReadFile(path)
-	callErr(t, cs, "fs_edit", map[string]any{"path": path, "edits": []map[string]any{
+	testutil.CallErr(t, cs, "fs_edit", map[string]any{"path": path, "edits": []map[string]any{
 		{"old_string": "int a", "new_string": "long a"}, {"old_string": "missing", "new_string": "x"}}})
 	if after, _ := os.ReadFile(path); string(after) != string(before) {
 		t.Fatal("file changed by a failed edit")
 	}
 	// Multiple replacements and replace_all.
-	out = call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "edits": []map[string]any{
+	out = testutil.Call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "edits": []map[string]any{
 		{"old_string": "= 1;", "new_string": "= 2;", "replace_all": true}, {"old_string": "return c;", "new_string": "return 0;"}}})
 	if out.Replacements != 3 || len(out.Lines) != 3 {
 		t.Fatalf("fs_edit got %+v", out)
 	}
 	// dry_run does not write.
 	before, _ = os.ReadFile(path)
-	call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "old_string": "return 0;", "new_string": "return 1;", "dry_run": true})
+	testutil.Call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "old_string": "return 0;", "new_string": "return 1;", "dry_run": true})
 	if after, _ := os.ReadFile(path); string(after) != string(before) {
 		t.Fatal("dry_run changed the file")
 	}
@@ -74,7 +76,7 @@ func TestEditKeepsEncoding(t *testing.T) {
 	cs := connect(t)
 	path := filepath.Join(t.TempDir(), "s.txt")
 	os.WriteFile(path, []byte("\x93\xfa\x96\x7b\x8c\xea\n"), 0o644) // "日本語" in Shift_JIS
-	out := call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "old_string": "本", "new_string": "英"})
+	out := testutil.Call[editOut](t, cs, "fs_edit", map[string]any{"path": path, "old_string": "本", "new_string": "英"})
 	if b, _ := os.ReadFile(path); string(b) != "\x93\xfa\x89\x70\x8c\xea\n" || out.Charset != "shift_jis" {
 		t.Fatalf("file = %x, out = %+v", b, out)
 	}
@@ -84,13 +86,13 @@ func TestReadLineNumbers(t *testing.T) {
 	cs := connect(t)
 	path := filepath.Join(t.TempDir(), "n.txt")
 	os.WriteFile(path, []byte("a\nb\nc\n"), 0o644)
-	r := call[struct {
+	r := testutil.Call[struct {
 		Content string `json:"content"`
 	}](t, cs, "fs_read", map[string]any{"path": path, "line_start": 2, "line_numbers": true})
 	if r.Content != "     2\tb\n     3\tc\n" {
 		t.Fatalf("content = %q", r.Content)
 	}
-	callErr(t, cs, "fs_read", map[string]any{"path": path, "line_numbers": true})
+	testutil.CallErr(t, cs, "fs_read", map[string]any{"path": path, "line_numbers": true})
 }
 
 func TestFileOperations(t *testing.T) {
@@ -98,7 +100,7 @@ func TestFileOperations(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "src")
 
-	mk := call[struct {
+	mk := testutil.Call[struct {
 		Created bool `json:"created"`
 	}](t, cs, "fs_mkdir", map[string]any{"path": filepath.Join(src, "sub")})
 	if !mk.Created {
@@ -107,8 +109,8 @@ func TestFileOperations(t *testing.T) {
 	os.WriteFile(filepath.Join(src, "sub", "f.txt"), []byte("data"), 0o644)
 
 	// Copying a directory needs recursive.
-	callErr(t, cs, "fs_copy", map[string]any{"source": src, "destination": filepath.Join(dir, "copy")})
-	cp := call[struct {
+	testutil.CallErr(t, cs, "fs_copy", map[string]any{"source": src, "destination": filepath.Join(dir, "copy")})
+	cp := testutil.Call[struct {
 		Files int   `json:"files"`
 		Bytes int64 `json:"bytes"`
 	}](t, cs, "fs_copy", map[string]any{"source": src, "destination": filepath.Join(dir, "copy"), "recursive": true})
@@ -121,23 +123,23 @@ func TestFileOperations(t *testing.T) {
 
 	// An existing destination needs overwrite.
 	os.WriteFile(filepath.Join(dir, "other.txt"), []byte("x"), 0o644)
-	callErr(t, cs, "fs_move", map[string]any{"source": filepath.Join(dir, "other.txt"), "destination": filepath.Join(dir, "copy", "sub", "f.txt")})
-	call[map[string]any](t, cs, "fs_move", map[string]any{"source": filepath.Join(dir, "copy"), "destination": filepath.Join(dir, "moved")})
+	testutil.CallErr(t, cs, "fs_move", map[string]any{"source": filepath.Join(dir, "other.txt"), "destination": filepath.Join(dir, "copy", "sub", "f.txt")})
+	testutil.Call[map[string]any](t, cs, "fs_move", map[string]any{"source": filepath.Join(dir, "copy"), "destination": filepath.Join(dir, "moved")})
 	if _, err := os.Stat(filepath.Join(dir, "moved", "sub", "f.txt")); err != nil {
 		t.Fatal(err)
 	}
 
 	// Removing a non-empty directory needs recursive.
-	if msg := callErr(t, cs, "fs_remove", map[string]any{"path": filepath.Join(dir, "moved")}); !strings.Contains(msg, "recursive") {
+	if msg := testutil.CallErr(t, cs, "fs_remove", map[string]any{"path": filepath.Join(dir, "moved")}); !strings.Contains(msg, "recursive") {
 		t.Fatalf("error = %s", msg)
 	}
-	call[map[string]any](t, cs, "fs_remove", map[string]any{"path": filepath.Join(dir, "moved"), "recursive": true})
+	testutil.Call[map[string]any](t, cs, "fs_remove", map[string]any{"path": filepath.Join(dir, "moved"), "recursive": true})
 	if _, err := os.Stat(filepath.Join(dir, "moved")); !os.IsNotExist(err) {
 		t.Fatal("not removed")
 	}
-	call[map[string]any](t, cs, "fs_remove", map[string]any{"path": filepath.Join(dir, "moved"), "missing_ok": true})
+	testutil.Call[map[string]any](t, cs, "fs_remove", map[string]any{"path": filepath.Join(dir, "moved"), "missing_ok": true})
 	home, _ := os.UserHomeDir()
-	callErr(t, cs, "fs_remove", map[string]any{"path": home, "recursive": true})
+	testutil.CallErr(t, cs, "fs_remove", map[string]any{"path": home, "recursive": true})
 }
 
 func TestSearchModes(t *testing.T) {
@@ -161,11 +163,11 @@ func TestSearchModes(t *testing.T) {
 		} `json:"files"`
 		FilesMatched int `json:"files_matched"`
 	}
-	g := call[grepOut](t, cs, "search_grep", map[string]any{"pattern": "foo(1)", "literal": true, "path": dir, "context": 1})
+	g := testutil.Call[grepOut](t, cs, "search_grep", map[string]any{"pattern": "foo(1)", "literal": true, "path": dir, "context": 1})
 	if len(g.Matches) != 1 || g.Matches[0].Line != 3 || g.Matches[0].Before[0] != "two" || g.Matches[0].After[0] != "three" {
 		t.Fatalf("content got %+v", g)
 	}
-	g = call[grepOut](t, cs, "search_grep", map[string]any{"pattern": `foo\(`, "path": dir, "include": "src/**/*.go", "output_mode": "count"})
+	g = testutil.Call[grepOut](t, cs, "search_grep", map[string]any{"pattern": `foo\(`, "path": dir, "include": "src/**/*.go", "output_mode": "count"})
 	if len(g.Files) != 2 || g.FilesMatched != 2 {
 		t.Fatalf("count got %+v", g)
 	}
@@ -174,7 +176,7 @@ func TestSearchModes(t *testing.T) {
 			t.Fatalf("count got %+v", g)
 		}
 	}
-	g = call[grepOut](t, cs, "search_grep", map[string]any{"pattern": "foo", "path": dir, "output_mode": "files"})
+	g = testutil.Call[grepOut](t, cs, "search_grep", map[string]any{"pattern": "foo", "path": dir, "output_mode": "files"})
 	if len(g.Files) != 3 || g.Matches != nil {
 		t.Fatalf("files got %+v", g)
 	}
@@ -182,7 +184,7 @@ func TestSearchModes(t *testing.T) {
 	// Sorted by modification time, newest first.
 	old := time.Now().Add(-time.Hour)
 	os.Chtimes(filepath.Join(dir, "src", "a", "x.go"), old, old)
-	f := call[struct {
+	f := testutil.Call[struct {
 		Paths []string `json:"paths"`
 	}](t, cs, "search_find", map[string]any{"pattern": "**/*.go", "path": dir, "sort": "mtime"})
 	if len(f.Paths) != 2 || !strings.HasSuffix(f.Paths[1], "x.go") {
@@ -201,17 +203,17 @@ func TestJobStdin(t *testing.T) {
 		StdinOpen bool   `json:"stdin_open"`
 		ExitCode  *int   `json:"exit_code"`
 	}
-	st := call[status](t, cs, "job_start", map[string]any{"argv": []string{"cat"}, "stdin_open": true, "stdin": "first\n"})
+	st := testutil.Call[status](t, cs, "job_start", map[string]any{"argv": []string{"cat"}, "stdin_open": true, "stdin": "first\n"})
 	if !st.StdinOpen {
 		t.Fatalf("job_start got %+v", st)
 	}
-	call[map[string]any](t, cs, "job_write", map[string]any{"id": st.ID, "input": "second\n", "close": true})
+	testutil.Call[map[string]any](t, cs, "job_write", map[string]any{"id": st.ID, "input": "second\n", "close": true})
 	var r struct {
 		Status status `json:"status"`
 		Output string `json:"output"`
 	}
 	for i := 0; i < 10; i++ {
-		r = call[struct {
+		r = testutil.Call[struct {
 			Status status `json:"status"`
 			Output string `json:"output"`
 		}](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 2})
@@ -222,7 +224,7 @@ func TestJobStdin(t *testing.T) {
 	if r.Status.Running || r.Output != "first\nsecond\n" || r.Status.StdinOpen {
 		t.Fatalf("job_read got %+v", r)
 	}
-	callErr(t, cs, "job_write", map[string]any{"id": st.ID, "input": "late\n"})
+	testutil.CallErr(t, cs, "job_write", map[string]any{"id": st.ID, "input": "late\n"})
 }
 
 func TestHelp(t *testing.T) {
@@ -235,14 +237,14 @@ func TestHelp(t *testing.T) {
 	if err != nil || res.IsError {
 		t.Fatal(err, res)
 	}
-	if text := res.Content[0].(*mcp.TextContent).Text; !strings.Contains(text, "old_string") {
+	if text := testutil.Text(res); !strings.Contains(text, "old_string") {
 		t.Fatalf("help text = %s", text)
 	}
 	res, _ = cs.CallTool(ctx, &mcp.CallToolParams{Name: "help_get", Arguments: map[string]any{}})
-	if text := res.Content[0].(*mcp.TextContent).Text; !strings.Contains(text, "# This host") {
+	if text := testutil.Text(res); !strings.Contains(text, "# This host") {
 		t.Fatalf("overview = %s", text)
 	}
-	callErr(t, cs, "help_get", map[string]any{"topic": "nope"})
+	testutil.CallErr(t, cs, "help_get", map[string]any{"topic": "nope"})
 
 	rr, err := cs.ReadResource(ctx, &mcp.ReadResourceParams{URI: "host-shell://help/search"})
 	if err != nil || !strings.Contains(rr.Contents[0].Text, "output_mode") {

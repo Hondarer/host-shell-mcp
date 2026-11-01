@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/hondarer/host-shell-mcp/internal/proc"
+	"github.com/hondarer/host-shell-mcp/internal/testutil"
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
@@ -40,7 +41,7 @@ func TestPowerShellExitCode(t *testing.T) {
 			{`cmd /c "echo to stderr 1>&2"`, 0},
 			{`throw "stop"`, 1},
 		} {
-			out := call[struct {
+			out := testutil.Call[struct {
 				ExitCode int    `json:"exit_code"`
 				Stderr   string `json:"stderr"`
 			}](t, cs, "exec_run", map[string]any{"command": c.script, "shell": sh})
@@ -70,7 +71,7 @@ func TestPowerShellStdin(t *testing.T) {
 	cs := connect(t)
 	for _, sh := range shells {
 		for _, enc := range []string{"", "utf-8"} {
-			out := call[struct {
+			out := testutil.Call[struct {
 				Stdout string `json:"stdout"`
 				Stderr string `json:"stderr"`
 			}](t, cs, "exec_run", map[string]any{"command": `$input | ForEach-Object { $_ }`, "shell": sh, "stdin": psStdin + "\n", "stdin_encoding": enc})
@@ -87,9 +88,9 @@ func TestPowerShellStdinJob(t *testing.T) {
 	needUTF8Console(t)
 	cs := connect(t)
 	for _, sh := range shells {
-		st := call[jobStatus](t, cs, "job_start", map[string]any{"command": `$input | ForEach-Object { "got: $_" }`, "shell": sh, "stdin_open": true})
-		call[map[string]any](t, cs, "job_write", map[string]any{"id": st.ID, "input": psStdin + "\n", "close": true})
-		r := call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 30, "until": "got: "})
+		st := testutil.Call[jobStatus](t, cs, "job_start", map[string]any{"command": `$input | ForEach-Object { "got: $_" }`, "shell": sh, "stdin_open": true})
+		testutil.Call[map[string]any](t, cs, "job_write", map[string]any{"id": st.ID, "input": psStdin + "\n", "close": true})
+		r := testutil.Call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 30, "until": "got: "})
 		if !strings.Contains(r.Output, "got: "+psStdin) {
 			t.Errorf("%s: output %q", sh, r.Output)
 		}
@@ -102,7 +103,7 @@ func TestPowerShellArgvStdin(t *testing.T) {
 	needUTF8Console(t)
 	cs := connect(t)
 	for _, sh := range shells {
-		out := call[struct {
+		out := testutil.Call[struct {
 			Stdout string `json:"stdout"`
 		}](t, cs, "exec_run", map[string]any{"argv": []string{sh + ".exe", "-NoProfile", "-Command", "[Console]::OutputEncoding = [Text.Encoding]::UTF8; $input"}, "stdin": psStdin + "\n"})
 		if strings.TrimSpace(out.Stdout) != psStdin {
@@ -116,7 +117,7 @@ func TestPowerShellCmdConsole(t *testing.T) {
 	powershells(t)
 	needUTF8Console(t)
 	cs := connect(t)
-	out := call[struct {
+	out := testutil.Call[struct {
 		Stdout string `json:"stdout"`
 	}](t, cs, "exec_run", map[string]any{"command": "chcp", "shell": "cmd"})
 	if strings.Contains(out.Stdout, "65001") && textenc.Console().Name != textenc.UTF8.Name {
@@ -134,7 +135,7 @@ func TestPowerShellPlainErrors(t *testing.T) {
 			`throw "host-shell-stop"`,
 			`Write-Progress -Activity busy -Status half -PercentComplete 50; Write-Output done`,
 		} {
-			out := call[struct {
+			out := testutil.Call[struct {
 				Stdout string `json:"stdout"`
 				Stderr string `json:"stderr"`
 			}](t, cs, "exec_run", map[string]any{"command": script, "shell": sh})
@@ -155,16 +156,16 @@ func TestPowerShellPlainErrors(t *testing.T) {
 func TestPowerShellPTY(t *testing.T) {
 	cs := connect(t)
 	for _, sh := range powershells(t) {
-		st := call[jobStatus](t, cs, "job_start", map[string]any{"pty": true, "shell": sh, "command": `$n = Read-Host 'name'; "hello [$n]"`})
-		r := call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 20, "until": "name"})
+		st := testutil.Call[jobStatus](t, cs, "job_start", map[string]any{"pty": true, "shell": sh, "command": `$n = Read-Host 'name'; "hello [$n]"`})
+		r := testutil.Call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 20, "until": "name"})
 		if !r.Matched {
 			t.Errorf("%s: no prompt: %q", sh, r.Output)
 		}
-		call[map[string]any](t, cs, "job_write", map[string]any{"id": st.ID, "input": "bob\r"})
-		r = call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 20, "until": `hello \[bob\]`, "offset": r.NextOffset})
+		testutil.Call[map[string]any](t, cs, "job_write", map[string]any{"id": st.ID, "input": "bob\r"})
+		r = testutil.Call[jobReadOut](t, cs, "job_read", map[string]any{"id": st.ID, "wait_sec": 20, "until": `hello \[bob\]`, "offset": r.NextOffset})
 		if !r.Matched {
 			t.Errorf("%s: Read-Host: %q", sh, r.Output)
 		}
-		call[map[string]any](t, cs, "job_stop", map[string]any{"id": st.ID})
+		testutil.Call[map[string]any](t, cs, "job_stop", map[string]any{"id": st.ID})
 	}
 }
