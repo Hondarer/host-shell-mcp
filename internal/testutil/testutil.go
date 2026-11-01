@@ -6,13 +6,25 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/hondarer/host-shell-mcp/internal/askpass"
 )
+
+// Main runs the tests of a package whose tests start exec_sudo: the test binary then also acts
+// as the sudo -A askpass helper, as host-shell does.
+func Main(m *testing.M) {
+	if ran, code := askpass.Serve(); ran {
+		os.Exit(code)
+	}
+	os.Exit(m.Run())
+}
 
 // Connect serves srv over in-memory transports and returns a connected client session that is
 // closed when the test ends.

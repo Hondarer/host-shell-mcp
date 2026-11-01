@@ -74,6 +74,7 @@ internal/textenc/      Character encoding conversion (name resolution, detection
   system_windows.go    Windows (GetOEMCP, GetACP)
 internal/audit/        Audit log (JSON Lines)
 internal/config/       Configuration and defaults
+internal/askpass/      Askpass helper that passes the exec_sudo password to sudo -A
 internal/wire/         Names and transfer payloads shared by the bridge and target tools
 internal/testutil/     Test helpers shared across packages
 internal/version/      Version metadata

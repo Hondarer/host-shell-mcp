@@ -1,6 +1,6 @@
 //go:build !windows
 
-package tools
+package askpass
 
 import (
 	"os"
@@ -9,7 +9,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	if ran, code := Askpass(); ran {
+	if ran, code := Serve(); ran {
 		os.Exit(code)
 	}
 	os.Exit(m.Run())
@@ -17,7 +17,7 @@ func TestMain(m *testing.M) {
 
 // TestAskpass runs the test binary as sudo would run the askpass helper.
 func TestAskpass(t *testing.T) {
-	env, cleanup, err := withAskpass("p@ss w0rd")
+	env, cleanup, err := Env("p@ss w0rd")
 	if err != nil {
 		t.Fatal(err)
 	}

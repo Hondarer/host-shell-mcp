@@ -74,6 +74,7 @@ internal/textenc/      文字コード変換 (エンコーディング名解決�
   system_windows.go    Windows (GetOEMCP、GetACP)
 internal/audit/        操作ログ (JSON Lines)
 internal/config/       設定と既定値
+internal/askpass/      exec_sudo のパスワードを sudo -A へ渡す askpass ヘルパー
 internal/wire/         bridge と接続先ツールが共有する名前と転送データ型
 internal/testutil/     パッケージ横断のテスト用ヘルパー
 internal/version/      バージョン情報

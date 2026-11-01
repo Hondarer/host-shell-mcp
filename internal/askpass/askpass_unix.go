@@ -1,6 +1,7 @@
 //go:build !windows
 
-package tools
+// Package askpass lets exec_sudo pass a password to sudo -A through host-shell itself.
+package askpass
 
 import (
 	"fmt"
@@ -11,13 +12,13 @@ import (
 	"time"
 )
 
-// askpassEnv holds the FIFO path used by sudo -A (see withAskpass).
+// askpassEnv holds the FIFO path used by sudo -A (see Env).
 const askpassEnv = "HOST_SHELL_ASKPASS"
 
 // passwordTries is the number of password lines queued for sudo (up to 3 prompts).
 const passwordTries = 3
 
-// Askpass runs host-shell as the sudo -A askpass helper when invoked by exec_sudo,
+// Serve runs host-shell as the sudo -A askpass helper when invoked by exec_sudo,
 // reading one line from the HOST_SHELL_ASKPASS FIFO and writing it to stdout.
 // If ran is true, the caller must exit with code.
 //
@@ -25,7 +26,7 @@ const passwordTries = 3
 // to other processes, the password is buffered in a 0600 FIFO inside a 0700 directory for the duration
 // of the command. Requiring a single non-flag argument (the prompt passed by sudo) prevents a nested
 // host-shell process from acting as the helper when sudo preserves the environment.
-func Askpass() (ran bool, code int) {
+func Serve() (ran bool, code int) {
 	path := os.Getenv(askpassEnv)
 	if path == "" || len(os.Args) != 2 || strings.HasPrefix(os.Args[1], "-") {
 		return false, 0
@@ -55,8 +56,8 @@ func Askpass() (ran bool, code int) {
 	return true, 0
 }
 
-// withAskpass creates the sudo -A FIFO and returns the sudo environment and a cleanup function.
-func withAskpass(password string) (env map[string]string, cleanup func(), err error) {
+// Env creates the sudo -A FIFO and returns the sudo environment and a cleanup function.
+func Env(password string) (env map[string]string, cleanup func(), err error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, nil, err

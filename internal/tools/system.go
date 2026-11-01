@@ -12,6 +12,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/hondarer/host-shell-mcp/internal/askpass"
 	"github.com/hondarer/host-shell-mcp/internal/forward"
 	"github.com/hondarer/host-shell-mcp/internal/proc"
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
@@ -39,7 +40,7 @@ func (in ExecSudoInput) AuditArgs() any {
 }
 
 // execSudo runs a command via sudo: using sudo -n when Password is empty, or sudo -A with the
-// built-in askpass helper (see Askpass) so the password is never exposed to the command's stdin.
+// built-in askpass helper (see askpass.Serve) so the password is never exposed to the command's stdin.
 func (d *Deps) execSudo(ctx context.Context, req *mcp.CallToolRequest, in ExecSudoInput) (*mcp.CallToolResult, proc.Result, error) {
 	if in.Command == "" {
 		return nil, proc.Result{}, errors.New("command is required")
@@ -49,7 +50,7 @@ func (d *Deps) execSudo(ctx context.Context, req *mcp.CallToolRequest, in ExecSu
 	if in.Password != "" {
 		var cleanup func()
 		var err error
-		if env, cleanup, err = withAskpass(in.Password); err != nil {
+		if env, cleanup, err = askpass.Env(in.Password); err != nil {
 			return nil, proc.Result{}, fmt.Errorf("prepare the password for sudo: %w", err)
 		}
 		defer cleanup()

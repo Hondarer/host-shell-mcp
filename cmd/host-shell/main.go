@@ -23,6 +23,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/hondarer/host-shell-mcp/internal/askpass"
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/bridge"
 	"github.com/hondarer/host-shell-mcp/internal/channel"
@@ -32,7 +33,6 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/proc"
 	"github.com/hondarer/host-shell-mcp/internal/server"
-	"github.com/hondarer/host-shell-mcp/internal/tools"
 	"github.com/hondarer/host-shell-mcp/internal/version"
 )
 
@@ -42,7 +42,7 @@ func main() {
 	log.SetFlags(0)
 
 	// exec_sudo re-invokes this binary as the sudo -A askpass helper.
-	if ran, code := tools.Askpass(); ran {
+	if ran, code := askpass.Serve(); ran {
 		os.Exit(code)
 	}
 
