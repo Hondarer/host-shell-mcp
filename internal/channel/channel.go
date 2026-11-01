@@ -10,6 +10,10 @@
 // Either side may open streams. The bridge numbers its streams with odd IDs and the target
 // with even IDs, so concurrent opens never collide. The target can only ask the bridge to dial
 // remote forwards the bridge registered with listen; it never names a destination itself.
+//
+// The features built on the channel (package clientproxy and package forward) share its helpers:
+// Incoming.Answer and Relay connect and relay streams, Describe maps failure codes to the
+// results and fixed reasons they record, and History, Peer and Recent back their status tools.
 package channel
 
 import (
@@ -261,30 +265,12 @@ func (c *Conn) handle(kind string, f Frame) error {
 		if c.bridge || !c.features[ForwardRemote] {
 			return errors.New("unexpected unlisten")
 		}
-		c.fwMu.Lock()
-		active := c.forwards[f.Forward]
-		delete(c.forwards, f.Forward)
-		last := c.lastForward
-		c.fwMu.Unlock()
-		if active && c.opt.Unlisten != nil {
-			c.opt.Unlisten(f.Forward)
-		} else if f.Forward > last {
-			return errors.New("unknown forward")
-		}
-		return nil
+		return c.handleUnlisten(f)
 	case "listen_result":
 		if !c.bridge {
 			return errors.New("unexpected listen result")
 		}
-		c.fwMu.Lock()
-		ch := c.listens[f.Forward]
-		delete(c.listens, f.Forward)
-		c.fwMu.Unlock()
-		if ch == nil {
-			return errors.New("unexpected listen result")
-		}
-		ch <- f
-		return nil
+		return c.handleListenResult(f)
 	}
 	if !c.isReady() {
 		return fmt.Errorf("%s before ready", kind)

@@ -124,3 +124,13 @@ func (w *activityWriter) Write(b []byte) (int, error) {
 	}
 	return n, e
 }
+
+// CloseWrite half-closes c when it supports that (TCP connections and channel streams) and
+// reports whether it did.
+func CloseWrite(c net.Conn) bool {
+	cw, ok := c.(interface{ CloseWrite() error })
+	if ok {
+		cw.CloseWrite()
+	}
+	return ok
+}

@@ -86,37 +86,3 @@ type Frame struct {
 	Bytes    int      `json:"bytes,omitempty"`
 	Error    string   `json:"error,omitempty"`
 }
-
-// Results recorded for a connection attempt in diagnostics and audit logs.
-const (
-	Allowed = "allowed"
-	Denied  = "denied"
-	Failed  = "failed"
-)
-
-// Fixed reasons shared by port forwarding and the client proxy. Reasons never carry raw network
-// errors, which could contain credentials.
-const (
-	ReasonEstablished = "connection established"
-	ReasonNotAllowed  = "destination not allowed"
-	ReasonLimit       = "connection limit reached"
-)
-
-// Describe maps a failure code to the result and the fixed reason recorded for it.
-func Describe(code string) (result, reason string) {
-	switch code {
-	case CodeNotAllowed:
-		return Denied, ReasonNotAllowed
-	case CodeLimit:
-		return Denied, ReasonLimit
-	case CodeClosed:
-		return Denied, "forward closed"
-	case CodeRefused:
-		return Failed, "connection refused"
-	case CodeUnreachable:
-		return Failed, "host unreachable"
-	case CodeTimeout:
-		return Failed, "connection timeout"
-	}
-	return Failed, "connection failed"
-}

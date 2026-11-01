@@ -81,3 +81,32 @@ func (c *Conn) Unlisten(forward uint64) {
 		c.Close()
 	}
 }
+
+// handleUnlisten closes a remote forward listener on the target. A forward the bridge never
+// listened, beyond the last one it did, breaks the protocol.
+func (c *Conn) handleUnlisten(f Frame) error {
+	c.fwMu.Lock()
+	active := c.forwards[f.Forward]
+	delete(c.forwards, f.Forward)
+	last := c.lastForward
+	c.fwMu.Unlock()
+	if active && c.opt.Unlisten != nil {
+		c.opt.Unlisten(f.Forward)
+	} else if f.Forward > last {
+		return errors.New("unknown forward")
+	}
+	return nil
+}
+
+// handleListenResult delivers the target's answer to the bridge's pending Listen.
+func (c *Conn) handleListenResult(f Frame) error {
+	c.fwMu.Lock()
+	ch := c.listens[f.Forward]
+	delete(c.listens, f.Forward)
+	c.fwMu.Unlock()
+	if ch == nil {
+		return errors.New("unexpected listen result")
+	}
+	ch <- f
+	return nil
+}
