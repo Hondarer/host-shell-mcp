@@ -22,7 +22,9 @@ import (
 func pair(t *testing.T, bridgeOpt, targetOpt Options) (*Conn, *Conn) {
 	t.Helper()
 	a, b := mcp.NewInMemoryTransports()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// The session also covers the 40-stream payload test. Allow for race
+	// instrumentation and CPU contention when packages run together in CI.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	t.Cleanup(cancel)
 	var target mcp.Connection
 	var te error
