@@ -8,20 +8,17 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/hondarer/host-shell-mcp/internal/clientproxy"
-	"github.com/hondarer/host-shell-mcp/internal/forward"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
 // Config holds host-shell's runtime settings.
 type Config struct {
+	// ClientProxy routes HTTP/HTTPS through the bridge (--client-proxy).
 	ClientProxy bool
-	Proxy       *clientproxy.Target
 	// ForwardLocal and ForwardRemote permit the bridge's port forwards (--allow-forward-local/--allow-forward-remote).
 	ForwardLocal, ForwardRemote bool
 	// ForwardRemotePorts limits the ports remote forwards listen on (--allow-forward-remote-port); nil permits any port.
-	ForwardRemotePorts forward.Ports
-	Forward            *forward.Target
+	ForwardRemotePorts policy.Ports
 	// MaxOutputBytes caps individual output streams (stdout, stderr, file content, etc.);
 	// longer output is middle-truncated, keeping its head and tail.
 	MaxOutputBytes int

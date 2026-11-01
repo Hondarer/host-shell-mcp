@@ -119,7 +119,7 @@ func parseFlags(fs *flag.FlagSet, args []string) (cfg config.Config, showVersion
 	cfg.ClientProxy = *proxyMode
 	cfg.ForwardLocal = *fwdLocal
 	cfg.ForwardRemote = *fwdRemote
-	ports, err := forward.ParsePorts(remotePorts)
+	ports, err := policy.ParsePorts(remotePorts)
 	if err != nil {
 		return cfg, false, err
 	}
@@ -164,29 +164,29 @@ func run(cfg config.Config) error {
 	// The channel transport passes ordinary MCP through and answers a bridge's channel hello,
 	// so a bridge asking for features this host does not permit fails with a precise error.
 	var channelOptions channel.Options
+	sess := server.Session{Audit: al}
 	if cfg.ClientProxy {
 		target, err := clientproxy.NewTarget()
 		if err != nil {
 			return err
 		}
 		defer target.Close()
-		cfg.Proxy = target
+		sess.Proxy = target
 		target.SetAudit(al)
 		target.Register(&channelOptions)
 	}
 	// One policy serves the tools and port forwarding, so both see the proxy secret.
-	pol, err := server.NewPolicy(cfg, al)
-	if err != nil {
+	if sess.Policy, err = server.NewPolicy(cfg, sess.Proxy, al); err != nil {
 		return err
 	}
 	if cfg.ForwardLocal || cfg.ForwardRemote {
-		cfg.Forward = forward.NewTarget(cfg.ForwardLocal, cfg.ForwardRemote, pol, al)
-		cfg.Forward.RestrictRemotePorts(cfg.ForwardRemotePorts)
-		defer cfg.Forward.Close()
-		cfg.Forward.Register(&channelOptions)
+		sess.Forward = forward.NewTarget(cfg.ForwardLocal, cfg.ForwardRemote, sess.Policy, al)
+		sess.Forward.RestrictRemotePorts(cfg.ForwardRemotePorts)
+		defer sess.Forward.Close()
+		sess.Forward.Register(&channelOptions)
 	}
 	transport := channel.Target(&mcp.StdioTransport{}, channelOptions)
-	s, closeServer := server.New(cfg, pol, al)
+	s, closeServer := server.New(cfg, sess)
 	defer closeServer()
 
 	al.Event("server_start", "version", version.Version, "pid", os.Getpid())

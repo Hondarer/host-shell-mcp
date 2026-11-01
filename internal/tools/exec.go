@@ -82,8 +82,8 @@ func (d *Deps) commandSpec(c CommandSpec, pty bool, stdin textenc.Encoding) proc
 // procSpec builds a proc.Spec with policy environment filtering applied.
 func (d *Deps) procSpec(c CommandSpec) proc.Spec {
 	spec := proc.Spec{Command: c.Command, Argv: c.Argv, Shell: c.Shell, Dir: c.Cwd, Env: c.Env}
-	if d.Cfg.Proxy != nil {
-		spec.EnvFilter = func(base []string) []string { return d.Policy.FilterEnv(d.Cfg.Proxy.Environment(base)) }
+	if d.Proxy != nil {
+		spec.EnvFilter = func(base []string) []string { return d.Policy.FilterEnv(d.Proxy.Environment(base)) }
 	} else if d.Policy.FiltersEnv() {
 		spec.EnvFilter = d.Policy.FilterEnv
 	}

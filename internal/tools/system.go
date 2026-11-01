@@ -131,12 +131,12 @@ func (d *Deps) sysGetInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp
 		Version:      version.Version,
 		GoVersion:    runtime.Version(),
 	}
-	if d.Cfg.Proxy != nil {
+	if d.Proxy != nil {
 		out.ClientProxy = true
-		out.ProxyURLFile = d.Cfg.Proxy.File
+		out.ProxyURLFile = d.Proxy.File
 	}
-	if d.Cfg.Forward != nil {
-		info := d.Cfg.Forward.Info()
+	if d.Forward != nil {
+		info := d.Forward.Info()
 		out.ForwardLocal, out.ForwardRemote, out.RemoteForwards = info.Local, info.Remote, info.RemoteForwards
 	}
 	out.Hostname, _ = os.Hostname()
@@ -150,8 +150,8 @@ func (d *Deps) sysGetInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp
 	for _, kv := range d.Policy.Summary() {
 		out.Restrictions = append(out.Restrictions, kv[0]+": "+kv[1])
 	}
-	if d.Cfg.Forward != nil {
-		if p := d.Cfg.Forward.Info().RemotePorts; p != nil {
+	if d.Forward != nil {
+		if p := d.Forward.Info().RemotePorts; p != nil {
 			out.Restrictions = append(out.Restrictions, "Allowed remote forward ports: "+p.String())
 		}
 	}

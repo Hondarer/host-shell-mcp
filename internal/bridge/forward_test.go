@@ -16,7 +16,6 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/channel"
 	"github.com/hondarer/host-shell-mcp/internal/config"
 	"github.com/hondarer/host-shell-mcp/internal/forward"
-	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/server"
 	"github.com/hondarer/host-shell-mcp/internal/testutil"
 )
@@ -29,18 +28,18 @@ func connectForward(t *testing.T, local, remote bool, opt Options) (*mcp.ClientS
 	cfg := config.Default()
 	cfg.LogFile = ""
 	al, _ := audit.Open("")
-	pol, _ := policy.New(policy.Options{}, nil)
-	var to channel.Options
-	if local || remote {
-		cfg.Forward = forward.NewTarget(local, remote, pol, al)
-		t.Cleanup(cfg.Forward.Close)
-		cfg.Forward.Register(&to)
-	}
-	srvPol, err := server.NewPolicy(cfg, al)
+	pol, err := server.NewPolicy(cfg, nil, al)
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, stop := server.New(cfg, srvPol, al)
+	sess := server.Session{Policy: pol, Audit: al}
+	var to channel.Options
+	if local || remote {
+		sess.Forward = forward.NewTarget(local, remote, pol, al)
+		t.Cleanup(sess.Forward.Close)
+		sess.Forward.Register(&to)
+	}
+	srv, stop := server.New(cfg, sess)
 	t.Cleanup(stop)
 	rs, rc := mcp.NewInMemoryTransports()
 	go srv.Run(ctx, channel.Target(rs, to))

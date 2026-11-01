@@ -27,13 +27,13 @@ func TestProxySessionIntegration(t *testing.T) {
 	}
 	defer target.Close()
 	cfg := config.Default()
-	cfg.Proxy = target
+	cfg.ClientProxy = true
 	al, _ := audit.Open("")
-	pol, err := server.NewPolicy(cfg, al)
+	pol, err := server.NewPolicy(cfg, target, al)
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv, stop := server.New(cfg, pol, al)
+	srv, stop := server.New(cfg, server.Session{Policy: pol, Audit: al, Proxy: target})
 	defer stop()
 	rs, rc := mcp.NewInMemoryTransports()
 	remoteDone := make(chan error, 1)

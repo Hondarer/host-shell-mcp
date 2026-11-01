@@ -25,13 +25,13 @@ type TargetInfo struct {
 	Remote         bool
 	RemoteForwards []RemoteForward
 	// RemotePorts limits the ports remote forwards listen on; nil permits any port.
-	RemotePorts Ports
+	RemotePorts policy.Ports
 }
 
 // Target is the target side: it connects local forwards and SOCKS, and listens remote forwards.
 type Target struct {
 	local, remote bool
-	ports         Ports
+	ports         policy.Ports
 	policy        *policy.Policy
 	audit         *audit.Logger
 	dial          func(ctx context.Context, network, addr string) (net.Conn, error)
@@ -53,7 +53,7 @@ func NewTarget(local, remote bool, pol *policy.Policy, al *audit.Logger) *Target
 }
 
 // RestrictRemotePorts limits the ports remote forwards listen on (--allow-forward-remote-port).
-func (t *Target) RestrictRemotePorts(p Ports) { t.ports = p }
+func (t *Target) RestrictRemotePorts(p policy.Ports) { t.ports = p }
 
 // Register permits the directions on the target's channel options.
 func (t *Target) Register(o *channel.Options) {

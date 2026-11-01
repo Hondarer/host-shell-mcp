@@ -13,7 +13,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/hondarer/host-shell-mcp/internal/audit"
+	"github.com/hondarer/host-shell-mcp/internal/clientproxy"
 	"github.com/hondarer/host-shell-mcp/internal/config"
+	"github.com/hondarer/host-shell-mcp/internal/forward"
 	"github.com/hondarer/host-shell-mcp/internal/jobs"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
@@ -26,6 +28,10 @@ type Deps struct {
 	DefaultShell string
 	// Policy holds the restrictions the user specified at startup. nil means no restriction.
 	Policy *policy.Policy
+	// Proxy is the client proxy target when --client-proxy is set, else nil.
+	Proxy *clientproxy.Target
+	// Forward is the port forwarding target when forwarding is permitted, else nil.
+	Forward *forward.Target
 
 	// enabled maps the exposed tool names to their groups. Used for help and the instructions.
 	enabled map[string]string
@@ -341,7 +347,7 @@ func registerTool[In, Out any](s *mcp.Server, d *Deps, group string, t *mcp.Tool
 				res, out = redactOutput(d, res, out)
 			}
 		}
-		if err != nil && d.Cfg.Proxy != nil {
+		if err != nil && d.Proxy != nil {
 			err = errors.New(d.mask(err.Error()))
 		}
 		if err == nil && ctx.Err() != nil {

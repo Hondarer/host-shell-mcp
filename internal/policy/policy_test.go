@@ -164,3 +164,21 @@ func TestWithin(t *testing.T) {
 		t.Error("Windows paths should compare case-insensitively")
 	}
 }
+
+func TestParsePorts(t *testing.T) {
+	p, err := ParsePorts([]string{"15432, 20000-20099", "8080"})
+	if err != nil || p.String() != "15432, 20000-20099, 8080" {
+		t.Fatalf("%v %v", p, err)
+	}
+	if !p.Contains(20050) || !p.Contains(8080) || p.Contains(20100) || p.Contains(0) {
+		t.Fatalf("contains %v", p)
+	}
+	if p, err = ParsePorts(nil); p != nil || err != nil || !p.Contains(1) {
+		t.Fatalf("no ranges: %v %v", p, err)
+	}
+	for _, v := range []string{"0", "65536", "20-10", "a", "", "1-", "-5", "080", "1-2-3"} {
+		if _, err := ParsePorts([]string{v}); err == nil || !strings.Contains(err.Error(), "--allow-forward-remote-port") {
+			t.Errorf("%q: %v", v, err)
+		}
+	}
+}

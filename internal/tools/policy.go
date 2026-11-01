@@ -120,8 +120,8 @@ func (d *Deps) confirmState(name string, args []byte) string {
 
 // mask hides the client proxy credential in s.
 func (d *Deps) mask(s string) string {
-	if d.Cfg.Proxy != nil {
-		return d.Cfg.Proxy.Mask(s)
+	if d.Proxy != nil {
+		return d.Proxy.Mask(s)
 	}
 	return s
 }

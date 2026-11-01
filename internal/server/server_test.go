@@ -33,11 +33,11 @@ func connectWith(t *testing.T, po policy.Options, copts *mcp.ClientOptions) *mcp
 	if err != nil {
 		t.Fatal(err)
 	}
-	pol, err := NewPolicy(cfg, al)
+	pol, err := NewPolicy(cfg, nil, al)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, closeServer := New(cfg, pol, al)
+	s, closeServer := New(cfg, Session{Policy: pol, Audit: al})
 	t.Cleanup(func() {
 		closeServer()
 		al.Close()

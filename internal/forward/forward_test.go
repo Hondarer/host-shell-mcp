@@ -74,7 +74,7 @@ type sessionOptions struct {
 	allowLocal, allowRemote []string
 	local, remote           bool
 	allowHost               []string
-	remotePorts             Ports
+	remotePorts             policy.Ports
 	timeout                 time.Duration
 	targetDial              func(ctx context.Context, network, addr string) (net.Conn, error)
 	// negotiation receives the bridge's connect error instead of failing the test.
@@ -540,24 +540,6 @@ func TestSOCKSTimeout(t *testing.T) {
 	s.waitEvent(t, "connection timeout")
 }
 
-func TestParsePorts(t *testing.T) {
-	p, err := ParsePorts([]string{"15432, 20000-20099", "8080"})
-	if err != nil || p.String() != "15432, 20000-20099, 8080" {
-		t.Fatalf("%v %v", p, err)
-	}
-	if !p.Contains(20050) || !p.Contains(8080) || p.Contains(20100) || p.Contains(0) {
-		t.Fatalf("contains %v", p)
-	}
-	if p, err = ParsePorts(nil); p != nil || err != nil || !p.Contains(1) {
-		t.Fatalf("no ranges: %v %v", p, err)
-	}
-	for _, v := range []string{"0", "65536", "20-10", "a", "", "1-", "-5", "080", "1-2-3"} {
-		if _, err := ParsePorts([]string{v}); err == nil || !strings.Contains(err.Error(), "--allow-forward-remote-port") {
-			t.Errorf("%q: %v", v, err)
-		}
-	}
-}
-
 func TestRemotePortRanges(t *testing.T) {
 	port := echoServer(t, "tcp4", "127.0.0.1:0")
 	busy, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -566,7 +548,7 @@ func TestRemotePortRanges(t *testing.T) {
 	}
 	defer busy.Close()
 	taken, free, outside := busy.Addr().(*net.TCPAddr).Port, testutil.FreePort(t), testutil.FreePort(t)
-	ranges := Ports{{taken, taken}, {free, free}}
+	ranges := policy.Ports{{Lo: taken, Hi: taken}, {Lo: free, Hi: free}}
 	s := start(t, sessionOptions{allowRemote: []string{"127.0.0.1:" + strconv.Itoa(port)}, remote: true, remotePorts: ranges})
 	ctx := context.Background()
 	// Port 0 skips the busy port and takes the next free one in the ranges.
@@ -710,7 +692,7 @@ func TestCloseRecordsUnlisten(t *testing.T) {
 func TestPersistentRemotePortNotAllowed(t *testing.T) {
 	free, outside := testutil.FreePort(t), testutil.FreePort(t)
 	var err error
-	start(t, sessionOptions{specs: []Spec{{Remote, "127.0.0.1", outside, "127.0.0.1", 1}}, remote: true, remotePorts: Ports{{free, free}}, negotiation: &err})
+	start(t, sessionOptions{specs: []Spec{{Remote, "127.0.0.1", outside, "127.0.0.1", 1}}, remote: true, remotePorts: policy.Ports{{Lo: free, Hi: free}}, negotiation: &err})
 	if err == nil || !strings.Contains(err.Error(), "--forward-remote on target 127.0.0.1:"+strconv.Itoa(outside)+": listen failed: listen port not allowed by target (see sys_get_info restrictions)") {
 		t.Fatalf("persistent forward outside the ranges: %v", err)
 	}

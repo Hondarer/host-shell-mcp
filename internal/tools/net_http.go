@@ -181,8 +181,8 @@ func (d *Deps) httpTransport(in NetRequestHTTPInput) (*http.Transport, error) {
 		return nil, err
 	}
 	tr := &http.Transport{TLSClientConfig: tlsConf, Proxy: http.ProxyFromEnvironment, ForceAttemptHTTP2: true}
-	if d.Cfg.Proxy != nil {
-		tr.Proxy = d.Cfg.Proxy.Proxy
+	if d.Proxy != nil {
+		tr.Proxy = d.Proxy.Proxy
 	}
 	switch in.Proxy {
 	case "":
