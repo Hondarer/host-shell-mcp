@@ -40,10 +40,10 @@
     - ✅ 4.3. テストの追加 (`internal/forward/forward_test.go`) ([Q-005](#q-005-テスト))
     - ✅ 4.4. 確認 (作業環境の Windows と Linux)
     - ✅ 4.5. 元案件の残課題一覧 (`docs/prompts/past/261101-session-socket-ci-backlog.md`) の状態の更新
-    - 🔄 4.6. make、main 向けドラフト PR の作成と全 OS CI の実行 ← **CURRENT**
-    - ⏸️ 4.7. 受入条件への適合確認 (全完確認)
-    - ⏸️ 4.8. 残課題一覧 (`261101-socks-linger-close-backlog.md`) の再構築と整理
-    - ⏸️ 4.9. 検討記録の `docs/prompts/past/` への移動、全 OS の CI の成功の確認とマージ
+    - ✅ 4.6. make、main 向けドラフト PR の作成と全 OS CI の実行 (PR #7、CI run 41317500244 は全 OS 成功)
+    - ✅ 4.7. 受入条件への適合確認 (全完確認)
+    - ✅ 4.8. 残課題一覧 (`261101-socks-linger-close-backlog.md`) の再構築と整理 (作業中に記録する事項はなく、元の残課題一覧の 1 件も解消したため、作成していません)
+    - 🔄 4.9. 検討記録の `docs/prompts/past/` への移動、全 OS の CI の成功の確認とマージ ← **CURRENT**
 - ⏸️ 5. 成果物の承認の受付 (第 3 ゲート)
     - ⏸️ 5.1. 成果物・検証結果・残課題の提示
     - ⏸️ 5.2. 対話セッションにおける成果物の承認の受付
@@ -54,14 +54,14 @@
 
 今回の対象範囲: 前案件の残課題一覧の BL-001 (同一覧の唯一の項目)
 
-書き込み可能な検討用 Markdown: この文書 (`docs/prompts/261101-socks-linger-close-discussion.md`)
+書き込み可能な検討用 Markdown: この文書 (`docs/prompts/past/261101-socks-linger-close-discussion.md`。マージ前に `docs/prompts/` から移動)
 
 参照資料と版: main のコミット e01b0e6 を調査基準とします。
 
-- [docs/prompts/past/261101-session-socket-ci-backlog.md](past/261101-session-socket-ci-backlog.md): 対象の残課題一覧 (BL-001 Windows で、SOCKS4 の拒否の応答がクライアントに届かない場合がある)。
-- [internal/forward/socks.go](../../internal/forward/socks.go): bridge の SOCKS の処理 (`Manager.socks`)。
-- [internal/forward/bridge.go](../../internal/forward/bridge.go): 待ち受けで受けた接続を `Manager.socks` に渡し、戻った後に閉じます (`defer c.Close()`)。
-- [docs/ja/port-forward.md](../ja/port-forward.md): 「BIND、UDP ASSOCIATE、SOCKS4/4a はエラー応答を返します」と記載しています。
+- [docs/prompts/past/261101-session-socket-ci-backlog.md](261101-session-socket-ci-backlog.md): 対象の残課題一覧 (BL-001 Windows で、SOCKS4 の拒否の応答がクライアントに届かない場合がある)。
+- [internal/forward/socks.go](../../../internal/forward/socks.go): bridge の SOCKS の処理 (`Manager.socks`)。
+- [internal/forward/bridge.go](../../../internal/forward/bridge.go): 待ち受けで受けた接続を `Manager.socks` に渡し、戻った後に閉じます (`defer c.Close()`)。
+- [docs/ja/port-forward.md](../../ja/port-forward.md): 「BIND、UDP ASSOCIATE、SOCKS4/4a はエラー応答を返します」と記載しています。
 
 ## ユーザーが明示した要求
 
@@ -142,7 +142,7 @@ func lingerClose(c net.Conn) {
 
 | 観点 | 状態 | 根拠・関連 Q |
 | --- | --- | --- |
-| 目的・利用者 | 確認済み | 本対話の依頼、[docs/ja/port-forward.md](../ja/port-forward.md) の記載 (SOCKS4/4a はエラー応答を返す) |
+| 目的・利用者 | 確認済み | 本対話の依頼、[docs/ja/port-forward.md](../../ja/port-forward.md) の記載 (SOCKS4/4a はエラー応答を返す) |
 | 範囲・境界 | 確認済み | [Q-002](#q-002-適用する経路) |
 | 入力・根拠 | 確認済み | 上記の参照資料 (コミット e01b0e6)、調査結果 |
 | 整合性・依存関係 | 確認済み | [Q-001](#q-001-修正の方式)、[Q-007](#q-007-作業ブランチと-pr-とマージの運用) |
@@ -491,3 +491,41 @@ A を確認しました。これまでと同じ運用とし、作業ブランチ
 
 推奨: A  
 理由: これまでの 4 件と同じ運用で、記録の場所と時機がそろうためです。
+
+## 対象成果物と合意版
+
+最終決定事項 (最終仕様) の設計書: `docs/prompts/past/261101-socks-linger-close-design.md`
+
+検討用 Markdown の合意版 (第 1 ゲート): 版 2 (2026-11-01、[Q-001](#q-001-修正の方式)〜[Q-007](#q-007-作業ブランチと-pr-とマージの運用) がすべて解決済み)
+
+最終仕様 (design.md) の合意版 (第 2 ゲート): 版 1 (2026-11-01 23:38:17 JST、Tetsuo Honda が対話「承認」で承認)
+
+更新した成果物: `internal/forward/socks.go`、`internal/forward/forward_test.go`、`docs/prompts/past/261101-session-socket-ci-backlog.md`
+
+受入条件: [Q-006](#q-006-受入条件) の 1〜5 です。
+
+## 反映と検証の記録
+
+作業ブランチ claude/socks-linger-close (PR #7) で作業しました。
+
+### 実装
+
+- `internal/forward/socks.go` に、定数 `socksLingerTimeout` (1 秒)、`socksLingerLimit` (64 KiB) と、関数 `lingerClose` を加えました。`lingerClose` は書き込み側を閉じ、読み取りの期限を設けて残りの受信を読み捨ててから閉じます。コメントに、Windows で応答が捨てられるのを防ぐ目的を書きました。
+- `Manager.socks` で応答を書いて閉じる 8 つの経路 (SOCKS4/4a、認証の方式、アドレス種別、コマンド、宛先の形式、許可規則、接続先での失敗、接続数の上限) で、応答の後に `lingerClose` を呼ぶようにしました。
+- `internal/forward/forward_test.go` に `TestSOCKSRejectReplyDelivered` と `TestLingerClose` を加えました。
+
+### 確認
+
+作業環境 (WSL と、同じ機械の Windows) で確認しました。Windows 向けのテストは `GOOS=windows go test -c` で作り、スクラッチ領域で実行しました。
+
+| 受入条件 | 結果 |
+| --- | --- |
+| 1. 修正前に失敗し修正後に成功 | Windows で、修正前の `socks.go` では `TestSOCKSRejectReplyDelivered` が `SOCKS4: reply [0 0 0 0 0 0 0 0] ... wsarecv: An existing connection was forcibly closed by the remote host.` で失敗し、修正後は成功しました。Linux では修正後に成功しました |
+| 2. Windows での繰り返し | `TestSOCKS` と `TestSOCKSRejectReplyDelivered` を各 300 回繰り返し、失敗は 0 回でした |
+| 3. 閉じないクライアント | `TestLingerClose` で、送りも閉じもしない相手に対して約 1 秒で戻り、相手には EOF が届くこと、送り続ける相手に対しては量の上限で期限より前に戻ることを確かめました (Linux、Windows とも成功) |
+| 4. make と CI | `make` (vet、テスト、ビルド) が成功しました。CI run 41317500244 (883fba1) は全 OS 成功しました |
+| 5. 元の残課題一覧 | `261101-session-socket-ci-backlog.md` の BL-001 を「解消」にし、経緯と対処を追記しました |
+
+Table: 受入条件の照合
+
+確認に使った Windows 向けのテストの実行形式と、修正前のコードの複製は、スクラッチ領域にだけ置きました。
