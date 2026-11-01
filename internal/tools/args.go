@@ -35,10 +35,17 @@ func redactedLen(s string) string {
 	return fmt.Sprintf("<%d chars>", len(s))
 }
 
-// parseCharset resolves a file charset argument; allowAuto permits automatic detection (reads)
-// and otherwise defaults to UTF-8 (writes).
-func parseCharset(name string, allowAuto bool) (textenc.Choice, error) {
-	ch, err := textenc.Parse(name, textenc.File, allowAuto, textenc.UTF8)
+// readCharset resolves the charset argument of a file read, which defaults to detection.
+func readCharset(name string) (textenc.Choice, error) {
+	return charsetArg(textenc.ParseAuto(name, textenc.File))
+}
+
+// writeCharset resolves the charset argument of a file write, which defaults to UTF-8.
+func writeCharset(name string) (textenc.Choice, error) {
+	return charsetArg(textenc.ParseFixed(name, textenc.File, textenc.UTF8))
+}
+
+func charsetArg(ch textenc.Choice, err error) (textenc.Choice, error) {
 	if err != nil {
 		return textenc.Choice{}, fmt.Errorf("charset: %w", err)
 	}

@@ -38,11 +38,11 @@ type IOEncoding struct {
 // resolve parses the output encoding choice and encodes stdin (using def when StdinEncoding is
 // empty). It also returns the stdin encoding.
 func (e IOEncoding) resolve(stdin string, def textenc.Encoding) (textenc.Choice, string, textenc.Encoding, error) {
-	out, err := textenc.Parse(e.OutputEncoding, textenc.Console, true, textenc.UTF8)
+	out, err := textenc.ParseAuto(e.OutputEncoding, textenc.Console)
 	if err != nil {
 		return textenc.Choice{}, "", textenc.Encoding{}, fmt.Errorf("output_encoding: %w", err)
 	}
-	in, err := textenc.Parse(e.StdinEncoding, textenc.Console, false, def)
+	in, err := textenc.ParseFixed(e.StdinEncoding, textenc.Console, def)
 	if err != nil {
 		return textenc.Choice{}, "", textenc.Encoding{}, fmt.Errorf("stdin_encoding: %w", err)
 	}

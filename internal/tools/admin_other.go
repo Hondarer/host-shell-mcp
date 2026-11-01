@@ -12,11 +12,11 @@ import (
 
 var errAdminUnsupported = errors.New("this tool is supported on Linux and Windows; use exec_run with the OS commands instead")
 
-func killProcess(_ context.Context, _ *Deps, pid int, sig string, _, sudo bool) ([]int, error) {
-	if sudo {
+func killProcess(_ context.Context, _ *Deps, in ProcKillInput, sig string) ([]int, error) {
+	if in.Sudo {
 		return nil, errAdminUnsupported
 	}
-	return []int{pid}, proc.Signal(pid, sig, false)
+	return []int{in.PID}, proc.Signal(in.PID, sig)
 }
 
 func listServices(context.Context, *Deps, bool) ([]Service, error) { return nil, errAdminUnsupported }

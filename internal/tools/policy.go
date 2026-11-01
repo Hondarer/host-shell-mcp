@@ -32,12 +32,12 @@ func (d *Deps) checkPolicy(in any) error {
 	if pa, ok := in.(pathArgs); ok {
 		read, write := pa.PathArgs()
 		for _, p := range read {
-			if err := d.Policy.CheckPath(p, false); err != nil {
+			if err := d.Policy.CheckRead(p); err != nil {
 				return err
 			}
 		}
 		for _, p := range write {
-			if err := d.Policy.CheckPath(p, true); err != nil {
+			if err := d.Policy.CheckWrite(p); err != nil {
 				return err
 			}
 		}

@@ -425,7 +425,7 @@ func (j *Job) Signal(name string) error {
 	if j.term != nil && name == "interrupt" {
 		_, err = io.WriteString(j.term, "\x03")
 	} else {
-		err = proc.Signal(j.pid, name, true)
+		err = proc.SignalGroup(j.pid, name)
 	}
 	if err == nil {
 		j.mu.Lock()

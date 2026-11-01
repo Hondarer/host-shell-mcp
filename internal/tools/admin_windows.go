@@ -24,14 +24,18 @@ import (
 
 // ---- proc_kill ----
 
-func killProcess(_ context.Context, _ *Deps, pid int, sig string, tree, sudo bool) ([]int, error) {
-	if sudo {
+func killProcess(_ context.Context, _ *Deps, in ProcKillInput, sig string) ([]int, error) {
+	if in.Sudo {
 		return nil, errors.New("sudo is not available on Windows; run host-shell in an elevated session to kill other users' processes")
 	}
-	if err := proc.Signal(pid, sig, tree); err != nil {
+	signal := proc.Signal
+	if in.Tree {
+		signal = proc.SignalGroup
+	}
+	if err := signal(in.PID, sig); err != nil {
 		return nil, err
 	}
-	return []int{pid}, nil
+	return []int{in.PID}, nil
 }
 
 // ---- svc_list / svc_control ----

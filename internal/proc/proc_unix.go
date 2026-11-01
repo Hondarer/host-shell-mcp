@@ -73,14 +73,20 @@ func KillName(name string) (string, error) {
 	return k, err
 }
 
-// Signal sends a named signal to pid, or to the process group -pid when group is true.
-func Signal(pid int, name string, group bool) error {
+// Signal sends a named signal to pid.
+func Signal(pid int, name string) error {
 	sig, _, err := lookupSignal(name)
 	if err != nil {
 		return err
 	}
-	if group {
-		return syscall.Kill(-pid, sig)
-	}
 	return syscall.Kill(pid, sig)
+}
+
+// SignalGroup sends a named signal to the process group led by pid.
+func SignalGroup(pid int, name string) error {
+	sig, _, err := lookupSignal(name)
+	if err != nil {
+		return err
+	}
+	return syscall.Kill(-pid, sig)
 }

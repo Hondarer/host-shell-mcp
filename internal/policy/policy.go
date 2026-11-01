@@ -260,14 +260,14 @@ func (s selector) match(tool, group string, destructive bool) bool {
 
 // ---- Paths ----
 
-// CheckPath verifies that reading (write=false) or writing pth is permitted.
-func (p *Policy) CheckPath(pth string, write bool) error {
-	roots := p.readRoots
-	kind := "read"
-	if write {
-		roots = p.writeRoots
-		kind = "write"
-	}
+// CheckRead verifies that reading pth is permitted.
+func (p *Policy) CheckRead(pth string) error { return checkPath(pth, p.readRoots, "read") }
+
+// CheckWrite verifies that writing pth is permitted.
+func (p *Policy) CheckWrite(pth string) error { return checkPath(pth, p.writeRoots, "write") }
+
+// checkPath verifies that pth lies under one of roots; nil roots permit any path.
+func checkPath(pth string, roots []string, kind string) error {
 	if roots == nil {
 		return nil
 	}

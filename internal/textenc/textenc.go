@@ -315,20 +315,24 @@ func (c Choice) Detect(head []byte) (_ Choice, bomLen int, ok bool) {
 	return c, 0, false
 }
 
-// Parse resolves a tool's encoding argument: "" and "auto" select automatic detection (or def when
-// allowAuto is false, where "auto" is rejected), and "system" selects system().
-func Parse(name string, system func() Encoding, allowAuto bool, def Encoding) (Choice, error) {
+// ParseAuto resolves an encoding argument that permits detection: "" and "auto" select automatic
+// detection with system() as the fallback, "system" selects system(), and other names are looked up.
+func ParseAuto(name string, system func() Encoding) (Choice, error) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", "auto":
+		return Choice{Auto: true, Enc: system()}, nil
+	}
+	return ParseFixed(name, system, Encoding{})
+}
+
+// ParseFixed resolves an encoding argument without detection: "" selects def, "auto" is rejected,
+// "system" selects system(), and other names are looked up.
+func ParseFixed(name string, system func() Encoding, def Encoding) (Choice, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "":
-		if allowAuto {
-			return Choice{Auto: true, Enc: system()}, nil
-		}
 		return Choice{Enc: def}, nil
 	case "auto":
-		if !allowAuto {
-			return Choice{}, fmt.Errorf("charset auto is not allowed here")
-		}
-		return Choice{Auto: true, Enc: system()}, nil
+		return Choice{}, fmt.Errorf("charset auto is not allowed here")
 	case "system":
 		return Choice{Enc: system()}, nil
 	}

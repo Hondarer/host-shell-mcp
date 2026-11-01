@@ -49,13 +49,13 @@ func TestPaths(t *testing.T) {
 	}
 	ok := func(path string, write bool) {
 		t.Helper()
-		if err := p.CheckPath(path, write); err != nil {
+		if err := checkAccess(p, path, write); err != nil {
 			t.Errorf("CheckPath(%s, %v): %v", path, write, err)
 		}
 	}
 	ng := func(path string, write bool) {
 		t.Helper()
-		if err := p.CheckPath(path, write); err == nil {
+		if err := checkAccess(p, path, write); err == nil {
 			t.Errorf("CheckPath(%s, %v) should fail", path, write)
 		}
 	}
@@ -74,10 +74,10 @@ func TestPaths(t *testing.T) {
 
 	// With only read-only roots configured, all writes must be rejected.
 	p, _ = New(Options{AllowReadPaths: []string{ro}}, nil)
-	if p.CheckPath(filepath.Join(ro, "x"), true) == nil {
+	if p.CheckWrite(filepath.Join(ro, "x")) == nil {
 		t.Error("write must be refused with only read paths")
 	}
-	if Unrestricted().CheckPath("/anything", true) != nil {
+	if Unrestricted().CheckWrite("/anything") != nil {
 		t.Error("unrestricted policy must allow any path")
 	}
 }
@@ -181,4 +181,11 @@ func TestParsePorts(t *testing.T) {
 			t.Errorf("%q: %v", v, err)
 		}
 	}
+}
+
+func checkAccess(p *Policy, path string, write bool) error {
+	if write {
+		return p.CheckWrite(path)
+	}
+	return p.CheckRead(path)
 }

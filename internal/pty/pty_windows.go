@@ -6,9 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,6 +16,8 @@ import (
 	"unsafe"
 
 	"golang.org/x/sys/windows"
+
+	"github.com/hondarer/host-shell-mcp/internal/proc"
 )
 
 // Terminal represents a process attached to a Windows ConPTY pseudo-console.
@@ -151,7 +153,7 @@ func (t *Terminal) Read(p []byte) (int, error) {
 		t.lastRead.Store(time.Now().UnixNano())
 	}
 	if err != nil && (errors.Is(err, windows.ERROR_BROKEN_PIPE) || errors.Is(err, os.ErrClosed)) {
-		err = errEOF
+		err = io.EOF // terminal hangup errors differ by OS
 	}
 	return n, err
 }
@@ -205,7 +207,7 @@ func (t *Terminal) Close() error {
 }
 
 func (t *Terminal) kill() {
-	_ = exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(t.pid)).Run()
+	_ = proc.SignalGroup(t.pid, "kill")
 	_ = windows.TerminateProcess(t.process, 1)
 }
 

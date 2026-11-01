@@ -182,7 +182,7 @@ func (d *Deps) fsRead(_ context.Context, req *mcp.CallToolRequest, in FsReadInpu
 
 // readText reads a file, converting it to UTF-8.
 func (d *Deps) readText(f *os.File, in FsReadInput, out *FsReadOutput) error {
-	ch, err := parseCharset(in.Charset, true)
+	ch, err := readCharset(in.Charset)
 	if err != nil {
 		return err
 	}
@@ -372,7 +372,7 @@ func (in FsWriteInput) data() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	ch, err := parseCharset(in.Charset, false)
+	ch, err := writeCharset(in.Charset)
 	if err != nil {
 		return nil, err
 	}

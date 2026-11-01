@@ -115,7 +115,7 @@ func (d *Deps) procKill(ctx context.Context, _ *mcp.CallToolRequest, in ProcKill
 			sig = "kill"
 		}
 	}
-	pids, err := killProcess(ctx, d, in.PID, sig, in.Tree, in.Sudo)
+	pids, err := killProcess(ctx, d, in, sig)
 	if err != nil {
 		return nil, ProcKillOutput{}, err
 	}

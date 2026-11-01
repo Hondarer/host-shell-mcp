@@ -5,6 +5,7 @@ package pty
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"slices"
@@ -49,7 +50,7 @@ func (t *Terminal) Pid() int { return t.cmd.Process.Pid }
 func (t *Terminal) Read(p []byte) (int, error) {
 	n, err := t.f.Read(p)
 	if err != nil && (errors.Is(err, syscall.EIO) || errors.Is(err, os.ErrClosed)) {
-		err = errEOF
+		err = io.EOF // terminal hangup errors differ by OS
 	}
 	return n, err
 }

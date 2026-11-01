@@ -144,7 +144,7 @@ type textFile struct {
 // loadText reads a file, detects its encoding, and decodes it to UTF-8,
 // failing if re-encoding would not reproduce the original bytes losslessly.
 func loadText(path, charset string) (textFile, error) {
-	ch, err := parseCharset(charset, true)
+	ch, err := readCharset(charset)
 	if err != nil {
 		return textFile{}, err
 	}

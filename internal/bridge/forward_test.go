@@ -35,7 +35,7 @@ func connectForward(t *testing.T, local, remote bool, opt Options) (*mcp.ClientS
 	sess := server.Session{Policy: pol, Audit: al}
 	var to channel.Options
 	if local || remote {
-		sess.Forward = forward.NewTarget(local, remote, pol, al)
+		sess.Forward = forward.NewTarget(forward.TargetOptions{Local: local, Remote: remote, Policy: pol, Audit: al})
 		t.Cleanup(sess.Forward.Close)
 		sess.Forward.Register(&to)
 	}

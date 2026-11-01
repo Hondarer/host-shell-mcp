@@ -4,12 +4,8 @@ package pty
 
 import (
 	"context"
-	"io"
 	"os/exec"
 )
-
-// errEOF normalizes OS-specific terminal hangup errors to io.EOF.
-var errEOF = io.EOF
 
 // Default terminal dimensions.
 const (

@@ -258,7 +258,7 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 	if err != nil {
 		return nil, TransferOutput{}, err
 	}
-	if err := t.local.CheckPath(in.LocalPath, false); err != nil {
+	if err := t.local.CheckRead(in.LocalPath); err != nil {
 		return nil, TransferOutput{}, err
 	}
 	info, err := os.Stat(in.LocalPath)
@@ -467,7 +467,7 @@ func (t *transfer) pull(ctx context.Context, req *mcp.CallToolRequest, in Transf
 			dest = filepath.Join(dest, path.Base(filepath.ToSlash(in.RemotePath)))
 		}
 	}
-	if err := t.local.CheckPath(dest, true); err != nil {
+	if err := t.local.CheckWrite(dest); err != nil {
 		return nil, TransferOutput{}, err
 	}
 	if fi, err := os.Stat(dest); err == nil && fi.IsDir() != isDir {

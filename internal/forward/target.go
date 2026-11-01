@@ -47,13 +47,19 @@ type targetListener struct {
 	l    net.Listener
 }
 
-// NewTarget permits the given directions. pol applies --allow-host to destinations.
-func NewTarget(local, remote bool, pol *policy.Policy, al *audit.Logger) *Target {
-	return &Target{local: local, remote: remote, policy: pol, audit: al, dial: (&net.Dialer{}).DialContext, timeout: establishTimeout, listeners: map[uint64]*targetListener{}}
+// TargetOptions configures a Target.
+type TargetOptions struct {
+	Local       bool           // permit local forwards and SOCKS (--allow-forward-local)
+	Remote      bool           // permit remote forwards (--allow-forward-remote)
+	RemotePorts policy.Ports   // ports remote forwards may listen on (--allow-forward-remote-port); nil permits any
+	Policy      *policy.Policy // applies --allow-host to destinations
+	Audit       *audit.Logger
 }
 
-// RestrictRemotePorts limits the ports remote forwards listen on (--allow-forward-remote-port).
-func (t *Target) RestrictRemotePorts(p policy.Ports) { t.ports = p }
+// NewTarget creates the target side of port forwarding.
+func NewTarget(o TargetOptions) *Target {
+	return &Target{local: o.Local, remote: o.Remote, ports: o.RemotePorts, policy: o.Policy, audit: o.Audit, dial: (&net.Dialer{}).DialContext, timeout: establishTimeout, listeners: map[uint64]*targetListener{}}
+}
 
 // Register permits the directions on the target's channel options.
 func (t *Target) Register(o *channel.Options) {

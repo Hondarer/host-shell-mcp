@@ -73,7 +73,7 @@ func TestChildrenEndWhenKilled(t *testing.T) {
 	deadline := time.Now().Add(10 * time.Second)
 	for Alive(pid) {
 		if time.Now().After(deadline) {
-			Signal(pid, "kill", false)
+			Signal(pid, "kill")
 			t.Fatalf("command %d survived the killed host-shell", pid)
 		}
 		time.Sleep(100 * time.Millisecond)

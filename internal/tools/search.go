@@ -158,7 +158,7 @@ func (d *Deps) searchGrep(ctx context.Context, _ *mcp.CallToolRequest, in Search
 	if err != nil {
 		return nil, SearchGrepOutput{}, fmt.Errorf("include: %w", err)
 	}
-	ch, err := parseCharset(in.Charset, true)
+	ch, err := readCharset(in.Charset)
 	if err != nil {
 		return nil, SearchGrepOutput{}, err
 	}

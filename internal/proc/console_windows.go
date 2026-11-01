@@ -5,7 +5,6 @@ package proc
 import (
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"sync"
 	"syscall"
@@ -15,18 +14,18 @@ import (
 )
 
 var (
-	kernel32           = windows.NewLazySystemDLL("kernel32.dll")
-	procAttachConsole  = kernel32.NewProc("AttachConsole")
-	procFreeConsole    = kernel32.NewProc("FreeConsole")
-	procSetConsoleCP   = kernel32.NewProc("SetConsoleCP")
-	procSetConsoleOCP  = kernel32.NewProc("SetConsoleOutputCP")
-	consoleOnce        sync.Once
-	consoleOK          bool
-	errConsoleStdio    = errors.New("standard input or output is a console")
-	attachConsoleLimit = 2 * time.Second
+	kernel32          = windows.NewLazySystemDLL("kernel32.dll")
+	procAttachConsole = kernel32.NewProc("AttachConsole")
+	procFreeConsole   = kernel32.NewProc("FreeConsole")
+	consoleOnce       sync.Once
+	consoleOK         bool
+	errConsoleStdio   = errors.New("standard input or output is a console")
 )
 
-const cpUTF8 = 65001
+const (
+	cpUTF8             = 65001
+	attachConsoleLimit = 2 * time.Second
+)
 
 // UTF8Console reports whether host-shell has a console of its own, with input and output code
 // pages 65001, for PowerShell to share (Spec.SharedConsole). The first call prepares the console;
@@ -49,10 +48,7 @@ func prepareConsole() error {
 	if isConsole(windows.STD_INPUT_HANDLE) || isConsole(windows.STD_OUTPUT_HANDLE) {
 		return errConsoleStdio
 	}
-	comspec := os.Getenv("ComSpec")
-	if comspec == "" {
-		comspec = "cmd.exe"
-	}
+	comspec := comSpec()
 	helper := exec.Command(comspec)
 	// set /p waits for a line on stdin, so the helper lives until the pipe is closed.
 	helper.SysProcAttr = &syscall.SysProcAttr{
@@ -83,10 +79,10 @@ func prepareConsole() error {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	if r, _, err := procSetConsoleCP.Call(cpUTF8); r == 0 {
+	if err := windows.SetConsoleCP(cpUTF8); err != nil {
 		return fmt.Errorf("set console input code page: %w", err)
 	}
-	if r, _, err := procSetConsoleOCP.Call(cpUTF8); r == 0 {
+	if err := windows.SetConsoleOutputCP(cpUTF8); err != nil {
 		return fmt.Errorf("set console output code page: %w", err)
 	}
 	return nil

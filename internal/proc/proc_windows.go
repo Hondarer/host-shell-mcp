@@ -3,6 +3,7 @@
 package proc
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
@@ -22,10 +23,7 @@ const createNoWindow = 0x08000000
 func shellCommand(ctx context.Context, sh, line string, interactive bool) (*exec.Cmd, error) {
 	switch sh {
 	case "cmd":
-		comspec := os.Getenv("ComSpec")
-		if comspec == "" {
-			comspec = "cmd.exe"
-		}
+		comspec := comSpec()
 		cmd := exec.CommandContext(ctx, comspec)
 		// Pass the raw command line via SysProcAttr.CmdLine so cmd.exe's own quoting rules apply.
 		// Built-in cmd commands write in the OEM code page, which textenc converts to UTF-8.
@@ -76,7 +74,7 @@ func setupProcess(cmd *exec.Cmd, sharedConsole bool) {
 		cmd.SysProcAttr.CreationFlags |= createNoWindow
 	}
 	cmd.Cancel = func() error {
-		_ = exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid)).Run()
+		_ = SignalGroup(cmd.Process.Pid, "kill")
 		return cmd.Process.Kill()
 	}
 }
@@ -84,13 +82,18 @@ func setupProcess(cmd *exec.Cmd, sharedConsole bool) {
 // SignalNames lists the signal names accepted by Signal on Windows.
 const SignalNames = "kill"
 
-// Signal terminates pid (and its descendants when group is true) via taskkill; only "kill" is supported on Windows.
-func Signal(pid int, name string, group bool) error {
+// Signal terminates pid via taskkill; only "kill" is supported on Windows.
+func Signal(pid int, name string) error { return taskkill(pid, name, false) }
+
+// SignalGroup terminates pid and its descendants via taskkill /T; only "kill" is supported on Windows.
+func SignalGroup(pid int, name string) error { return taskkill(pid, name, true) }
+
+func taskkill(pid int, name string, tree bool) error {
 	if name != "kill" {
 		return fmt.Errorf("signal %q is not supported on Windows (only kill)", name)
 	}
 	args := []string{"/F", "/PID", strconv.Itoa(pid)}
-	if group {
+	if tree {
 		args = append([]string{"/T"}, args...)
 	}
 	out, err := exec.Command("taskkill", args...).CombinedOutput()
@@ -99,3 +102,6 @@ func Signal(pid int, name string, group bool) error {
 	}
 	return nil
 }
+
+// comSpec returns the command interpreter cmd.exe is started as.
+func comSpec() string { return cmp.Or(os.Getenv("ComSpec"), "cmd.exe") }

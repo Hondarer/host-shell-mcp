@@ -21,12 +21,13 @@ import (
 
 // ---- proc_kill ----
 
-func killProcess(ctx context.Context, d *Deps, pid int, sig string, tree, sudo bool) ([]int, error) {
+func killProcess(ctx context.Context, d *Deps, in ProcKillInput, sig string) ([]int, error) {
+	pid := in.PID
 	pids := []int{pid}
-	if tree {
+	if in.Tree {
 		pids = append(pids, descendants(pid)...)
 	}
-	if sudo {
+	if in.Sudo {
 		name, err := proc.KillName(sig)
 		if err != nil {
 			return nil, err
@@ -46,7 +47,7 @@ func killProcess(ctx context.Context, d *Deps, pid int, sig string, tree, sudo b
 	}
 	var done []int
 	for _, p := range pids {
-		if err := proc.Signal(p, sig, false); err != nil {
+		if err := proc.Signal(p, sig); err != nil {
 			if p == pid {
 				return done, err
 			}

@@ -99,8 +99,7 @@ func start(t *testing.T, o sessionOptions) *session {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tg := NewTarget(o.local, o.remote, pol, al)
-	tg.RestrictRemotePorts(o.remotePorts)
+	tg := NewTarget(TargetOptions{Local: o.local, Remote: o.remote, RemotePorts: o.remotePorts, Policy: pol, Audit: al})
 	if o.timeout != 0 {
 		m.timeout, tg.timeout = o.timeout, o.timeout
 	}

@@ -180,8 +180,9 @@ func run(cfg config.Config) error {
 		return err
 	}
 	if cfg.ForwardLocal || cfg.ForwardRemote {
-		sess.Forward = forward.NewTarget(cfg.ForwardLocal, cfg.ForwardRemote, sess.Policy, al)
-		sess.Forward.RestrictRemotePorts(cfg.ForwardRemotePorts)
+		sess.Forward = forward.NewTarget(forward.TargetOptions{
+			Local: cfg.ForwardLocal, Remote: cfg.ForwardRemote, RemotePorts: cfg.ForwardRemotePorts, Policy: sess.Policy, Audit: al,
+		})
 		defer sess.Forward.Close()
 		sess.Forward.Register(&channelOptions)
 	}
