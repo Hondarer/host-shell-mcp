@@ -30,9 +30,10 @@ jobs:
         run: |
           GOOS=windows go vet ./...
           GOOS=darwin go vet ./...
-      # Filter output to test summaries, skipped tests, and log lines; bash pipefail preserves go test exit status.
+      # Keep result lines and every indented "file.go:line:" message: failures, skips and test logs,
+      # including those from testing.go (such as cleanup failures). bash pipefail preserves go test exit status.
       - name: Test
-        run: go test -count=1 -v ./... 2>&1 | grep -E '^(---|ok|FAIL|PASS|panic)|_test\.go'
+        run: go test -count=1 -v ./... 2>&1 | grep -E '^(---|ok|FAIL|PASS|panic)|^[[:space:]]+[^[:space:]]+\.go:[0-9]+:'
         shell: bash
       - name: Race check proxy and bridge
         if: runner.os == 'Linux'

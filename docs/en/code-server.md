@@ -155,6 +155,7 @@ Locations on the target are listed below. They use a different name from [code-s
 | Configuration file | `~/.config/host-shell-code-server/config.yaml` | `%USERPROFILE%\.config\host-shell-code-server\config.yaml` |
 | User data | `~/.local/share/host-shell-code-server/user-data/` | `%LOCALAPPDATA%\host-shell-code-server\user-data\` |
 | Extensions | `~/.local/share/host-shell-code-server/extensions/` | `%LOCALAPPDATA%\host-shell-code-server\extensions\` |
+| Session socket | `code-server-ipc.sock` in the user data. If that path exceeds the Unix domain socket limit (107 bytes), `$XDG_RUNTIME_DIR/host-shell-code-server-ipc.sock`, or `/tmp/host-shell-code-server-<uid>/ipc.sock` without `XDG_RUNTIME_DIR` | A named pipe (no file) |
 
 Table: Locations on the target
 

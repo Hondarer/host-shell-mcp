@@ -38,6 +38,8 @@ type Target struct {
 	timeout       time.Duration
 	mu            sync.Mutex
 	listeners     map[uint64]*targetListener
+	// unlistenMu serializes unlisten so that Close can wait for one a closed connection started.
+	unlistenMu sync.Mutex
 }
 
 type targetListener struct {
@@ -178,6 +180,8 @@ func (t *Target) serve(c *channel.Conn, id uint64, conn net.Conn) {
 }
 
 func (t *Target) unlisten(id uint64) {
+	t.unlistenMu.Lock()
+	defer t.unlistenMu.Unlock()
 	t.mu.Lock()
 	tl := t.listeners[id]
 	delete(t.listeners, id)
@@ -200,7 +204,8 @@ func (t *Target) Info() TargetInfo {
 	return info
 }
 
-// Close stops all remote forward listeners.
+// Close stops all remote forward listeners. When it returns, every listener's forward_unlisten
+// record has been written, including one that a closed connection's goroutine was writing.
 func (t *Target) Close() {
 	t.mu.Lock()
 	ids := make([]uint64, 0, len(t.listeners))
@@ -211,4 +216,8 @@ func (t *Target) Close() {
 	for _, id := range ids {
 		t.unlisten(id)
 	}
+	// A goroutine that removed a listener before the snapshot still holds unlistenMu until it has
+	// recorded forward_unlisten.
+	t.unlistenMu.Lock()
+	t.unlistenMu.Unlock()
 }

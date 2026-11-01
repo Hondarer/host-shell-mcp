@@ -63,7 +63,9 @@ type session struct {
 	manager *Manager
 	target  *Target
 	bridge  *channel.Conn
-	log     string
+	// targetConn is the target's end of the channel; closing it ends its remote forwards.
+	targetConn mcp.Connection
+	log        string
 }
 
 type sessionOptions struct {
@@ -127,7 +129,7 @@ func start(t *testing.T, o sessionOptions) *session {
 	if be != nil || te != nil {
 		t.Fatalf("negotiation: %v %v", be, te)
 	}
-	s := &session{manager: m, target: tg, bridge: bridgeConn.(*channel.Conn), log: logFile}
+	s := &session{manager: m, target: tg, bridge: bridgeConn.(*channel.Conn), targetConn: targetConn, log: logFile}
 	t.Cleanup(func() { bridgeConn.Close(); targetConn.Close(); m.Close(); tg.Close() })
 	return s
 }
@@ -631,6 +633,29 @@ func TestRemotePortRanges(t *testing.T) {
 	b, _ := os.ReadFile(auditFile(t, s.log))
 	if !strings.Contains(string(b), `"address":"127.0.0.1:`+strconv.Itoa(outside)+`","result":"denied","reason":"listen port not allowed"`) {
 		t.Fatalf("audit lacks the refusal: %s", b)
+	}
+}
+
+// TestCloseRecordsUnlisten checks that Target.Close returns only after every listener's
+// forward_unlisten record is written, even when a closed connection's goroutine began removing it.
+func TestCloseRecordsUnlisten(t *testing.T) {
+	const listeners = 4
+	specs := make([]Spec, listeners)
+	for i := range specs {
+		specs[i] = Spec{Remote, "127.0.0.1", 0, "127.0.0.1", 1}
+	}
+	// The goroutine and Close race differently on each attempt.
+	for range 20 {
+		s := start(t, sessionOptions{specs: specs, remote: true})
+		if n := len(s.target.Info().RemoteForwards); n != listeners {
+			t.Fatalf("%d remote forwards listening", n)
+		}
+		s.targetConn.Close()
+		s.target.Close()
+		b, _ := os.ReadFile(auditFile(t, s.log))
+		if n := strings.Count(string(b), `"msg":"forward_unlisten"`); n != listeners {
+			t.Fatalf("%d forward_unlisten records after Close: %s", n, b)
+		}
 	}
 }
 
