@@ -46,10 +46,10 @@
     - ✅ 4.4. 日英正本文書の作成と既存文書からの案内 (`docs/ja/`、`docs/en/`、README、host-shell-connect スキル) ([Q-001](#q-001-成果物の形態))
     - ✅ 4.5. 開発文書・リリース梱包への反映 (`docs/*/development.md`、Makefile の要否)
     - ✅ 4.6. 実機での通し確認 ([Q-010](#q-010-実機での確認範囲)、[Q-021](#q-021-linux-arm64-の確認方法))
-    - 🔄 4.7. make、6 ターゲットのクロスビルド、全 OS CI の実行 ← **CURRENT**
-    - ⏸️ 4.8. 受入条件への適合確認 (全完確認)
-    - ⏸️ 4.9. 残課題一覧 (`261101-code-server-backlog.md`) の再構築と整理 (残渣がなければ作成しない)
-    - ⏸️ 4.10. 検討記録の `docs/prompts/past/` への移動、全 OS の CI の成功の確認とマージ ([Q-012](#q-012-ブランチと-pr-とマージの運用))
+    - ✅ 4.7. make、6 ターゲットのクロスビルド、全 OS CI の実行 (PR #4、CI run 41257683332 は全 OS 成功)
+    - ✅ 4.8. 受入条件への適合確認 (全完確認)
+    - ✅ 4.9. 残課題一覧 (`261101-code-server-backlog.md`) の再構築と整理 (BL-001 Linux arm64 の実機確認、BL-002 画面の拡張機能ビューからの導入の確認)
+    - 🔄 4.10. 検討記録の `docs/prompts/past/` への移動、全 OS の CI の成功の確認とマージ ([Q-012](#q-012-ブランチと-pr-とマージの運用)) ← **CURRENT**
 - ⏸️ 5. 成果物の承認の受付 (第 3 ゲート)
     - ⏸️ 5.1. 成果物・検証結果・残課題の提示
     - ⏸️ 5.2. 対話セッションにおける成果物の承認の受付 (「承認」または「完了」の受領によるスキル完了)
@@ -60,7 +60,7 @@
 
 今回の対象範囲: 手順の成果物の作成と、その実機での確認。host-shell 本体 (Go のコード) の変更は想定していません。必要が判明した場合は改めて確認します。
 
-書き込み可能な検討用 Markdown: この文書 (`docs/prompts/261101-code-server-discussion.md`)
+書き込み可能な検討用 Markdown: この文書 (`docs/prompts/past/261101-code-server-discussion.md`)
 
 参照資料と版: このリポジトリの main (コミット ba6c0f8) と、[Hondarer/code-server-launcher](https://github.com/Hondarer/code-server-launcher) のコミット f91d089 を調査基準とします。
 
@@ -71,11 +71,11 @@
     - Linux の導入・起動には `tar`、`sha256sum`、`python3`、`openssl`、`ss` が必要です。Windows は PowerShell 5.1 と OS 標準の `tar.exe`、`curl.exe` を使います。
     - code-server の公式文書は Windows を配布対象として案内していませんが、公式リリースには `windows-amd64` の配布物があり、launcher はそれを使います。
 - code-server 4.140.0 の配布アーカイブの大きさ: linux-amd64 は 228,732,609 バイト、windows-amd64 は 208,924,361 バイトです (GitHub Releases)。最新版は 4.144.0 (2026-10-29) です。
-- [bridge の transfer_push](../en/reference.md): 1 MiB ずつ base64 で `fs_write` し、SHA-256 を照合してから正式な名前に変えます。並列化はファイル単位で、1 ファイルは逐次です。シンボリック リンクと空のディレクトリは送りません。
-- [ジョブ](../ja/reference.md): `job_start` で起動したプロセスは、host-shell の終了 (SSH の切断) ですべて停止します。
-- [ポート転送](../ja/port-forward.md): ローカル転送 (接続元で待ち受け、接続先から接続) には、接続先の `--allow-forward-local` と、bridge の常設 `--forward-local` または `--forward-allow-local` の規則 (forward_open 用) が必要です。転送は無通信で切れません。同時接続はセッションあたり 64 です。
-- [クライアント経由 HTTP プロキシ](../ja/client-proxy.md): 接続先の `job_start` と `exec_run` は HTTP_PROXY/HTTPS_PROXY を受け継ぎます。宛先は bridge の `--proxy-allow-host` で許可します。
-- [host-shell-connect スキル](../../.agents/skills/host-shell-connect/SKILL.md): 接続先への host-shell の配置と登録コマンドの準備を扱います。スキルは英語で記述する規約です ([開発規約](../ja/development.md))。
+- [bridge の transfer_push](../../en/reference.md): 1 MiB ずつ base64 で `fs_write` し、SHA-256 を照合してから正式な名前に変えます。並列化はファイル単位で、1 ファイルは逐次です。シンボリック リンクと空のディレクトリは送りません。
+- [ジョブ](../../ja/reference.md): `job_start` で起動したプロセスは、host-shell の終了 (SSH の切断) ですべて停止します。
+- [ポート転送](../../ja/port-forward.md): ローカル転送 (接続元で待ち受け、接続先から接続) には、接続先の `--allow-forward-local` と、bridge の常設 `--forward-local` または `--forward-allow-local` の規則 (forward_open 用) が必要です。転送は無通信で切れません。同時接続はセッションあたり 64 です。
+- [クライアント経由 HTTP プロキシ](../../ja/client-proxy.md): 接続先の `job_start` と `exec_run` は HTTP_PROXY/HTTPS_PROXY を受け継ぎます。宛先は bridge の `--proxy-allow-host` で許可します。
+- [host-shell-connect スキル](../../../.agents/skills/host-shell-connect/SKILL.md): 接続先への host-shell の配置と登録コマンドの準備を扱います。スキルは英語で記述する規約です ([開発規約](../../ja/development.md))。
 - 作業環境 (WSL) には、code-server-launcher の導入先 `~/.local/lib/code-server-4.140.0` がすでにあります (設定ファイルとユーザー データはありません)。
 
 ## ユーザーが明示した要求
@@ -936,7 +936,7 @@ A の単一選択を確認しました。sys_get_info の restrictions が空で
 解釈 B: launcher を参考にしつつ、複写せずに最小の手順を書き起こします (選択肢 B の文言どおり)。
 ```
 
-両者の実装元は同じ著作権者 (Tetsuo Honda、MIT License) です。開発規約により、複写したスクリプトのコメントは英語に改めます ([開発規約](../ja/development.md) の「コード コメントの英語統一」)。
+両者の実装元は同じ著作権者 (Tetsuo Honda、MIT License) です。開発規約により、複写したスクリプトのコメントは英語に改めます ([開発規約](../../ja/development.md) の「コード コメントの英語統一」)。
 
 **Answer**
 
@@ -1445,7 +1445,7 @@ A の単一選択を確認しました。code-server-container の 2 つの `set
 
 **Context**
 
-サンプルのコメントは日本語です。[開発規約](../ja/development.md) は、Go コード、シェル スクリプト、Makefile、ワークフローのコメントとスキル (`SKILL.md`) を英語で書くと定めています。`settings.json` は規約に明記されていませんが、スキルのフォルダーの中で日本語を含む唯一のファイルになります。code-server はコメントを読み飛ばすため、動作には影響しません。
+サンプルのコメントは日本語です。[開発規約](../../ja/development.md) は、Go コード、シェル スクリプト、Makefile、ワークフローのコメントとスキル (`SKILL.md`) を英語で書くと定めています。`settings.json` は規約に明記されていませんが、スキルのフォルダーの中で日本語を含む唯一のファイルになります。code-server はコメントを読み飛ばすため、動作には影響しません。
 
 **Answer**
 
@@ -1914,7 +1914,7 @@ A の単一選択を確認しました。受入条件 11〜13 を加えます。
 
 ## 対象成果物と合意版
 
-最終決定事項 (最終仕様) の設計書: `docs/prompts/261101-code-server-design.md`
+最終決定事項 (最終仕様) の設計書: `docs/prompts/past/261101-code-server-design.md`
 
 検討用 Markdown の合意版 (第 1 ゲート): 版 6 (2026-11-01、[Q-001](#q-001-成果物の形態)〜[Q-034](#q-034-受入条件-既定の拡張機能の追加) がすべて解決済み)
 
@@ -1926,4 +1926,61 @@ A の単一選択を確認しました。受入条件 11〜13 を加えます。
 
 ## 反映と検証の記録
 
-未着手。
+作業ブランチ claude/code-server (PR #4) のコミットは次のとおりです。
+
+| コミット | 内容 |
+| --- | --- |
+| 01cba3a | 検討用 Markdown と最終仕様の追加 |
+| 8c40794 | スキル `host-shell-code-server` と、日英の正本文書・既存文書の更新 |
+
+Table: 作業ブランチのコミット
+
+### 実機での確認
+
+作業環境 (WSL) で、SSH を使わずに bridge から接続先の host-shell を直接起動し、確認用の MCP クライアント (スクラッチ領域に置き、リポジトリには含めない) でスキルの手順をたどりました。Linux の接続先は HOME を、Windows の接続先 (WSL の相互運用で起動した host-shell.exe) は USERPROFILE と LOCALAPPDATA を、それぞれ一時フォルダーに向けました。ブラウザーは作業環境のヘッドレスの Chrome (puppeteer-core) で代用しました。
+
+| 項目 | Linux x86_64 | Windows amd64 |
+| --- | --- | --- |
+| download | download.sh: 配布アーカイブ 231 MB を取得・照合、拡張機能 20 件を解決 (飛ばしたものなし) | download.ps1 (Windows で実行): 212 MB を取得・照合、20 件を解決。Python 版の解決結果と完全に一致 |
+| transfer_push | アーカイブ 16 秒、拡張機能 144 MB (21 ファイル) 3 秒 | アーカイブ 17 秒、拡張機能 144 MB 4 秒 |
+| install | 43 秒。設定 2 ファイルと拡張機能 20 件を注入。パスワードは出力に現れない | 82 秒。同左 |
+| transfer_pull | 設定ファイルをクライアントへ写し、権限 600 | 同左 |
+| start と転送 | `HTTP server listening on http://127.0.0.1:8000/`、forward_open で自動割当のポート | 同左 |
+| ブラウザー | ログイン画面、ログイン後のエディターの画面 (WebSocket 2 本)、テーマ `cpptools_dark_vs_new` (Visual Studio Dark - C++) の適用 | 同左 |
+| install の再実行 | 本体・設定・拡張機能とも変更なし (User/settings.json の内容が一致) | 同左 |
+| uninstall `--purge` | 本体、設定、データ、kit を削除 | `-Purge` で同左 |
+
+Table: 実機での確認の結果
+
+- Linux arm64: download.sh で配布アーカイブと拡張機能 (debugpy は linux-arm64 版) を取得・照合しました。`uname -m` を `aarch64` と返す偽のコマンドで install を実行し、arm64 の配布物を選んで照合・展開すること (展開した node は ARM aarch64 の実行形式) を確認しました。x86_64 では実行の段階で失敗するため、実機未確認として残課題 BL-001 に記録しました。
+- 前提の確認: `uname -m` が `riscv64` の場合の対象外のエラー、`od` がない場合の不足コマンドのエラー、転送の許可がない接続先での `forward_local: false` と forward_open の不在、制限のある接続先での `restrictions` の内容を確認しました。`--read-only` の接続先には bridge が転送ツールなしでは接続しないことが分かったため、SKILL.md の前提の確認と文書に記載しました。
+- 拡張機能: `install --extension <.vsix>` で導入できること、壊れた .vsix では終了コード 1 になることを確認しました。クライアント経由 HTTP プロキシでは、code-server が HTTPS_PROXY を使って Open VSX に接続し、`--proxy-allow-host open-vsx.org:443` と `--proxy-allow-host openvsx.eclipsecontent.org:443` で `install --extension <ID>` による導入ができることを確認しました (`--proxy-allow-host` はカンマで区切れないことも判明)。画面の拡張機能ビューからの導入は未確認で、残課題 BL-002 に記録しました。
+- 共有の場所に残るファイル: code-server と拡張機能は、`~/.vscode-oss-shared/`、`~/.copilot/logs/`、`~/.cache/Microsoft/`、`~/.local/state/crossnote/` (合計数十 KB) にファイルを作ります。他の VS Code 系の製品と共有する場所のため uninstall では削除せず、文書に記載しました。
+- 作業環境の保全: 確認の開始 (09:18) 以降、作業環境の `~/.local`、`~/.config` と、Windows の実際のプロファイルの `.copilot`、`.cache\Microsoft`、`AppData\Local\code-server` に変更はありません。確認後に一時フォルダー (WSL のスクラッチ領域の接続先のホームと、Windows の `%TEMP%\hscs-verify`) を削除しました。なお、作業環境の launcher の導入 (`~/.local/lib/code-server-4.140.0`) は、本件の実装前の 09:04〜09:06 に作業外で 4.144.0 へ更新されていました。
+- download が取得した配布アーカイブと拡張機能は、設計どおりリポジトリのスキルの `packages/` (Git 管理外) に残しています。
+
+### 受入条件の照合
+
+| 受入条件 | 結果 | 根拠 |
+| --- | --- | --- |
+| 1. Linux x86_64 と Windows amd64 の通し確認、所要時間 | 適合 | 実機での確認の結果の表。所要時間を `docs/*/code-server.md` に記載 |
+| 2. Linux arm64 の取得・照合・選択、未確認の記載 | 適合 | download.sh の linux-arm64、偽の `uname -m` での install。文書の「対象」と残課題 BL-001 |
+| 3. 前提の確認 | 適合 | 対象外のアーキテクチャー、不足コマンド、転送の許可、制限の確認。SKILL.md の前提の確認 |
+| 4. パスワードの扱い | 適合 | install と start の出力にパスワードが現れないこと、接続元の設定ファイルの権限 600、接続先の設定ファイルの権限 600 (Linux) と ACL (Windows) |
+| 5. 拡張機能の導入 | 適合 | .vsix と HTTP プロキシ経由の導入。文書の「個別の拡張機能の導入」(画面からの導入は BL-002) |
+| 6. uninstall による削除 | 適合 | `--purge` / `-Purge` で本体、設定、データ、kit を削除。共有の場所の小さなファイルは文書に記載 |
+| 7. 作業環境の保全 | 適合 | 作業環境の保全の確認と一時フォルダーの削除 |
+| 8. 英語のコメント、日英の文書の一致、既存文書からの案内 | 適合 | スクリプトと既定の設定は英語 (ASCII)。`docs/ja/code-server.md` と `docs/en/code-server.md` は同じ構成。`docs/README.md`、`docs/*/port-forward.md`、`docs/*/development.md`、host-shell-connect スキルから案内 |
+| 9. make、クロスビルド、全 OS の CI | 適合 | 機械的な検証。CI run 41257683332 (8c40794) が全 OS で成功 |
+| 10. 設定の初回配置と既存の維持 | 適合 | install の出力 (`installed default User/settings.json` など)、再実行時の `keeping existing`、User/settings.json の内容の一致、テーマの反映 |
+| 11. 拡張機能の解決・取得・記録・警告 | 適合 | 3 種類の `resolved-extensions.txt`。存在しない ID と存在しない版の指定を含む一覧で、Python 版と PowerShell 版のどちらも警告を表示し、同じコメント行を記録して他の拡張機能を取得することを確認 |
+| 12. オフラインでの導入とテーマ、目印による再導入の抑止 | 適合 | 照合済みの VSIX からの導入、テーマ `cpptools_dark_vs_new` の適用、再実行時の `default extensions were already applied` |
+| 13. 送付量と所要時間 | 適合 | `docs/*/code-server.md` の「送付量と所要時間」 |
+
+Table: 受入条件の照合
+
+### 機械的な検証
+
+- `make` (linux/windows/darwin の vet、全テスト、ビルド) と `make dist` (6 ターゲット) が成功しました。Go のコードの変更はありません。
+- `git archive` の内容に、スキルのスクリプトと `packages/.gitkeep` が含まれ、取得した配布物は含まれないことを確認しました。
+- スキルのスクリプトと既定の設定が ASCII 文字だけであることを確認しました。
