@@ -361,30 +361,31 @@ func (m *Manager) openRemote(ctx context.Context, in *channel.Incoming) {
 		return
 	}
 	id := m.connection()
-	dialCtx, cancel := context.WithTimeout(ctx, m.timeout)
-	defer cancel()
-	external, err := m.dial(dialCtx, "tcp", f.spec.destination())
-	if err != nil {
-		code := dialCode(err)
-		m.record(f, id, f.spec.Host, f.spec.HostPort, channel.Failed, dialFailure(code))
-		in.Reject(code)
-		return
-	}
-	defer external.Close()
-	if !f.track(external) {
-		in.Reject(channel.CodeClosed)
-		return
-	}
-	defer f.untrack(external)
-	f.count(1)
-	defer f.count(-1)
-	stream, err := in.Accept()
-	if err != nil {
-		return
-	}
-	defer stream.Close()
-	m.record(f, id, f.spec.Host, f.spec.HostPort, channel.Allowed, channel.ReasonEstablished)
-	pipe(stream, external)
+	in.Answer(ctx, channel.Answer{
+		Timeout: m.timeout,
+		Dial: func(ctx context.Context) (net.Conn, error) {
+			return m.dial(ctx, "tcp", f.spec.destination())
+		},
+		Failed: func(err error) string {
+			code := dialCode(err)
+			m.record(f, id, f.spec.Host, f.spec.HostPort, channel.Failed, dialFailure(code))
+			return code
+		},
+		Hold: func(external net.Conn) (func(), string) {
+			if !f.track(external) {
+				return nil, channel.CodeClosed
+			}
+			f.count(1)
+			return func() {
+				f.count(-1)
+				f.untrack(external)
+			}, ""
+		},
+		Relay: func(stream, external net.Conn) {
+			m.record(f, id, f.spec.Host, f.spec.HostPort, channel.Allowed, channel.ReasonEstablished)
+			pipe(stream, external)
+		},
+	})
 }
 
 // Open creates a forward for forward_open.

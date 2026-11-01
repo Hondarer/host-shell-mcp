@@ -458,3 +458,71 @@ func TestDescribe(t *testing.T) {
 		}
 	}
 }
+
+// tcpPair returns both ends of a loopback TCP connection.
+func tcpPair(t *testing.T) (net.Conn, net.Conn) {
+	t.Helper()
+	l, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	c, err := net.Dial("tcp4", l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := l.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close(); s.Close() })
+	return c, s
+}
+
+func TestRelayPassesHalfClose(t *testing.T) {
+	client, a := tcpPair(t)
+	b, server := tcpPair(t)
+	done := make(chan struct{})
+	go func() { Relay(a, b, RelayOptions{}); close(done) }()
+	client.Write([]byte("ping"))
+	CloseWrite(client)
+	got, _ := io.ReadAll(server)
+	if string(got) != "ping" {
+		t.Fatalf("server read %q", got)
+	}
+	server.Write([]byte("pong"))
+	CloseWrite(server)
+	got, _ = io.ReadAll(client)
+	if string(got) != "pong" {
+		t.Fatalf("client read %q", got)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("relay did not end after both half-closes")
+	}
+}
+
+func TestRelayLingerAndIdle(t *testing.T) {
+	client, a := tcpPair(t)
+	b, _ := tcpPair(t)
+	done := make(chan struct{})
+	go func() { Relay(a, b, RelayOptions{Idle: time.Minute, Linger: 50 * time.Millisecond}); close(done) }()
+	CloseWrite(client) // one direction ends; the silent other side is cut after Linger
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("linger did not end the relay")
+	}
+
+	client, a = tcpPair(t)
+	b, _ = tcpPair(t)
+	done = make(chan struct{})
+	go func() { Relay(a, b, RelayOptions{Idle: 50 * time.Millisecond}); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("idle timeout did not end the relay")
+	}
+	_ = client
+}

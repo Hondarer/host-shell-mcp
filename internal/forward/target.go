@@ -97,23 +97,21 @@ func (t *Target) open(ctx context.Context, in *channel.Incoming) {
 			return
 		}
 	}
-	dialCtx, cancel := context.WithTimeout(ctx, t.timeout)
-	defer cancel()
-	external, err := t.dial(dialCtx, "tcp", net.JoinHostPort(in.Host, strconv.Itoa(in.Port)))
-	if err != nil {
-		code := dialCode(err)
-		result(channel.Failed, dialFailure(code))
-		in.Reject(code)
-		return
-	}
-	defer external.Close()
-	stream, err := in.Accept()
-	if err != nil {
-		return
-	}
-	defer stream.Close()
-	result(channel.Allowed, channel.ReasonEstablished)
-	pipe(stream, external)
+	in.Answer(ctx, channel.Answer{
+		Timeout: t.timeout,
+		Dial: func(ctx context.Context) (net.Conn, error) {
+			return t.dial(ctx, "tcp", net.JoinHostPort(in.Host, strconv.Itoa(in.Port)))
+		},
+		Failed: func(err error) string {
+			code := dialCode(err)
+			result(channel.Failed, dialFailure(code))
+			return code
+		},
+		Relay: func(stream, external net.Conn) {
+			result(channel.Allowed, channel.ReasonEstablished)
+			pipe(stream, external)
+		},
+	})
 }
 
 func (t *Target) listen(c *channel.Conn, id uint64, bind string, port int) (int, error) {

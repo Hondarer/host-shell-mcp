@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"strconv"
@@ -207,23 +206,6 @@ func dialFailure(code string) string {
 	return reason
 }
 
-// pipe relays both directions, passing half-closes on, until both directions end.
-// Forwarded connections have no idle timeout; closing either connection ends both.
-func pipe(a, b net.Conn) {
-	done := make(chan struct{}, 2)
-	half := func(dst, src net.Conn) {
-		if _, err := io.Copy(dst, src); err != nil {
-			a.Close()
-			b.Close()
-		} else if !channel.CloseWrite(dst) {
-			dst.Close()
-		}
-		done <- struct{}{}
-	}
-	go half(a, b)
-	go half(b, a)
-	<-done
-	<-done
-	a.Close()
-	b.Close()
-}
+// pipe relays a forwarded connection until both directions end. Forwarded connections have no
+// idle timeout; closing either connection ends both.
+func pipe(a, b net.Conn) { channel.Relay(a, b, channel.RelayOptions{}) }

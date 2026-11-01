@@ -136,23 +136,21 @@ func (g *Gateway) open(ctx context.Context, in *channel.Incoming) {
 		g.serveHTTP(ctx, conn, in)
 		return
 	}
-	dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
-	defer cancel()
-	external, e := g.connect(dialCtx, in.Host, in.Port)
-	if e != nil {
-		g.record(in.ID, in.Host, in.Port, channel.Failed, reasonUpstream)
-		in.Reject(channel.CodeFailed)
-		return
-	}
-	defer external.Close()
-	stopClose := context.AfterFunc(ctx, func() { external.Close() })
-	defer stopClose()
-	conn, e := in.Accept()
-	if e != nil {
-		return
-	}
-	defer conn.Close()
-	tunnel(conn, external)
+	in.Answer(ctx, channel.Answer{
+		Timeout: dialTimeout,
+		Dial: func(ctx context.Context) (net.Conn, error) {
+			return g.connect(ctx, in.Host, in.Port)
+		},
+		Failed: func(error) string {
+			g.record(in.ID, in.Host, in.Port, channel.Failed, reasonUpstream)
+			return channel.CodeFailed
+		},
+		Hold: func(external net.Conn) (func(), string) {
+			stop := context.AfterFunc(ctx, func() { external.Close() })
+			return func() { stop() }, ""
+		},
+		Relay: tunnel,
+	})
 }
 func (g *Gateway) serveHTTP(ctx context.Context, c net.Conn, f *channel.Incoming) {
 	tr := &http.Transport{Proxy: g.proxy, DisableKeepAlives: true, TLSClientConfig: g.tlsConfig.Clone(), ResponseHeaderTimeout: dialTimeout}
@@ -262,25 +260,11 @@ func (c *bufferedConn) CloseWrite() error {
 	channel.CloseWrite(c.Conn)
 	return nil
 }
+
+// tunnel relays a proxied connection. Traffic in either direction keeps both halves open for
+// idleTimeout, and once one direction ends the other has 5 seconds to finish.
 func tunnel(a, b net.Conn) {
-	touch := func() { deadline := time.Now().Add(idleTimeout); a.SetDeadline(deadline); b.SetDeadline(deadline) }
-	touch()
-	done := make(chan struct{}, 2)
-	copyOne := func(dst, src net.Conn) {
-		io.Copy(&activityWriter{Conn: dst, touch: touch}, &activityReader{Conn: src, touch: touch})
-		channel.CloseWrite(dst)
-		done <- struct{}{}
-	}
-	go copyOne(a, b)
-	go copyOne(b, a)
-	<-done
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		a.Close()
-		b.Close()
-		<-done
-	}
+	channel.Relay(a, b, channel.RelayOptions{Idle: idleTimeout, Linger: 5 * time.Second})
 }
 
 type idleWriter struct{ net.Conn }
@@ -334,31 +318,4 @@ type idleBody struct {
 func (b *idleBody) Read(p []byte) (int, error) {
 	b.c.SetReadDeadline(time.Now().Add(idleTimeout))
 	return b.ReadCloser.Read(p)
-}
-
-// Successful traffic in either direction refreshes both halves of a tunnel.
-type activityReader struct {
-	net.Conn
-	touch func()
-}
-
-func (r *activityReader) Read(b []byte) (int, error) {
-	n, e := r.Conn.Read(b)
-	if n > 0 {
-		r.touch()
-	}
-	return n, e
-}
-
-type activityWriter struct {
-	net.Conn
-	touch func()
-}
-
-func (w *activityWriter) Write(b []byte) (int, error) {
-	n, e := w.Conn.Write(b)
-	if n > 0 {
-		w.touch()
-	}
-	return n, e
 }
