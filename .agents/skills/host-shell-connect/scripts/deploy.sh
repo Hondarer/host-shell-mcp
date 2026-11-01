@@ -1,9 +1,10 @@
 #!/bin/sh
-# Deploys the host-shell binary from ../bin/ to the target host over SSH stdin (without SFTP or port forwarding).
+# Deploys the host-shell binary from ../bin/ to the target over the standard input of the route (SSH hops,
+# optionally ending in a container exec; no SFTP or port forwarding).
 # Skips upload if the remote binary already matches the local SHA-256 hash. After upload, verifies the remote
 # SHA-256 hash and executes `host-shell --version`; removes the binary if execution fails.
 #
-# Usage: deploy.sh ROUTE TYPE [REMOTE_PATH]
+# Usage: deploy.sh ROUTE TYPE [REMOTE_PATH]   (ROUTE as in remote.sh)
 #   TYPE         target platform from detect.sh (linux-amd64, linux-arm64, windows-amd64, windows-arm64)
 #   REMOTE_PATH  destination path on the target (must not contain spaces or quotes).
 #                Defaults to user-owned paths tried in order:

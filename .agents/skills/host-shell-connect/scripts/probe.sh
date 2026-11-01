@@ -1,5 +1,6 @@
 #!/bin/sh
-# Launches `host-shell --mcp` on the target over SSH stdio and verifies JSON-RPC responses for initialize and tools/list.
+# Launches `host-shell --mcp` on the target over the route (see remote.sh) and verifies JSON-RPC responses
+# for initialize and tools/list.
 #
 # Usage: probe.sh ROUTE REMOTE_PATH [HOST_SHELL_OPTIONS...]
 #

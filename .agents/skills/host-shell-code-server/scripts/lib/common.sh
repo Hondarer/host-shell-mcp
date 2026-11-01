@@ -6,13 +6,8 @@
 HSCS_NAME="host-shell-code-server"
 HSCS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-_hscs_port="${CODE_SERVER_PORT:-}"
 # shellcheck disable=SC1091
 . "${HSCS_ROOT}/version.env"
-if [[ -n "${_hscs_port}" ]]; then
-  CODE_SERVER_PORT="${_hscs_port}"
-fi
-unset _hscs_port
 
 HSCS_PACKAGES_DIR="${HSCS_ROOT}/packages"
 HSCS_DEFAULTS_DIR="${HSCS_ROOT}/defaults"
@@ -69,6 +64,14 @@ asset_sha256() {
     linux-arm64) echo "${CODE_SERVER_LINUX_ARM64_SHA256}" ;;
     windows-amd64) echo "${CODE_SERVER_WINDOWS_AMD64_SHA256}" ;;
     *) return 1 ;;
+  esac
+}
+
+# glibc_loader prints the dynamic loader that the bundled node of a Linux release type needs.
+glibc_loader() {
+  case "$1" in
+    linux-amd64) echo /lib64/ld-linux-x86-64.so.2 ;;
+    linux-arm64) echo /lib/ld-linux-aarch64.so.1 ;;
   esac
 }
 

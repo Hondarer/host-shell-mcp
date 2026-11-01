@@ -20,9 +20,10 @@
 
 | 課題 ID | 題名 | 区分 | 優先度 / 影響度 | 状態 |
 | --- | --- | --- | --- | --- |
-| BL-001 | Linux arm64 の接続先での実機確認 | 検討時見送り | 中 | 未着手 |
-| BL-002 | クライアント経由 HTTP プロキシでの、画面の拡張機能ビューからの導入の確認 | 作業中摘出 | 低 | 未着手 |
-| BL-003 | 接続先のポート 8000 が使用中の場合の、空きポートの選定 | 受入時指摘 | 中 | 未着手 |
+| BL-001 | Linux arm64 の接続先での実機確認 | 検討時見送り | 中 | 容認 (2026-11-01、261101-code-server-followup) |
+| BL-002 | クライアント経由 HTTP プロキシでの、画面の拡張機能ビューからの導入の確認 | 作業中摘出 | 低 | 解消 (2026-11-01、261101-code-server-followup) |
+| BL-003 | 接続先のポート 8000 が使用中の場合の、空きポートの選定 | 受入時指摘 | 中 | 解消 (2026-11-01、261101-code-server-followup) |
+| BL-004 | ssh の代わりに podman exec で接続する方法と、その上での code-server の利用の整備 | 完了後の要望 | 中 | 解消 (2026-11-01、261101-code-server-followup) |
 
 ## BL-001 Linux arm64 の接続先での実機確認
 
@@ -46,6 +47,11 @@
 - **恒久対応案**: arm64 の Linux 環境 (実機、クラウドの arm64 インスタンス、または qemu-user-static を導入した x86_64 環境) で、`docs/ja/code-server.md` の手順を通しで確認し、文書の「確認状況」を更新します。
 - **参考情報**: `.agents/skills/host-shell-code-server/scripts/linux/install.sh` (`linux_type`)、`docs/ja/code-server.md` の「対象」。
 
+### 経緯と対処
+
+- **状態**: 容認 (2026-11-01、継続案件 261101-code-server-followup)。
+- **対処**: arm64 の対応は実装済みで、実機では未確認という現在の状態 (文書の「対象」に記載) を容認し、完了としました。継続案件の残課題一覧には転記していません。
+
 ## BL-002 クライアント経由 HTTP プロキシでの、画面の拡張機能ビューからの導入の確認
 
 ### 概要と問題点
@@ -67,6 +73,11 @@
 
 - **恒久対応案**: HTTP プロキシを有効にした確認環境で、ブラウザーの拡張機能ビューから検索・導入し、bridge の `proxy_status` に現れる接続先を確認して、必要な `--proxy-allow-host` を文書に記載します。
 - **参考情報**: `docs/ja/code-server.md` の「個別の拡張機能の導入」、`docs/ja/client-proxy.md`。
+
+### 経緯と対処
+
+- **状態**: 解消 (2026-11-01、継続案件 261101-code-server-followup)。
+- **対処**: クライアント経由 HTTP プロキシを有効にした接続先で、ヘッドレスの Chrome から拡張機能ビューで検索し、導入できることを確認しました。検索と詳細の表示はクライアントのブラウザーが Open VSX へ直接接続し、導入は接続先の code-server が既存の 2 つの許可先 (`open-vsx.org:443`、`openvsx.eclipsecontent.org:443`) を通じて行います。追加の許可先は不要でした。結果を `docs/*/code-server.md` の「個別の拡張機能の導入」に記載しました。
 
 ## BL-003 接続先のポート 8000 が使用中の場合の、空きポートの選定
 
@@ -92,3 +103,39 @@
     - Linux の接続先では python3 や ss を前提にできないため (前提検討の Q-018)、bash の `/dev/tcp` で順に調べる方式が候補です。調べてから code-server が待ち受けるまでの間に他のプロセスが同じポートを取る競合は、起動失敗を検知して次のポートで再試行することで扱います。
     - 許可規則は、bridge の `--forward-allow-local` がポートの範囲指定に対応しないため、`127.0.0.1` (ポート省略で全ポート) を許可するか、候補のポートを複数指定するか、範囲指定の機能を追加するかを決める必要があります。接続先の `--allow-host` も同じです。許可を広げる場合は、セキュリティ上の注意を文書に追記します。
 - **参考情報**: `.agents/skills/host-shell-code-server/scripts/linux/start.sh`、`scripts/windows/start.ps1`、`version.env`、`docs/ja/code-server.md` の「事前の準備 (登録コマンド)」、`docs/ja/port-forward.md` の「bridge の転送オプション」。
+
+### 経緯と対処
+
+- **状態**: 解消 (2026-11-01、継続案件 261101-code-server-followup)。
+- **対処**: start が `127.0.0.1` の 8000〜8079 を 8000 から順に調べ、最初の空きで起動するようにしました (`version.env` の `CODE_SERVER_PORT_FIRST`、`CODE_SERVER_PORT_LAST`。`CODE_SERVER_PORT` は 1 つのポートの固定)。許可規則の案内は `'127.0.0.1:80[0-7]?'` に改め、エージェントは code-server の出力からポートを読み取って転送します。Linux と Windows の接続先で確認しました。
+
+## BL-004 ssh の代わりに podman exec で接続する方法と、その上での code-server の利用の整備
+
+### 概要と問題点
+
+- **現状の事象**: host-shell の接続方法として、文書とスキル host-shell-connect は ssh だけを扱っています。bridge は `--` の後のコマンドを標準入出力の通り道として使うだけなので、`host-shell bridge -- podman exec -i <コンテナー> /tmp/host-shell-0/host-shell --mcp` の形で稼働中のコンテナー (pod) の中の host-shell へも接続できます。案件の完了後に作業環境 (podman 4.9.4、rootless) で試し、`podman exec -i` の標準入力からの配置、`sys_get_info`、`exec_run`、`transfer_push`、`job_start`、`forward_open` によるコンテナー内の `127.0.0.1:8000` への転送、接続を閉じた後にプロセスが残らないことを確認しました。しかし、この方法は文書にもスキルにもありません。スキルのスクリプト (`remote.sh`、`detect.sh`、`deploy.sh`、`probe.sh`) は ssh の経路 (`ROUTE`) だけを受け付けるため、配置や確認を手で行う必要があります。
+- **本来あるべき姿**: コンテナーの中を接続先とする方法 (配置、登録コマンド、注意点) が文書とスキルに整備され、その接続先へスキル host-shell-code-server で code-server を注入して、手元のブラウザーから使えることが確認されていること。
+
+### 経緯と見送り理由
+
+- **摘出契機**: 案件の完了後に、利用者から「稼働中の pod の中に、ssh ではなく podman exec 経由で host-shell を置けるか」との質問を受けて試行し、利用者の要望により記録。
+- **今回の見送り理由**: 本案件の範囲 (ssh で接続した接続先への code-server の注入) の外であり、別の案件として扱うため。
+
+### 影響範囲とリスク
+
+- **影響対象**: スキル host-shell-connect (`scripts/remote.sh` ほか、SKILL.md)、スキル host-shell-code-server (前提の確認、配置先)、文書 (接続方法、code-server)。
+- **放置した場合のリスク**: 利用者が手で配置と登録コマンドを組み立てる必要があり、`podman exec` に `-t` を付けて MCP のやり取りを壊す、アーキテクチャーの異なるバイナリを置くなどの誤りが起きやすくなります。
+
+### 推奨される対応策
+
+- **恒久対応案**:
+    - スキル host-shell-connect の経路の指定に、`podman exec -i` (必要に応じて `docker exec -i`、`kubectl exec -i`) の要素を加え、ssh の踏み台と組み合わせられるようにします。すべてのスクリプトが `remote.sh` を通るため、`remote.sh` の改修で配置と確認の手順をそのまま使えます。
+    - 文書に、登録コマンドの例 (`-i` が必須で `-t` は不可)、実行する利用者 (`--user`)、コンテナーの再作成で配置が消えること、読み取り専用のルート ファイル システムや noexec の `/tmp` での配置先を記載します。
+    - code-server の配布物の node は glibc に動的にリンクされているため、musl の Alpine などのイメージでは動きません。スキル host-shell-code-server の前提の確認と文書に、この条件を加えます。
+    - pod の中では、同じ pod の他のコンテナーとネットワークを共有するため、`127.0.0.1` への転送で他のコンテナーのサービスにも届くことを確認して記載します。
+- **参考情報**: `.agents/skills/host-shell-connect/scripts/remote.sh`、`docs/ja/port-forward.md`、`docs/ja/code-server.md`。
+
+### 経緯と対処
+
+- **状態**: 解消 (2026-11-01、継続案件 261101-code-server-followup)。
+- **対処**: スキル host-shell-connect の `ROUTE` の最後に `podman:`、`docker:`、`kubectl:` の要素を置けるようにし (追加の指定は `HOST_SHELL_PODMAN_OPTS` などの環境変数)、install に glibc と HOME の検査を加えました。新しい文書 `docs/*/container.md` に、配置、登録コマンド、注意点、シェルのないコンテナー、code-server の条件を記載しました。podman のコンテナーと pod、debian:stable-slim、alpine で確認しました。docker は podman の互換コマンドでの確認、kubectl は組み立てたコマンドの確認にとどまります。
