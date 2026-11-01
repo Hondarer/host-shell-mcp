@@ -92,7 +92,7 @@ func (t *Target) open(ctx context.Context, in *channel.Incoming) {
 	}
 	if t.policy != nil {
 		if err := t.policy.CheckHost(in.Host, in.Port); err != nil {
-			result("denied", "destination not allowed")
+			result(channel.Denied, channel.ReasonNotAllowed)
 			in.Reject(channel.CodeNotAllowed)
 			return
 		}
@@ -102,7 +102,7 @@ func (t *Target) open(ctx context.Context, in *channel.Incoming) {
 	external, err := t.dial(dialCtx, "tcp", net.JoinHostPort(in.Host, strconv.Itoa(in.Port)))
 	if err != nil {
 		code := dialCode(err)
-		result("failed", reason(code))
+		result(channel.Failed, dialFailure(code))
 		in.Reject(code)
 		return
 	}
@@ -112,20 +112,20 @@ func (t *Target) open(ctx context.Context, in *channel.Incoming) {
 		return
 	}
 	defer stream.Close()
-	result("allowed", "connection established")
+	result(channel.Allowed, channel.ReasonEstablished)
 	pipe(stream, external)
 }
 
 func (t *Target) listen(c *channel.Conn, id uint64, bind string, port int) (int, error) {
 	addr := net.JoinHostPort(bind, strconv.Itoa(port))
 	if port != 0 && !t.ports.Contains(port) {
-		t.event("forward_listen", "forward_id", id, "address", addr, "result", "denied", "reason", "listen port not allowed")
+		t.event("forward_listen", "forward_id", id, "address", addr, "result", channel.Denied, "reason", "listen port not allowed")
 		return 0, &channel.Error{Code: channel.CodeNotAllowed}
 	}
 	l, err := t.bind(bind, port)
 	if err != nil {
 		code := listenCode(err)
-		t.event("forward_listen", "forward_id", id, "address", addr, "result", "failed", "reason", reason(code))
+		t.event("forward_listen", "forward_id", id, "address", addr, "result", channel.Failed, "reason", dialFailure(code))
 		return 0, &channel.Error{Code: code}
 	}
 	addr = l.Addr().String()

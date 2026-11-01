@@ -301,7 +301,7 @@ func (m *Manager) report(kind string, f channel.Frame) {
 		return
 	}
 	if fw := m.lookup(f.Forward); fw != nil {
-		m.record(fw, 0, fw.spec.Host, fw.spec.HostPort, "denied", "connection limit reached")
+		m.record(fw, 0, fw.spec.Host, fw.spec.HostPort, channel.Denied, channel.ReasonLimit)
 	}
 }
 
@@ -330,10 +330,11 @@ func (m *Manager) serve(f *forward, c net.Conn) {
 	}
 	remote, err := m.open(f, channel.KindForward, f.spec.Host, f.spec.HostPort)
 	if err != nil {
-		m.record(f, id, f.spec.Host, f.spec.HostPort, status(channel.Code(err)), reason(channel.Code(err)))
+		result, reason := openFailure(channel.Code(err))
+		m.record(f, id, f.spec.Host, f.spec.HostPort, result, reason)
 		return
 	}
-	m.record(f, id, f.spec.Host, f.spec.HostPort, "allowed", "connection established")
+	m.record(f, id, f.spec.Host, f.spec.HostPort, channel.Allowed, channel.ReasonEstablished)
 	if !f.track(remote) {
 		remote.Close()
 		return
@@ -365,7 +366,7 @@ func (m *Manager) openRemote(ctx context.Context, in *channel.Incoming) {
 	external, err := m.dial(dialCtx, "tcp", f.spec.destination())
 	if err != nil {
 		code := dialCode(err)
-		m.record(f, id, f.spec.Host, f.spec.HostPort, "failed", reason(code))
+		m.record(f, id, f.spec.Host, f.spec.HostPort, channel.Failed, dialFailure(code))
 		in.Reject(code)
 		return
 	}
@@ -382,7 +383,7 @@ func (m *Manager) openRemote(ctx context.Context, in *channel.Incoming) {
 		return
 	}
 	defer stream.Close()
-	m.record(f, id, f.spec.Host, f.spec.HostPort, "allowed", "connection established")
+	m.record(f, id, f.spec.Host, f.spec.HostPort, channel.Allowed, channel.ReasonEstablished)
 	pipe(stream, external)
 }
 

@@ -191,31 +191,20 @@ func listenCode(err error) string {
 	return channel.CodeFailed
 }
 
-// reason maps a channel code to the fixed reason recorded in diagnostics.
-func reason(code string) string {
-	switch code {
-	case channel.CodeNotAllowed:
-		return "destination not allowed by target"
-	case channel.CodeLimit:
-		return "connection limit reached"
-	case channel.CodeRefused:
-		return "connection refused"
-	case channel.CodeUnreachable:
-		return "host unreachable"
-	case channel.CodeTimeout:
-		return "connection timeout"
-	case channel.CodeClosed:
-		return "forward closed"
+// openFailure describes the failure of a stream the bridge opened to the target. not_allowed then
+// comes from the target's --allow-host, which the reason says to tell it from the bridge's rules.
+func openFailure(code string) (result, reason string) {
+	result, reason = channel.Describe(code)
+	if code == channel.CodeNotAllowed {
+		reason += " by target"
 	}
-	return "connection failed"
+	return result, reason
 }
 
-func status(code string) string {
-	switch code {
-	case channel.CodeNotAllowed, channel.CodeLimit, channel.CodeClosed:
-		return "denied"
-	}
-	return "failed"
+// dialFailure describes a failed dial; its codes never deny.
+func dialFailure(code string) string {
+	_, reason := channel.Describe(code)
+	return reason
 }
 
 // pipe relays both directions, passing half-closes on, until both directions end.

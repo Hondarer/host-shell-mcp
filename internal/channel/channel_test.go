@@ -441,3 +441,20 @@ func TestHistoryPaging(t *testing.T) {
 		t.Fatal("merge")
 	}
 }
+
+func TestDescribe(t *testing.T) {
+	for code, want := range map[string][2]string{
+		CodeNotAllowed:  {Denied, ReasonNotAllowed},
+		CodeLimit:       {Denied, ReasonLimit},
+		CodeClosed:      {Denied, "forward closed"},
+		CodeRefused:     {Failed, "connection refused"},
+		CodeUnreachable: {Failed, "host unreachable"},
+		CodeTimeout:     {Failed, "connection timeout"},
+		CodeFailed:      {Failed, "connection failed"},
+		CodeInUse:       {Failed, "connection failed"},
+	} {
+		if result, reason := Describe(code); result != want[0] || reason != want[1] {
+			t.Errorf("Describe(%s) = %s, %s; want %s, %s", code, result, reason, want[0], want[1])
+		}
+	}
+}

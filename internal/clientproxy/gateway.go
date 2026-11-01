@@ -26,6 +26,9 @@ const (
 	idleTimeout = 5 * time.Minute  // a connection without traffic in either direction is closed
 )
 
+// reasonUpstream records a proxy connection that failed beyond the bridge's checks.
+const reasonUpstream = "upstream connection failed"
+
 // Event is a connection result in proxy_status.
 type Event struct {
 	Seq          uint64 `json:"seq"`
@@ -87,14 +90,14 @@ func (g *Gateway) report(kind string, f channel.Frame) {
 	}
 	switch kind {
 	case "limit":
-		g.record(0, f.Host, f.Port, "denied", "connection limit reached")
+		g.record(0, f.Host, f.Port, channel.Denied, channel.ReasonLimit)
 	case "auth_failed":
-		g.record(0, "", 0, "failed", "authentication")
+		g.record(0, "", 0, channel.Failed, "authentication")
 	}
 }
 func (g *Gateway) record(id uint64, host string, port int, status, reason string) {
 	// Reasons are fixed strings, never raw network errors containing credentials.
-	if status == "failed" && reason == "authentication" && g.history.Merge(func(last *Event) bool {
+	if status == channel.Failed && reason == "authentication" && g.history.Merge(func(last *Event) bool {
 		if last.Reason != reason {
 			return false
 		}
@@ -119,11 +122,11 @@ func (g *Gateway) Status(in StatusInput) (Status, error) {
 }
 func (g *Gateway) open(ctx context.Context, in *channel.Incoming) {
 	if !channel.ValidDestination(in.Host, in.Port) || !g.allowed(in.Host, in.Port) {
-		g.record(in.ID, in.Host, in.Port, "denied", "destination not allowed")
+		g.record(in.ID, in.Host, in.Port, channel.Denied, channel.ReasonNotAllowed)
 		in.Reject(channel.CodeNotAllowed)
 		return
 	}
-	g.record(in.ID, in.Host, in.Port, "allowed", "destination allowed")
+	g.record(in.ID, in.Host, in.Port, channel.Allowed, "destination allowed")
 	if in.Kind == channel.KindHTTP {
 		conn, e := in.Accept()
 		if e != nil {
@@ -137,7 +140,7 @@ func (g *Gateway) open(ctx context.Context, in *channel.Incoming) {
 	defer cancel()
 	external, e := g.connect(dialCtx, in.Host, in.Port)
 	if e != nil {
-		g.record(in.ID, in.Host, in.Port, "failed", "upstream connection failed")
+		g.record(in.ID, in.Host, in.Port, channel.Failed, reasonUpstream)
 		in.Reject(channel.CodeFailed)
 		return
 	}
@@ -174,7 +177,7 @@ func (g *Gateway) serveHTTP(ctx context.Context, c net.Conn, f *channel.Incoming
 		stripHop(req.Header)
 		resp, e := tr.RoundTrip(req)
 		if e != nil {
-			g.record(f.ID, f.Host, f.Port, "failed", "HTTP upstream failed")
+			g.record(f.ID, f.Host, f.Port, channel.Failed, "HTTP upstream failed")
 			io.WriteString(c, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 			return
 		}

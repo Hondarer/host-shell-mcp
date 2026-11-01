@@ -229,16 +229,14 @@ func (t *Target) connect(kind, host string, port int, err error) {
 	if t.audit == nil {
 		return
 	}
-	result, reason := "allowed", "connection established"
+	result, reason := channel.Allowed, channel.ReasonEstablished
 	if err != nil {
-		result, reason = "failed", "upstream connection failed"
-		switch channel.Code(err) {
-		case channel.CodeNotAllowed:
-			result, reason = "denied", "destination not allowed"
-		case channel.CodeLimit:
-			result, reason = "denied", "connection limit reached"
-		case channel.CodeTimeout:
-			result, reason = "failed", "connection timeout"
+		// Only denials and timeouts are told apart; every other failure happened upstream of the bridge.
+		switch code := channel.Code(err); code {
+		case channel.CodeNotAllowed, channel.CodeLimit, channel.CodeTimeout:
+			result, reason = channel.Describe(code)
+		default:
+			result, reason = channel.Failed, reasonUpstream
 		}
 	}
 	t.audit.Event("proxy_connect", "kind", kind, "host", host, "port", port, "result", result, "reason", reason)

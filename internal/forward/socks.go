@@ -78,7 +78,7 @@ func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
 	case socksGone:
 		return
 	case socksIgnored, socksRejected:
-		m.record(f, id, host, port, "denied", "unsupported SOCKS request")
+		m.record(f, id, host, port, channel.Denied, "unsupported SOCKS request")
 		if outcome == socksRejected {
 			lingerClose(c)
 		}
@@ -86,7 +86,7 @@ func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
 	}
 	if !m.allowLocal.Allow(host, port) {
 		reply(socksNotAllowed)
-		m.record(f, id, host, port, "denied", "destination not allowed")
+		m.record(f, id, host, port, channel.Denied, channel.ReasonNotAllowed)
 		lingerClose(c)
 		return
 	}
@@ -96,7 +96,8 @@ func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
 	if err != nil {
 		code := channel.Code(err)
 		reply(socksReply(code))
-		m.record(f, id, host, port, status(code), reason(code))
+		result, reason := openFailure(code)
+		m.record(f, id, host, port, result, reason)
 		lingerClose(c)
 		return
 	}
@@ -112,7 +113,7 @@ func (m *Manager) socks(f *forward, id uint64, c net.Conn) {
 		return
 	}
 	c.SetDeadline(time.Time{})
-	m.record(f, id, host, port, "allowed", "connection established")
+	m.record(f, id, host, port, channel.Allowed, channel.ReasonEstablished)
 	pipe(c, remote)
 }
 
