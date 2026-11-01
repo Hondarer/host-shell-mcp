@@ -285,11 +285,52 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput, grep *regexp.Regex
 	if in.User || in.Sudo {
 		return nil, errors.New("user and sudo apply to Linux only")
 	}
+	query, err := eventQuery(in)
+	if err != nil {
+		return nil, err
+	}
+	count := in.Lines
+	if grep != nil {
+		count = min(in.Lines*20, 20000)
+	}
+	argv := []string{"wevtutil", "qe", cmp.Or(in.Log, "System"), "/q:" + query, "/c:" + strconv.Itoa(count), "/rd:true", "/f:RenderedXml", "/e:Events"}
+	// wevtutil output encoding varies (UTF-16, UTF-8, or console code page), so capture raw bytes and auto-detect.
+	res, err := proc.Run(ctx, d.procSpec(CommandSpec{Argv: argv}), proc.Options{
+		Timeout:   d.Cfg.DefaultTimeout,
+		MaxOutput: 64 << 20,
+	})
+	if err != nil {
+		return nil, err
+	}
+	res.Stdout, res.Stderr = decodeToolOutput(res.Stdout), decodeToolOutput(res.Stderr)
+	if res.ExitCode != 0 {
+		return nil, fmt.Errorf("wevtutil failed (exit %d): %s", res.ExitCode, strings.TrimSpace(res.Stderr+res.Stdout))
+	}
+	events, err := parseEvents(res.Stdout)
+	if err != nil {
+		return nil, err
+	}
+	var out []LogEntry
+	for _, e := range events {
+		if grep != nil && !grep.MatchString(e.Message) {
+			continue
+		}
+		out = append(out, e)
+		if len(out) >= in.Lines {
+			break
+		}
+	}
+	slices.Reverse(out) // newest last
+	return out, nil
+}
+
+// eventQuery builds the XPath filter for priority, provider, event ID and time range.
+func eventQuery(in LogQueryInput) (string, error) {
 	var conds []string
 	if in.Priority != "" {
 		lv, ok := eventLevels[strings.ToLower(in.Priority)]
 		if !ok {
-			return nil, fmt.Errorf("unknown priority %q (use critical, error, warning, information or verbose)", in.Priority)
+			return "", fmt.Errorf("unknown priority %q (use critical, error, warning, information or verbose)", in.Priority)
 		}
 		var ors []string
 		for l := 1; l <= lv; l++ {
@@ -312,50 +353,34 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput, grep *regexp.Regex
 		}
 		t, err := parseSince(b.val)
 		if err != nil {
-			return nil, err
+			return "", err
 		}
 		conds = append(conds, fmt.Sprintf("TimeCreated[@SystemTime%s'%s']", b.op, t.UTC().Format("2006-01-02T15:04:05.000Z")))
 	}
-	query := "*"
-	if len(conds) > 0 {
-		query = "*[System[" + strings.Join(conds, " and ") + "]]"
+	if len(conds) == 0 {
+		return "*", nil
 	}
-	count := in.Lines
-	if grep != nil {
-		count = min(in.Lines*20, 20000)
-	}
-	argv := []string{"wevtutil", "qe", cmp.Or(in.Log, "System"), "/q:" + query, "/c:" + strconv.Itoa(count), "/rd:true", "/f:RenderedXml", "/e:Events"}
-	// wevtutil output encoding varies (UTF-16, UTF-8, or console code page), so capture raw bytes and auto-detect.
-	res, err := proc.Run(ctx, d.procSpec(CommandSpec{Argv: argv}), proc.Options{
-		Timeout:   d.Cfg.DefaultTimeout,
-		MaxOutput: 64 << 20,
-	})
-	if err != nil {
-		return nil, err
-	}
-	res.Stdout, res.Stderr = decodeToolOutput(res.Stdout), decodeToolOutput(res.Stderr)
-	if res.ExitCode != 0 {
-		return nil, fmt.Errorf("wevtutil failed (exit %d): %s", res.ExitCode, strings.TrimSpace(res.Stderr+res.Stdout))
-	}
+	return "*[System[" + strings.Join(conds, " and ") + "]]", nil
+}
+
+// parseEvents converts wevtutil RenderedXml output (newest first) to log entries.
+func parseEvents(out string) ([]LogEntry, error) {
 	var doc struct {
 		Events []event `xml:"Event"`
 	}
 	// Strip the XML declaration before unmarshaling the UTF-8 body.
-	body := res.Stdout
+	body := out
 	if i := strings.Index(body, "?>"); strings.HasPrefix(strings.TrimSpace(body), "<?xml") && i >= 0 {
 		body = body[i+2:]
 	}
 	if err := xml.Unmarshal([]byte(body), &doc); err != nil {
 		return nil, fmt.Errorf("parse wevtutil output: %w", err)
 	}
-	var out []LogEntry
+	entries := make([]LogEntry, 0, len(doc.Events))
 	for _, e := range doc.Events {
 		msg := strings.TrimSpace(e.RenderingInfo.Message)
 		if msg == "" {
 			msg = strings.Join(e.EventData.Data, "; ")
-		}
-		if grep != nil && !grep.MatchString(msg) {
-			continue
 		}
 		entry := LogEntry{
 			Priority: eventLevelNames[e.System.Level],
@@ -367,13 +392,9 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput, grep *regexp.Regex
 		if t, err := time.Parse(time.RFC3339Nano, e.System.TimeCreated.SystemTime); err == nil {
 			entry.Time = t.Local().Format(time.RFC3339)
 		}
-		out = append(out, entry)
-		if len(out) >= in.Lines {
-			break
-		}
+		entries = append(entries, entry)
 	}
-	slices.Reverse(out) // newest last
-	return out, nil
+	return entries, nil
 }
 
 // decodeToolOutput converts Windows command output to UTF-8, trying UTF-16 (BOM or heuristic), UTF-8, then the console code page.

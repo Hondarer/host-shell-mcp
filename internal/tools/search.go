@@ -139,7 +139,8 @@ const (
 	grepStop                       // end the search
 )
 
-func (d *Deps) searchGrep(ctx context.Context, _ *mcp.CallToolRequest, in SearchGrepInput) (*mcp.CallToolResult, SearchGrepOutput, error) {
+// newGrepOptions compiles the pattern and resolves the charset, output mode and context lines.
+func newGrepOptions(in SearchGrepInput) (grepOptions, error) {
 	pat := in.Pattern
 	if in.Literal {
 		pat = regexp.QuoteMeta(pat)
@@ -152,19 +153,14 @@ func (d *Deps) searchGrep(ctx context.Context, _ *mcp.CallToolRequest, in Search
 	}
 	re, err := regexp.Compile(pat)
 	if err != nil {
-		return nil, SearchGrepOutput{}, fmt.Errorf("invalid pattern (Go RE2 syntax; set literal for a plain string): %w", err)
-	}
-	include, err := compileGlob(in.Include)
-	if err != nil {
-		return nil, SearchGrepOutput{}, fmt.Errorf("include: %w", err)
+		return grepOptions{}, fmt.Errorf("invalid pattern (Go RE2 syntax; set literal for a plain string): %w", err)
 	}
 	ch, err := readCharset(in.Charset)
 	if err != nil {
-		return nil, SearchGrepOutput{}, err
+		return grepOptions{}, err
 	}
-	mode := cmp.Or(in.OutputMode, "content")
 	opt := grepOptions{re: re, ch: ch, multiline: in.Multiline}
-	switch mode {
+	switch cmp.Or(in.OutputMode, "content") {
 	case "content":
 		opt.before, opt.after = in.Context, in.Context
 		if in.Before > 0 {
@@ -175,8 +171,21 @@ func (d *Deps) searchGrep(ctx context.Context, _ *mcp.CallToolRequest, in Search
 		}
 	case "files", "count":
 	default:
-		return nil, SearchGrepOutput{}, fmt.Errorf("unknown output_mode %q (use content, files or count)", in.OutputMode)
+		return grepOptions{}, fmt.Errorf("unknown output_mode %q (use content, files or count)", in.OutputMode)
 	}
+	return opt, nil
+}
+
+func (d *Deps) searchGrep(ctx context.Context, _ *mcp.CallToolRequest, in SearchGrepInput) (*mcp.CallToolResult, SearchGrepOutput, error) {
+	opt, err := newGrepOptions(in)
+	if err != nil {
+		return nil, SearchGrepOutput{}, err
+	}
+	include, err := compileGlob(in.Include)
+	if err != nil {
+		return nil, SearchGrepOutput{}, fmt.Errorf("include: %w", err)
+	}
+	mode := cmp.Or(in.OutputMode, "content")
 	maxMatches := orDefaultInt(in.MaxMatches, 200)
 	maxFile := in.MaxFileBytes
 	if maxFile <= 0 {

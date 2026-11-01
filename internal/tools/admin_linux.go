@@ -192,10 +192,45 @@ var journalPriorities = []string{"emerg", "alert", "crit", "err", "warning", "no
 
 // queryLog reads journal entries; grep (case-insensitive) filters messages when set.
 func queryLog(ctx context.Context, d *Deps, in LogQueryInput, grep *regexp.Regexp) ([]LogEntry, error) {
+	argv, err := journalArgs(in, grep != nil)
+	if err != nil {
+		return nil, err
+	}
+	res, err := d.runTool(ctx, argv, in.Sudo)
+	if err != nil {
+		return nil, fmt.Errorf("%w (read log files with fs_read or search_grep instead, e.g. /var/log/syslog or /var/log/messages)", err)
+	}
+	if res.ExitCode != 0 && strings.TrimSpace(res.Stdout) == "" {
+		return nil, fmt.Errorf("journalctl failed (exit %d): %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+	}
+	var out []LogEntry
+	sc := bufio.NewScanner(strings.NewReader(res.Stdout))
+	sc.Buffer(make([]byte, 1<<20), 16<<20)
+	for sc.Scan() {
+		if e, ok := journalEntry(sc.Bytes()); ok && (grep == nil || grep.MatchString(e.Message)) {
+			out = append(out, e)
+		}
+	}
+	if len(out) > in.Lines {
+		out = out[len(out)-in.Lines:]
+	}
+	if len(out) == 0 && res.ExitCode != 0 {
+		return nil, fmt.Errorf("journalctl failed (exit %d): %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+	}
+	return out, nil
+}
+
+// journalArgs builds the journalctl command line. With filtering, extra entries are fetched
+// because journalctl -g requires PCRE2 build support, so matching happens in Go.
+func journalArgs(in LogQueryInput, filtering bool) ([]string, error) {
 	if in.EventID != 0 {
 		return nil, errors.New("event_id is for the Windows Event Log")
 	}
-	argv := []string{"journalctl", "--no-pager", "-o", "json", "-n", strconv.Itoa(in.Lines)}
+	count := in.Lines
+	if filtering {
+		count = min(in.Lines*20, 50000)
+	}
+	argv := []string{"journalctl", "--no-pager", "-o", "json", "-n", strconv.Itoa(count)}
 	if in.User {
 		argv = append(argv, "--user")
 	}
@@ -238,49 +273,28 @@ func queryLog(ctx context.Context, d *Deps, in LogQueryInput, grep *regexp.Regex
 		}
 		argv = append(argv, "-p", p)
 	}
-	if grep != nil {
-		// journalctl -g requires PCRE2 build support, so fetch extra entries and filter in Go.
-		argv[5] = strconv.Itoa(min(in.Lines*20, 50000))
+	return argv, nil
+}
+
+// journalEntry parses one journalctl -o json line.
+func journalEntry(line []byte) (LogEntry, bool) {
+	var m map[string]any
+	if json.Unmarshal(line, &m) != nil {
+		return LogEntry{}, false
 	}
-	res, err := d.runTool(ctx, argv, in.Sudo)
-	if err != nil {
-		return nil, fmt.Errorf("%w (read log files with fs_read or search_grep instead, e.g. /var/log/syslog or /var/log/messages)", err)
+	e := LogEntry{Message: journalString(m["MESSAGE"])}
+	if us, err := strconv.ParseInt(journalString(m["__REALTIME_TIMESTAMP"]), 10, 64); err == nil {
+		e.Time = time.UnixMicro(us).Format(time.RFC3339)
 	}
-	if res.ExitCode != 0 && strings.TrimSpace(res.Stdout) == "" {
-		return nil, fmt.Errorf("journalctl failed (exit %d): %s", res.ExitCode, strings.TrimSpace(res.Stderr))
+	if p, err := strconv.Atoi(journalString(m["PRIORITY"])); err == nil && p >= 0 && p < len(journalPriorities) {
+		e.Priority = journalPriorities[p]
 	}
-	var out []LogEntry
-	sc := bufio.NewScanner(strings.NewReader(res.Stdout))
-	sc.Buffer(make([]byte, 1<<20), 16<<20)
-	for sc.Scan() {
-		var m map[string]any
-		if json.Unmarshal(sc.Bytes(), &m) != nil {
-			continue
-		}
-		e := LogEntry{Message: journalString(m["MESSAGE"])}
-		if grep != nil && !grep.MatchString(e.Message) {
-			continue
-		}
-		if us, err := strconv.ParseInt(journalString(m["__REALTIME_TIMESTAMP"]), 10, 64); err == nil {
-			e.Time = time.UnixMicro(us).Format(time.RFC3339)
-		}
-		if p, err := strconv.Atoi(journalString(m["PRIORITY"])); err == nil && p >= 0 && p < len(journalPriorities) {
-			e.Priority = journalPriorities[p]
-		}
-		e.Source = journalString(m["_SYSTEMD_UNIT"])
-		if id := journalString(m["SYSLOG_IDENTIFIER"]); id != "" && (e.Source == "" || !strings.HasPrefix(e.Source, id)) {
-			e.Source = strings.TrimSpace(id + " " + e.Source)
-		}
-		e.PID, _ = strconv.Atoi(journalString(m["_PID"]))
-		out = append(out, e)
+	e.Source = journalString(m["_SYSTEMD_UNIT"])
+	if id := journalString(m["SYSLOG_IDENTIFIER"]); id != "" && (e.Source == "" || !strings.HasPrefix(e.Source, id)) {
+		e.Source = strings.TrimSpace(id + " " + e.Source)
 	}
-	if len(out) > in.Lines {
-		out = out[len(out)-in.Lines:]
-	}
-	if len(out) == 0 && res.ExitCode != 0 {
-		return nil, fmt.Errorf("journalctl failed (exit %d): %s", res.ExitCode, strings.TrimSpace(res.Stderr))
-	}
-	return out, nil
+	e.PID, _ = strconv.Atoi(journalString(m["_PID"]))
+	return e, true
 }
 
 // journalString converts a journalctl -o json field (string, number, or byte array for non-printable data) to a string.
