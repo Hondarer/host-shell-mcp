@@ -74,6 +74,8 @@ internal/textenc/      文字コード変換 (エンコーディング名解決�
   system_windows.go    Windows (GetOEMCP、GetACP)
 internal/audit/        操作ログ (JSON Lines)
 internal/config/       設定と既定値
+internal/wire/         bridge と接続先ツールが共有する名前と転送データ型
+internal/testutil/     パッケージ横断のテスト用ヘルパー
 internal/version/      バージョン情報
 .agents/skills/host-shell-connect/
                        接続先へのバイナリ配置・起動確認スキル (bin/ は make dist で生成、Git 管理外)
@@ -91,7 +93,7 @@ docs/en/               文書の英語版 (docs/ja/ の英訳)
 - **子プロセスへの標準入出力の継承禁止**: `exec.Cmd` の `Stdin`、`Stdout`、`Stderr` に `os.Stdin`、`os.Stdout` を渡さないでください。子プロセスの起動には必ず `proc.Command` または `proc.Run` を使用します。
 - **出力サイズの上限設定**: ツールの出力は `limit` パッケージまたは件数上限により `--max-output` 程度に収め、切り詰めた場合は `truncated` フィールド等で明示します。
 - **機密引数のログ出力抑制**: 書き込み内容や標準入力など操作ログに残すべきでない引数は、入力型に `AuditArgs() any` (`audit.Redactor`) を実装してマスクします。
-- **ツール内部での文字コード変換**: ツールの入出力は常に UTF-8 とします。接続先の文字コードとの変換には `textenc` パッケージを、文字コード指定引数の解決には `textenc.Parse` を使用し、分割読み取り時はマルチバイト文字の境界を分断しないようにします。
+- **ツール内部での文字コード変換**: ツールの入出力は常に UTF-8 とします。接続先の文字コードとの変換には `textenc` パッケージを、文字コード指定引数の解決には `textenc.ParseAuto` (自動判定を許す引数) または `textenc.ParseFixed` (既定の文字コードを持つ引数) を使用し、分割読み取り時はマルチバイト文字の境界を分断しないようにします。
 - **MCP 情報のみでの自己完結**: ツール説明、引数説明、`help_get` 本文、エラー メッセージは、エージェントが次の操作を判断できるよう具体的に記述します。
 - **OS 差異の内部吸収**: OS 固有処理は `runtime.GOOS` 分岐または `_unix.go`、`_windows.go` ファイルに分離します。
 - **既定は無制限・明示指定のみ制限**: 起動オプションで指定されたポリシーのみを適用します。新規ツールで制限が回避されないよう、パス引数を持つ入力型には `PathArgs`、プログラムを起動する入力型には `CommandArgs` を実装し、ネットワーク接続先は `d.Policy.CheckHost` で検査します。

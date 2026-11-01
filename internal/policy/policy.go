@@ -142,15 +142,18 @@ func Unrestricted() *Policy {
 	return p
 }
 
-// Enabled reports whether the tool is exposed.
-func (p *Policy) Enabled(tool, group string, readOnlyTool bool) bool {
-	return p.tools.match(tool, group, !readOnlyTool)
+// Tool describes a tool for tool selection and confirmation rules.
+type Tool struct {
+	Name     string
+	Group    string
+	ReadOnly bool // the tool does not change the host; the "destructive" selector skips it
 }
 
+// Enabled reports whether the tool is exposed.
+func (p *Policy) Enabled(t Tool) bool { return p.tools.match(t.Name, t.Group, !t.ReadOnly) }
+
 // NeedsConfirm reports whether the tool needs user confirmation before it runs.
-func (p *Policy) NeedsConfirm(tool, group string, readOnlyTool bool) bool {
-	return p.confirm.match(tool, group, !readOnlyTool)
-}
+func (p *Policy) NeedsConfirm(t Tool) bool { return p.confirm.match(t.Name, t.Group, !t.ReadOnly) }
 
 // Summary returns active restrictions as (label, value) pairs.
 func (p *Policy) Summary() [][2]string {

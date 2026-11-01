@@ -118,7 +118,7 @@ func Prepare(d *Deps) *Registry {
 	for _, def := range r.tools {
 		ro := def.tool.Annotations != nil && def.tool.Annotations.ReadOnlyHint
 		if def.group != groupCore {
-			if !d.Policy.Enabled(def.tool.Name, def.group, ro) ||
+			if !d.Policy.Enabled(policy.Tool{Name: def.tool.Name, Group: def.group, ReadOnly: ro}) ||
 				(d.Policy.ReadOnly && !ro && !readOnlyCapable[def.tool.Name]) {
 				continue
 			}
@@ -325,7 +325,7 @@ func add[In, Out any](r *Registry, group string, t *mcp.Tool, h mcp.ToolHandlerF
 // registerTool wraps a handler with policy, confirmation, redaction and audit logging.
 func registerTool[In, Out any](s *mcp.Server, d *Deps, group string, t *mcp.Tool, h mcp.ToolHandlerFor[In, Out]) {
 	ro := t.Annotations != nil && t.Annotations.ReadOnlyHint
-	confirm := d.Policy.NeedsConfirm(t.Name, group, ro)
+	confirm := d.Policy.NeedsConfirm(policy.Tool{Name: t.Name, Group: group, ReadOnly: ro})
 	mcp.AddTool(s, t, func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 		start := time.Now()
 		var (

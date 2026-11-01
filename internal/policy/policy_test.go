@@ -21,7 +21,7 @@ func TestSelector(t *testing.T) {
 	}{
 		{"exec_run", "exec", true}, {"exec_sudo", "exec", false}, {"fs_read", "files", true},
 	} {
-		if got := p.Enabled(c.tool, c.group, false); got != c.want {
+		if got := p.Enabled(Tool{Name: c.tool, Group: c.group}); got != c.want {
 			t.Errorf("Enabled(%s) = %v, want %v", c.tool, got, c.want)
 		}
 	}
@@ -29,10 +29,10 @@ func TestSelector(t *testing.T) {
 		t.Error("unknown name should be rejected")
 	}
 	p, _ = New(Options{Confirm: "destructive,-fs_write"}, known)
-	if !p.NeedsConfirm("exec_run", "exec", false) || p.NeedsConfirm("fs_write", "files", false) || p.NeedsConfirm("fs_read", "files", true) {
+	if !p.NeedsConfirm(Tool{Name: "exec_run", Group: "exec"}) || p.NeedsConfirm(Tool{Name: "fs_write", Group: "files"}) || p.NeedsConfirm(Tool{Name: "fs_read", Group: "files", ReadOnly: true}) {
 		t.Error("confirm selection is wrong")
 	}
-	if Unrestricted().NeedsConfirm("exec_run", "exec", false) || !Unrestricted().Enabled("exec_run", "exec", false) {
+	if Unrestricted().NeedsConfirm(Tool{Name: "exec_run", Group: "exec"}) || !Unrestricted().Enabled(Tool{Name: "exec_run", Group: "exec"}) {
 		t.Error("unrestricted policy must enable everything without confirmation")
 	}
 }
