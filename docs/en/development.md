@@ -143,7 +143,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs the following jobs on every pus
 
 Table: CI jobs
 
-Test output filters `go test -v` to show only result lines, skip lines, and test logs.
+Test output filters `go test -v` to show only result lines and indented "file.go:line:" lines. The latter hold the reasons for failures and skips, and test logs. Lines from files other than tests (such as `testing.go`, which reports cleanup failures) are kept too.
 
 ## Releases
 

@@ -35,13 +35,13 @@
     - ✅ 3.2. 最終仕様における受入条件と整合性の確認
     - ✅ 3.3. 対話セッションにおける最終仕様の承認の受付 (第 2 ゲート: 作業着手の合意、Tetsuo Honda が対話「承認」で版 1 を承認、確認日時: 2026-11-01 22:42:25 JST)
 - 🔄 4. 承認された最終仕様に従った作業の実施
-    - 🔄 4.1. 作業ブランチの準備 ([Q-008](#q-008-作業ブランチと-pr-とマージの運用)) ← **CURRENT**
-    - ⏸️ 4.2. BL-002: 転送の後片付けの修正 (`internal/forward/target.go`、`internal/forward/forward_test.go`) ([Q-002](#q-002-bl-002-の修正箇所))
-    - ⏸️ 4.3. BL-002: CI の Test の段の絞り込みの見直し (`.github/workflows/ci.yml`、`docs/ja/development.md`、`docs/en/development.md`) ([Q-003](#q-003-ci-の-test-の段の絞り込み))
-    - ⏸️ 4.4. BL-001: セッション用ソケットの場所 (`.agents/skills/host-shell-code-server/scripts/linux/start.sh`、`docs/ja/code-server.md`、`docs/en/code-server.md`) ([Q-004](#q-004-bl-001-の対処方針)、[Q-005](#q-005-短いパスの置き場所))
-    - ⏸️ 4.5. 確認 (BL-002 の繰り返し実行、BL-001 の長い HOME と通常の HOME)
-    - ⏸️ 4.6. 元案件の残課題一覧 (`docs/prompts/past/261101-code-server-followup-backlog.md`) の状態の更新
-    - ⏸️ 4.7. make、main 向けドラフト PR の作成と全 OS CI の実行
+    - ✅ 4.1. 作業ブランチの準備 ([Q-008](#q-008-作業ブランチと-pr-とマージの運用)、コミット 0c6f74b、ドラフト PR #6)
+    - ✅ 4.2. BL-002: 転送の後片付けの修正 (`internal/forward/target.go`、`internal/forward/forward_test.go`) ([Q-002](#q-002-bl-002-の修正箇所))
+    - ✅ 4.3. BL-002: CI の Test の段の絞り込みの見直し (`.github/workflows/ci.yml`、`docs/ja/development.md`、`docs/en/development.md`) ([Q-003](#q-003-ci-の-test-の段の絞り込み))
+    - ✅ 4.4. BL-001: セッション用ソケットの場所 (`.agents/skills/host-shell-code-server/scripts/linux/start.sh`、`docs/ja/code-server.md`、`docs/en/code-server.md`) ([Q-004](#q-004-bl-001-の対処方針)、[Q-005](#q-005-短いパスの置き場所))
+    - ✅ 4.5. 確認 (BL-002 の繰り返し実行、BL-001 の長い HOME と通常の HOME)
+    - ✅ 4.6. 元案件の残課題一覧 (`docs/prompts/past/261101-code-server-followup-backlog.md`) の状態の更新
+    - 🔄 4.7. make、main 向けドラフト PR の作成と全 OS CI の実行 ← **CURRENT**
     - ⏸️ 4.8. 受入条件への適合確認 (全完確認)
     - ⏸️ 4.9. 残課題一覧 (`261101-session-socket-ci-backlog.md`) の再構築と整理
     - ⏸️ 4.10. 検討記録の `docs/prompts/past/` への移動、全 OS の CI の成功の確認とマージ

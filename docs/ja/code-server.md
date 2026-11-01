@@ -152,6 +152,7 @@ Table: 拡張機能ビューの通信
 | 設定ファイル | `~/.config/host-shell-code-server/config.yaml` | `%USERPROFILE%\.config\host-shell-code-server\config.yaml` |
 | ユーザー データ | `~/.local/share/host-shell-code-server/user-data/` | `%LOCALAPPDATA%\host-shell-code-server\user-data\` |
 | 拡張機能 | `~/.local/share/host-shell-code-server/extensions/` | `%LOCALAPPDATA%\host-shell-code-server\extensions\` |
+| セッション用ソケット | ユーザー データの中の `code-server-ipc.sock`。パスが Unix ドメイン ソケットの上限 (107 バイト) を超える場合は `$XDG_RUNTIME_DIR/host-shell-code-server-ipc.sock`、`XDG_RUNTIME_DIR` がなければ `/tmp/host-shell-code-server-<uid>/ipc.sock` | 名前付きパイプ (ファイルを作りません) |
 
 Table: 接続先の配置
 
