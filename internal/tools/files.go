@@ -22,6 +22,7 @@ import (
 
 	"github.com/hondarer/host-shell-mcp/internal/limit"
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
+	"github.com/hondarer/host-shell-mcp/internal/wire"
 )
 
 // Entry is one directory entry.
@@ -167,7 +168,7 @@ func (d *Deps) fsRead(_ context.Context, req *mcp.CallToolRequest, in FsReadInpu
 		limit := d.base64Budget()
 		if fromBridge(req) {
 			// Bridge transfers do not pass through the agent's context, so read in large chunks.
-			limit = TransferChunkBytes
+			limit = wire.TransferChunkBytes
 		}
 		err = d.readBase64(f, in, limit, &out)
 	default:
@@ -319,19 +320,13 @@ func (d *Deps) readBase64(f *os.File, in FsReadInput, n int, out *FsReadOutput) 
 	return nil
 }
 
-// BridgeClientName is the client name host-shell bridge connects with.
-const BridgeClientName = "host-shell-bridge"
-
-// TransferChunkBytes is the size of each read or write when the bridge transfers files.
-const TransferChunkBytes = 1 << 20
-
 // fromBridge reports whether the request comes from host-shell bridge.
 func fromBridge(req *mcp.CallToolRequest) bool {
 	if req == nil || req.Session == nil {
 		return false
 	}
 	p := req.Session.InitializeParams()
-	return p != nil && p.ClientInfo != nil && p.ClientInfo.Name == BridgeClientName
+	return p != nil && p.ClientInfo != nil && p.ClientInfo.Name == wire.BridgeClientName
 }
 
 // FsWriteInput is the input of fs_write.

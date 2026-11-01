@@ -26,8 +26,8 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/clientproxy"
 	"github.com/hondarer/host-shell-mcp/internal/forward"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
-	"github.com/hondarer/host-shell-mcp/internal/tools"
 	"github.com/hondarer/host-shell-mcp/internal/version"
+	"github.com/hondarer/host-shell-mcp/internal/wire"
 )
 
 const usage = `usage: host-shell bridge [options] -- COMMAND [ARGS...]
@@ -208,7 +208,7 @@ func newGateway(opt Options, o *channel.Options) (*clientproxy.Gateway, error) {
 // newRemoteClient creates the client for the target. Elicitation, progress and log messages
 // from the target are relayed to the agent session once it is stored in agent.
 func newRemoteClient(agent *atomic.Pointer[mcp.ServerSession]) *mcp.Client {
-	return mcp.NewClient(&mcp.Implementation{Name: tools.BridgeClientName, Version: version.Version}, &mcp.ClientOptions{
+	return mcp.NewClient(&mcp.Implementation{Name: wire.BridgeClientName, Version: version.Version}, &mcp.ClientOptions{
 		// Return elicitation requests to the agent as-is and forward the retried call with answers to the target.
 		MultiRoundTrip: &mcp.MultiRoundTripOptions{Disabled: true},
 		ElicitationHandler: func(ctx context.Context, req *mcp.ElicitRequest) (*mcp.ElicitResult, error) {

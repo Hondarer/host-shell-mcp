@@ -22,6 +22,7 @@ import (
 	"golang.org/x/text/transform"
 
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
+	"github.com/hondarer/host-shell-mcp/internal/wire"
 )
 
 // defaultExcludeDirs are the directories searches skip by default.
@@ -525,30 +526,14 @@ type FsManifestInput struct {
 	MaxFiles    int      `json:"max_files,omitempty" jsonschema:"max files to return (default 2000)"`
 }
 
-// ManifestEntry is the path and hash of one file.
-type ManifestEntry struct {
-	Path   string `json:"path" jsonschema:"path relative to root, with forward slashes"`
-	Size   int64  `json:"size"`
-	Mode   string `json:"mode" jsonschema:"permission bits in octal, e.g. 0644"`
-	SHA256 string `json:"sha256"`
-}
-
-// FsManifestOutput is the output of fs_manifest.
-type FsManifestOutput struct {
-	Root      string          `json:"root"`
-	Files     []ManifestEntry `json:"files"`
-	Skipped   int             `json:"skipped,omitempty"`
-	Truncated bool            `json:"truncated,omitempty"`
-}
-
-func (d *Deps) fsManifest(ctx context.Context, _ *mcp.CallToolRequest, in FsManifestInput) (*mcp.CallToolResult, FsManifestOutput, error) {
+func (d *Deps) fsManifest(ctx context.Context, _ *mcp.CallToolRequest, in FsManifestInput) (*mcp.CallToolResult, wire.FsManifestOutput, error) {
 	include, err := compileGlob(in.Include)
 	if err != nil {
-		return nil, FsManifestOutput{}, fmt.Errorf("include: %w", err)
+		return nil, wire.FsManifestOutput{}, fmt.Errorf("include: %w", err)
 	}
 	root := cmp.Or(in.Path, ".")
 	max := orDefaultInt(in.MaxFiles, 2000)
-	out := FsManifestOutput{Root: absPath(root), Files: []ManifestEntry{}}
+	out := wire.FsManifestOutput{Root: absPath(root), Files: []wire.ManifestEntry{}}
 	skipped, err := walkFiles(ctx, root, in.ExcludeDirs, false, func(path, rel string, de fs.DirEntry) error {
 		if !de.Type().IsRegular() || !include.match(rel, de.Name()) {
 			return nil
@@ -566,11 +551,11 @@ func (d *Deps) fsManifest(ctx context.Context, _ *mcp.CallToolRequest, in FsMani
 		if info, err := de.Info(); err == nil {
 			mode = fmt.Sprintf("%04o", info.Mode().Perm())
 		}
-		out.Files = append(out.Files, ManifestEntry{Path: rel, Size: size, Mode: mode, SHA256: sum})
+		out.Files = append(out.Files, wire.ManifestEntry{Path: rel, Size: size, Mode: mode, SHA256: sum})
 		return nil
 	})
 	if err != nil {
-		return nil, FsManifestOutput{}, err
+		return nil, wire.FsManifestOutput{}, err
 	}
 	out.Skipped += skipped
 	return nil, out, nil

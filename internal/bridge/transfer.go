@@ -23,7 +23,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/hondarer/host-shell-mcp/internal/policy"
-	"github.com/hondarer/host-shell-mcp/internal/tools"
+	"github.com/hondarer/host-shell-mcp/internal/wire"
 )
 
 const transferInstructions = `This connection goes through host-shell bridge on your local machine.
@@ -45,7 +45,7 @@ type transfer struct {
 }
 
 func (t *transfer) init(ctx context.Context) error {
-	t.chunk = tools.TransferChunkBytes
+	t.chunk = wire.TransferChunkBytes
 	need := map[string]bool{"fs_read": false, "fs_write": false, "fs_stat": false, "fs_manifest": false, "fs_move": false, "fs_remove": false}
 	for tool, err := range t.remote.Tools(ctx, nil) {
 		if err != nil {
@@ -274,7 +274,7 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 		return nil, TransferOutput{}, err
 	}
 
-	remote := map[string]tools.ManifestEntry{}
+	remote := map[string]wire.ManifestEntry{}
 	if rexists {
 		entries, err := t.manifest(ctx, dest)
 		if err != nil {
@@ -480,7 +480,7 @@ func (t *transfer) pull(ctx context.Context, req *mcp.CallToolRequest, in Transf
 	}
 	out := TransferOutput{Source: in.RemotePath, Destination: absLocal(dest)}
 	if isDir {
-		entries = slices.DeleteFunc(entries, func(e tools.ManifestEntry) bool { return excluded(e.Path, in.Exclude) })
+		entries = slices.DeleteFunc(entries, func(e wire.ManifestEntry) bool { return excluded(e.Path, in.Exclude) })
 	}
 	results := make([]FileResult, len(entries))
 	for i, e := range entries {
@@ -509,7 +509,7 @@ func (t *transfer) pull(ctx context.Context, req *mcp.CallToolRequest, in Transf
 }
 
 // fetchFile downloads a file in chunks to a temporary path, verifies its SHA-256, and renames it into place.
-func (t *transfer) fetchFile(ctx context.Context, src, target string, e tools.ManifestEntry, onProgress func(int64)) error {
+func (t *transfer) fetchFile(ctx context.Context, src, target string, e wire.ManifestEntry, onProgress func(int64)) error {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}
@@ -595,8 +595,8 @@ func notExist(msg string) bool {
 	return strings.Contains(m, "no such file") || strings.Contains(m, "cannot find the") || strings.Contains(m, "does not exist")
 }
 
-func (t *transfer) manifest(ctx context.Context, p string) ([]tools.ManifestEntry, error) {
-	var m tools.FsManifestOutput
+func (t *transfer) manifest(ctx context.Context, p string) ([]wire.ManifestEntry, error) {
+	var m wire.FsManifestOutput
 	if err := callRemote(ctx, t.remote, "fs_manifest", map[string]any{"path": p, "exclude_dirs": []string{}, "max_files": 1000000}, &m); err != nil {
 		return nil, err
 	}
