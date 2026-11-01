@@ -41,10 +41,10 @@
     - ✅ 4.4. BL-001: セッション用ソケットの場所 (`.agents/skills/host-shell-code-server/scripts/linux/start.sh`、`docs/ja/code-server.md`、`docs/en/code-server.md`) ([Q-004](#q-004-bl-001-の対処方針)、[Q-005](#q-005-短いパスの置き場所))
     - ✅ 4.5. 確認 (BL-002 の繰り返し実行、BL-001 の長い HOME と通常の HOME)
     - ✅ 4.6. 元案件の残課題一覧 (`docs/prompts/past/261101-code-server-followup-backlog.md`) の状態の更新
-    - 🔄 4.7. make、main 向けドラフト PR の作成と全 OS CI の実行 ← **CURRENT**
-    - ⏸️ 4.8. 受入条件への適合確認 (全完確認)
-    - ⏸️ 4.9. 残課題一覧 (`261101-session-socket-ci-backlog.md`) の再構築と整理
-    - ⏸️ 4.10. 検討記録の `docs/prompts/past/` への移動、全 OS の CI の成功の確認とマージ
+    - ✅ 4.7. make、main 向けドラフト PR の作成と全 OS CI の実行 (PR #6、CI run 41313262605 は全 OS 成功)
+    - ✅ 4.8. 受入条件への適合確認 (全完確認)
+    - ✅ 4.9. 残課題一覧 (`261101-session-socket-ci-backlog.md`) の再構築と整理 (作業中に記録する事項はなく、元の残課題一覧の 2 件もすべて解消したため、作成していません)
+    - 🔄 4.10. 検討記録の `docs/prompts/past/` への移動、全 OS の CI の成功の確認とマージ ← **CURRENT**
 - ⏸️ 5. 成果物の承認の受付 (第 3 ゲート)
     - ⏸️ 5.1. 成果物・検証結果・残課題の提示
     - ⏸️ 5.2. 対話セッションにおける成果物の承認の受付
@@ -55,15 +55,15 @@
 
 今回の対象範囲: BL-001 と BL-002 の対応 ([Q-001](#q-001-対応する残課題))
 
-書き込み可能な検討用 Markdown: この文書 (`docs/prompts/261101-session-socket-ci-discussion.md`)
+書き込み可能な検討用 Markdown: この文書 (`docs/prompts/past/261101-session-socket-ci-discussion.md`。マージ前に `docs/prompts/` から移動)
 
 参照資料と版: main のコミット e1d8b7c を調査基準とします。
 
-- [docs/prompts/past/261101-code-server-followup-backlog.md](past/261101-code-server-followup-backlog.md): 対象の残課題一覧 (BL-001、BL-002)。
-- [internal/forward/target.go](../../internal/forward/target.go): 接続先の転送の処理。`Close` と `unlisten` が操作ログ `forward_unlisten` を書きます。
-- [internal/forward/forward_test.go](../../internal/forward/forward_test.go): `TestPersistentForwards` と、テスト用の接続を作る `start`。
-- [.github/workflows/ci.yml](../../.github/workflows/ci.yml): Test の段は `go test -count=1 -v ./... 2>&1 | grep -E '^(---|ok|FAIL|PASS|panic)|_test\.go'` です。
-- [.agents/skills/host-shell-code-server/scripts/linux/start.sh](../../.agents/skills/host-shell-code-server/scripts/linux/start.sh): code-server を `--user-data-dir ~/.local/share/host-shell-code-server/user-data` で起動します。
+- [docs/prompts/past/261101-code-server-followup-backlog.md](261101-code-server-followup-backlog.md): 対象の残課題一覧 (BL-001、BL-002)。
+- [internal/forward/target.go](../../../internal/forward/target.go): 接続先の転送の処理。`Close` と `unlisten` が操作ログ `forward_unlisten` を書きます。
+- [internal/forward/forward_test.go](../../../internal/forward/forward_test.go): `TestPersistentForwards` と、テスト用の接続を作る `start`。
+- [.github/workflows/ci.yml](../../../.github/workflows/ci.yml): Test の段は `go test -count=1 -v ./... 2>&1 | grep -E '^(---|ok|FAIL|PASS|panic)|_test\.go'` です。
+- [.agents/skills/host-shell-code-server/scripts/linux/start.sh](../../../.agents/skills/host-shell-code-server/scripts/linux/start.sh): code-server を `--user-data-dir ~/.local/share/host-shell-code-server/user-data` で起動します。
 - code-server 4.144.0 の `out/node/cli.js` と `out/node/vscodeSocket.js` (配布物 `code-server-4.144.0-linux-amd64.tar.gz` から、作業用の一時フォルダーに展開して確認)。
 
 ## ユーザーが明示した要求
@@ -106,7 +106,7 @@
 
 作業用の一時フォルダーに複製したリポジトリで、`unlisten` を排他にし、`Close` が実行中の `unlisten` の終了を待つように変えたところ、同じテストを 200 回連続で実行して失敗は 0 回でした。
 
-この競合は実際の運用にも関係します。接続先の host-shell は、終了時に `server_stop` を記録した後で `Target.Close` を呼びます ([cmd/host-shell/main.go](../../cmd/host-shell/main.go))。同じ競合で、`forward_unlisten` の記録がプロセスの終了に間に合わず、失われる場合があります。
+この競合は実際の運用にも関係します。接続先の host-shell は、終了時に `server_stop` を記録した後で `Target.Close` を呼びます ([cmd/host-shell/main.go](../../../cmd/host-shell/main.go))。同じ競合で、`forward_unlisten` の記録がプロセスの終了に間に合わず、失われる場合があります。
 
 ### BL-002: CI のログに理由が残らなかった理由
 
@@ -572,3 +572,46 @@ A を確認しました。これまでと同じ運用とし、作業ブランチ
 
 推奨: A  
 理由: これまでの 3 件と同じ運用で、記録の場所と時機がそろうためです。
+
+## 対象成果物と合意版
+
+最終決定事項 (最終仕様) の設計書: `docs/prompts/past/261101-session-socket-ci-design.md`
+
+検討用 Markdown の合意版 (第 1 ゲート): 版 2 (2026-11-01、[Q-001](#q-001-対応する残課題)〜[Q-008](#q-008-作業ブランチと-pr-とマージの運用) がすべて解決済み)
+
+最終仕様 (design.md) の合意版 (第 2 ゲート): 版 1 (2026-11-01 22:42:25 JST、Tetsuo Honda が対話「承認」で承認)
+
+更新した成果物: `internal/forward/target.go`、`internal/forward/forward_test.go`、`.github/workflows/ci.yml`、`.agents/skills/host-shell-code-server/scripts/linux/start.sh`、`docs/ja/development.md`、`docs/en/development.md`、`docs/ja/code-server.md`、`docs/en/code-server.md`、`docs/prompts/past/261101-code-server-followup-backlog.md`
+
+受入条件: [Q-007](#q-007-受入条件) の 1〜10 です。
+
+## 反映と検証の記録
+
+作業ブランチ claude/session-socket-ci (PR #6) で作業しました。
+
+### 実装
+
+- BL-002: `Target` に `unlisten` を直列にする排他 (`unlistenMu`) を加え、`Close` が実行中の `unlisten` の終了を待つようにしました。`Close` のコメントに、戻った時点で `forward_unlisten` がすべて記録済みであることを書きました。テスト `TestCloseRecordsUnlisten` を加え、テスト用の接続 (`session`) に接続先側のチャネルの接続 (`targetConn`) を持たせました。
+- BL-002 (CI): Test の段の絞り込みを `^(---|ok|FAIL|PASS|panic)|^[[:space:]]+[^[:space:]]+\.go:[0-9]+:` にし、コメントと `docs/*/development.md` の説明を改めました。
+- BL-001: `start.sh` に `session_socket` を加え、既定のパスが 107 バイトを超える場合だけ `--session-socket` を付けるようにしました。`XDG_RUNTIME_DIR` の末尾の `/` は取り除きます。bash 4.3 以前の `set -u` で空の配列が失敗しないよう、`${session_args[@]+"${session_args[@]}"}` で展開しています。`docs/*/code-server.md` の配置の表にセッション用ソケットの行を加えました。
+
+### 確認
+
+作業環境 (WSL) で確認しました。確認用のスクリプトはスクラッチ領域に置き、リポジトリには含めていません。
+
+| 受入条件 | 結果 |
+| --- | --- |
+| 1. `Close` 後の記録 | `TestCloseRecordsUnlisten` は修正後に 50 回の繰り返しで成功し、修正前の `target.go` に戻すと `forward_unlisten` が欠けて失敗しました |
+| 2. `TestPersistentForwards` の繰り返し | `go test -count=200 -run 'TestPersistentForwards$' ./internal/forward` で失敗 0 回でした (修正前は 100 回中 1〜2 回) |
+| 3. CI の絞り込み | 修正前の失敗の出力に適用すると `testing.go:1464: TempDir RemoveAll cleanup: ...` の行が残りました。成功時の `go test -v ./...` の出力では、旧条件と新条件の結果が一致しました (153 行)。CI run 41313262605 のログで、ubuntu、macOS (BSD grep)、Windows のいずれも、結果行 (131〜135 行) と「ファイル名.go:行:」の行 (8〜9 行) が残りました |
+| 4. 長い HOME | 既定のパスが 160 バイトになる HOME で、`XDG_RUNTIME_DIR` がある場合は `/run/user/1000/host-shell-code-server-ipc.sock`、ない場合は `/tmp/host-shell-code-server-1000/ipc.sock` (作成時の権限 `drwx------`) に `Session server listening on` が出て、`Could not create socket` は出ませんでした |
+| 5. 拡張機能ホストのログ | 4 の両方でヘッドレスの Chrome でログインし、画面の表示後のログに `code-server-ipc.sock` のエラーはありませんでした。対照として、7 の状態では `remoteexthost.log` に `connect EINVAL ...code-server-ipc.sock` が記録され、確認の方法がエラーを検出できることを確かめました |
+| 6. 通常の HOME | 既定のパスが 86 バイトになる HOME では、`--session-socket` を付けず、ソケットはユーザー データのフォルダーにできました |
+| 7. 安全でないフォルダー | `/tmp/host-shell-code-server-<uid>/` をグループが書き込める状態にした場合、別の uid の所有にした場合 (`id -u` を置き換えて模擬)、シンボリック リンクにした場合のいずれも、`warning: unsafe directory (...)` を出して既定のパスのまま起動しました |
+| 8. make と CI | `make` (vet、テスト、ビルド) が成功しました。CI run 41313262605 (7089f6b) は全 OS 成功しました |
+| 9. 文書 | `development.md` の CI の説明と `code-server.md` の配置の表を、日英で同じ内容に更新しました |
+| 10. 元の残課題一覧 | `261101-code-server-followup-backlog.md` の BL-001 と BL-002 を「解消」にし、経緯と対処を追記しました |
+
+Table: 受入条件の照合
+
+確認で作った一時の HOME、`/tmp/host-shell-code-server-1000/`、短い HOME 用のシンボリック リンクは削除しました。code-server は終了時にソケットを削除し、プロセスも残っていません。
