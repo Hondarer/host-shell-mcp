@@ -43,10 +43,10 @@
     - ✅ 4.5. 日英正本文書への反映 (`docs/ja/`、`docs/en/` の code-server.md、port-forward.md、コンテナーへの接続の説明 [Q-020](#q-020-コンテナーへの接続の説明の置き場所))
     - ✅ 4.6. 確認 (BL-002 の拡張機能ビュー、BL-003 の空きポート、BL-004 のコンテナーと pod)
     - ✅ 4.7. 元案件の残課題一覧 (`docs/prompts/past/261101-code-server-backlog.md`) の状態の更新 (BL-001 は容認、BL-002〜BL-004 は対応の結果)
-    - 🔄 4.8. make、6 ターゲットのクロスビルド、main 向けドラフト PR の作成と全 OS CI の実行 ← **CURRENT**
-    - ⏸️ 4.9. 受入条件への適合確認 (全完確認)
-    - ✅ 4.10. 残課題一覧 (`261101-code-server-followup-backlog.md`) の再構築と整理 (BL-001 HOME のパスが長い場合のセッション用ソケット)
-    - ⏸️ 4.11. 検討記録の `docs/prompts/past/` への移動、全 OS の CI の成功の確認とマージ
+    - ✅ 4.8. make、6 ターゲットのクロスビルド、main 向けドラフト PR の作成と全 OS CI の実行 (PR #5、CI run 41280901078 は 2 回目で全 OS 成功。1 回目の ubuntu の失敗は残課題 BL-002)
+    - ✅ 4.9. 受入条件への適合確認 (全完確認)
+    - ✅ 4.10. 残課題一覧 (`261101-code-server-followup-backlog.md`) の再構築と整理 (BL-001 HOME のパスが長い場合のセッション用ソケット、BL-002 CI の TestPersistentForwards の断続的な失敗)
+    - 🔄 4.11. 検討記録の `docs/prompts/past/` への移動、全 OS の CI の成功の確認とマージ ← **CURRENT**
 - ⏸️ 5. 成果物の承認の受付 (第 3 ゲート)
     - ⏸️ 5.1. 成果物・検証結果・残課題の提示
     - ⏸️ 5.2. 対話セッションにおける成果物の承認の受付 (「承認」または「完了」の受領によるスキル完了)
@@ -57,14 +57,14 @@
 
 今回の対象範囲: BL-002、BL-003、BL-004 の対応と、BL-001 の容認 ([Q-001](#q-001-対応する残課題))
 
-書き込み可能な検討用 Markdown: この文書 (`docs/prompts/261101-code-server-followup-discussion.md`)
+書き込み可能な検討用 Markdown: この文書 (`docs/prompts/past/261101-code-server-followup-discussion.md`。マージ前に `docs/prompts/` から移動)
 
 参照資料と版: main のコミット a78a8d8 を調査基準とします。
 
-- [docs/prompts/past/261101-code-server-backlog.md](past/261101-code-server-backlog.md): 対象の残課題一覧 (BL-001〜BL-004)。BL-004 は本件の開始時に追記し、まだコミットしていません ([Q-015](#q-015-bl-004-の追記のコミット先))。
-- [.agents/skills/host-shell-code-server/scripts/linux/start.sh](../../.agents/skills/host-shell-code-server/scripts/linux/start.sh): `CODE_SERVER_PORT` (既定 8000) が使用中なら終了します。
-- [.agents/skills/host-shell-connect/scripts/remote.sh](../../.agents/skills/host-shell-connect/scripts/remote.sh): `detect.sh`、`deploy.sh`、`probe.sh` が共通に使う、ssh の経路 (`ROUTE`) でコマンドを実行するスクリプト。
-- [internal/policy/policy.go](../../internal/policy/policy.go) と [internal/policy/names.go](../../internal/policy/names.go): 接続先の `--allow-host` と bridge の `--forward-allow-local` の許可規則。ポートも glob で照合します。
+- [docs/prompts/past/261101-code-server-backlog.md](261101-code-server-backlog.md): 対象の残課題一覧 (BL-001〜BL-004)。BL-004 は本件の開始時に追記し、まだコミットしていません ([Q-015](#q-015-bl-004-の追記のコミット先))。
+- [.agents/skills/host-shell-code-server/scripts/linux/start.sh](../../../.agents/skills/host-shell-code-server/scripts/linux/start.sh): `CODE_SERVER_PORT` (既定 8000) が使用中なら終了します。
+- [.agents/skills/host-shell-connect/scripts/remote.sh](../../../.agents/skills/host-shell-connect/scripts/remote.sh): `detect.sh`、`deploy.sh`、`probe.sh` が共通に使う、ssh の経路 (`ROUTE`) でコマンドを実行するスクリプト。
+- [internal/policy/policy.go](../../../internal/policy/policy.go) と [internal/policy/names.go](../../../internal/policy/names.go): 接続先の `--allow-host` と bridge の `--forward-allow-local` の許可規則。ポートも glob で照合します。
 
 ## ユーザーが明示した要求
 
@@ -1181,7 +1181,7 @@ B を確認しました。新しい文書 `docs/ja/container.md` と `docs/en/co
 
 ## 対象成果物と合意版
 
-最終決定事項 (最終仕様) の設計書: `docs/prompts/261101-code-server-followup-design.md`
+最終決定事項 (最終仕様) の設計書: `docs/prompts/past/261101-code-server-followup-design.md`
 
 検討用 Markdown の合意版 (第 1 ゲート): 版 3 (2026-11-01、[Q-001](#q-001-対応する残課題)〜[Q-020](#q-020-コンテナーへの接続の説明の置き場所) がすべて解決済み)
 
@@ -1217,7 +1217,7 @@ B を確認しました。新しい文書 `docs/ja/container.md` と `docs/en/co
 | 7. BL-004 (pod) | podman の pod で、HTTP サーバーのコンテナーの `127.0.0.1:9000` へ、別のコンテナーの host-shell から転送して応答を得ました。PID の名前空間は別のため、host-shell のコンテナーからそのプロセスは見えませんでした |
 | 8. BL-004 (glibc と最小イメージ) | alpine:3.22 では、host-shell の配置と起動確認は成功しました。install は `bash` がないため起動できず、`bash` を入れると `error: code-server needs glibc: /lib64/ld-linux-x86-64.so.2 not found (musl-based systems such as Alpine are not supported)` で、展開先を作る前に止まりました。debian:stable-slim では install (181 秒)、起動、ログイン、テーマまで成功しました。追加で、distroless (`gcr.io/distroless/static-debian12:nonroot`) に `podman cp` で置いて `podman exec -i` で接続でき、ファイル操作のツールが動き、`exec_run` の `sh` は使えないことを確かめ、文書の手順に反映しました |
 | 9. 文書とスキル | 日英の文書を同じ構成で更新し、リンクと見出しの参照を検査しました。スクリプトと SKILL.md は ASCII だけです。元案件の残課題一覧を BL-001 容認、BL-002〜BL-004 解消に更新しました |
-| 10. make、クロスビルド、CI | `make` と `make dist` (6 ターゲット) が成功しました。CI は PR #5 で実行します |
+| 10. make、クロスビルド、CI | `make` と `make dist` (6 ターゲット) が成功しました。CI run 41280901078 (c7b7b1e) は、1 回目に ubuntu の `TestPersistentForwards` だけが失敗し (Go のコードの変更はなく、失敗の理由はログに残っていません)、失敗したジョブの再実行で全 OS 成功しました。この断続的な失敗を残課題 BL-002 に記録しました |
 | 11. 作業環境の保全 | 確認用のコンテナー、pod、取得したイメージ (alpine、debian:stable-slim、distroless)、Windows の `%TEMP%\hscf-verify`、一時の HOME を削除しました。利用者の既存のコンテナー (停止中の 2 件) とイメージには触れていません |
 
 Table: 受入条件の照合
