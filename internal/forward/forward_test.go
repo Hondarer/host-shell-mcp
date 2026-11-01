@@ -173,7 +173,9 @@ var payload = bytes.Repeat([]byte{0, 255, 13, 10, 'x'}, 300000)
 func roundTrip(t *testing.T, c net.Conn) {
 	t.Helper()
 	defer c.Close()
-	c.SetDeadline(time.Now().Add(10 * time.Second))
+	// Eight concurrent 1.5 MB round trips can exceed 10 seconds under the race
+	// detector when other packages share the CI runner. This checks data, not speed.
+	c.SetDeadline(time.Now().Add(time.Minute))
 	go func() {
 		c.Write(payload)
 		c.(*net.TCPConn).CloseWrite()
