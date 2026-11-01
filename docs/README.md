@@ -4,9 +4,9 @@
 
 ## English
 
-**The Japanese documents in [`ja/`](ja/) are the master**, and [`en/`](en/) contains English translations. If they differ, the Japanese version takes precedence.
+**The Japanese documents in [`ja/`](ja/) are the single source of truth (SSOT)**, and [`en/`](en/) contains English translations. If they differ, the Japanese version takes precedence.
 
-| Document | English | Japanese (master) | Contents |
+| Document | English | Japanese (SSOT) | Contents |
 |---|---|---|---|
 | User Guide | [en/user-guide.md](en/user-guide.md) | [ja/user-guide.md](ja/user-guide.md) | Architecture, binary deployment, SSH route checks, agent registration, usage examples, troubleshooting |
 | Operations Guide | [en/operations.md](en/operations.md) | [ja/operations.md](ja/operations.md) | Security model, restriction options, dedicated user and key, pinning the startup command, sudo configuration, audit log management |

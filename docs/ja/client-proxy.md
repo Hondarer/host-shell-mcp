@@ -1,5 +1,8 @@
 # クライアント経由 HTTP プロキシ
 
+> [!NOTE]
+> この文書が正本です。英訳は [../en/client-proxy.md](../en/client-proxy.md) にあります。内容が一致しない場合は日本語版が優先されます。
+
 接続先から外部へ直接通信できない場合に、クライアント側 bridge のネットワークで HTTP/HTTPS 通信を中継します。既存 SSH セッションの標準入出力だけを使用し、SSH ポート転送は不要です。既定では無効です。HTTP 以外の TCP 通信や逆向きの通信には [ポート転送](port-forward.md) を使用します。
 
 sshd の転送機能を使わないため、sshd の `no-port-forwarding` や `AllowTcpForwarding no` では止められません。接続先の `--client-proxy` を指定しなければ利用できません。

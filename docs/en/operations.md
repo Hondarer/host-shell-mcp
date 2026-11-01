@@ -1,7 +1,7 @@
 # host-shell Operations Guide
 
 > [!NOTE]
-> This is an English translation. The Japanese version ([../ja/operations.md](../ja/operations.md)) is the master and takes precedence if they differ.
+> This is an English translation. The Japanese version ([../ja/operations.md](../ja/operations.md)) is the single source of truth (SSOT) and takes precedence if they differ.
 
 This guide covers permission design, restriction options, and audit log management for operating `host-shell` safely.  
 For initial setup, see the [User Guide](user-guide.md); for detailed specifications, see the [Reference](reference.md).

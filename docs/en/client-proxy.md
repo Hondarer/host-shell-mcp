@@ -1,5 +1,8 @@
 # HTTP proxy through the client
 
+> [!NOTE]
+> This is an English translation. The Japanese version ([../ja/client-proxy.md](../ja/client-proxy.md)) is the single source of truth (SSOT) and takes precedence if they differ.
+
 When a target cannot access external services directly, its HTTP proxy aware applications can use the client bridge's network. Traffic shares the existing SSH standard input/output session; SSH port forwarding is unnecessary. The feature is disabled by default. For other TCP traffic or the opposite direction, use [port forwarding](port-forward.md).
 
 The feature does not use sshd forwarding, so sshd `no-port-forwarding` or `AllowTcpForwarding no` cannot stop it. It is available only when the target is started with `--client-proxy`.

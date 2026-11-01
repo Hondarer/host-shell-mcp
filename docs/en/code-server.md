@@ -1,7 +1,7 @@
 # Injecting code-server into a target
 
 > [!NOTE]
-> This is an English translation. The Japanese version ([../ja/code-server.md](../ja/code-server.md)) is the master and takes precedence if they differ.
+> This is an English translation. The Japanese version ([../ja/code-server.md](../ja/code-server.md)) is the single source of truth (SSOT) and takes precedence if they differ.
 
 host-shell can install and start [code-server](https://github.com/coder/code-server) (VS Code in the browser) on a target in a closed network without internet access, and open it in the local browser through [port forwarding](port-forward.md). The first install also injects default settings and extensions.
 

@@ -99,7 +99,7 @@ GitHub Releases include archives named with the tag, including the leading `v` (
 
 ### Documentation
 
-See [`docs/`](docs/README.md). **The Japanese documents (`docs/ja/`) are the master**, and `docs/en/` contains English translations.
+See [`docs/`](docs/README.md). **The Japanese documents (`docs/ja/`) are the single source of truth (SSOT)**, and `docs/en/` contains English translations.
 
 | Document | Contents |
 |---|---|

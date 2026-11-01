@@ -1,7 +1,7 @@
 # Port forwarding over SSH stdio
 
 > [!NOTE]
-> This is an English translation. The Japanese version ([../ja/port-forward.md](../ja/port-forward.md)) is the master and takes precedence if they differ.
+> This is an English translation. The Japanese version ([../ja/port-forward.md](../ja/port-forward.md)) is the single source of truth (SSOT) and takes precedence if they differ.
 
 Where SSH port forwarding (`-L`, `-R`, `-D`) is unavailable, host-shell forwards TCP ports using only the standard input/output of the existing SSH session. It shares the session with the [HTTP proxy through the client](client-proxy.md). The feature is disabled by default.
 

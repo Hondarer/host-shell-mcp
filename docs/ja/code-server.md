@@ -1,5 +1,8 @@
 # 接続先への code-server の注入
 
+> [!NOTE]
+> この文書が正本です。英訳は [../en/code-server.md](../en/code-server.md) にあります。内容が一致しない場合は日本語版が優先されます。
+
 インターネットに接続できない閉鎖環境の接続先へ、host-shell を通じて [code-server](https://github.com/coder/code-server) (ブラウザーで動く VS Code) を導入・起動し、[ポート転送](port-forward.md) で手元のブラウザーから開きます。初回の導入では、既定の設定と拡張機能も注入します。
 
 手順はスキル `host-shell-code-server` (`.agents/skills/host-shell-code-server/`) にまとめてあり、エージェントが MCP のツールで実行します。この文書は、利用者が事前に準備することと、注入される内容、注意点を説明します。

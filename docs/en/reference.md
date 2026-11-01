@@ -1,7 +1,7 @@
 # host-shell Reference
 
 > [!NOTE]
-> This is an English translation. The Japanese version ([../ja/reference.md](../ja/reference.md)) is the master and takes precedence if they differ.
+> This is an English translation. The Japanese version ([../ja/reference.md](../ja/reference.md)) is the single source of truth (SSOT) and takes precedence if they differ.
 
 This reference specifies the startup options, MCP server behavior, tool inputs and outputs, process management, and audit log format of `host-shell`.  
 For setup and usage examples, see the [User Guide](user-guide.md); for security and operational design, see the [Operations Guide](operations.md).

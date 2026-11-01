@@ -1,7 +1,7 @@
 # Connecting into containers
 
 > [!NOTE]
-> This is an English translation. The Japanese version ([../ja/container.md](../ja/container.md)) is the master and takes precedence if they differ.
+> This is an English translation. The Japanese version ([../ja/container.md](../ja/container.md)) is the single source of truth (SSOT) and takes precedence if they differ.
 
 host-shell runs not only on SSH targets but also inside running Linux containers (podman, docker, Kubernetes pods). The bridge only uses the command after `--` as a standard input/output channel, so writing `podman exec -i` or similar instead of ssh connects to host-shell inside the container.
 

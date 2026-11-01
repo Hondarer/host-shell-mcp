@@ -1,7 +1,7 @@
 # host-shell User Guide
 
 > [!NOTE]
-> This is an English translation. The Japanese version ([../ja/user-guide.md](../ja/user-guide.md)) is the master and takes precedence if they differ.
+> This is an English translation. The Japanese version ([../ja/user-guide.md](../ja/user-guide.md)) is the single source of truth (SSOT) and takes precedence if they differ.
 
 This guide explains how to deploy `host-shell` on a target, register it with an agent, and use it for common tasks.  
 For tool inputs and outputs, see the [Reference](reference.md); for security and operational design, see the [Operations Guide](operations.md).

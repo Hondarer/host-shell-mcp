@@ -1,5 +1,8 @@
 # コンテナーの中への接続
 
+> [!NOTE]
+> この文書が正本です。英訳は [../en/container.md](../en/container.md) にあります。内容が一致しない場合は日本語版が優先されます。
+
 host-shell は、SSH の接続先だけでなく、稼働中の Linux コンテナー (podman、docker、Kubernetes の pod) の中でも動きます。bridge は `--` の後に書いたコマンドを、標準入出力の通り道として使うだけです。そのため、ssh の代わりに `podman exec -i` などを書けば、コンテナーの中の host-shell に接続できます。
 
 ```mermaid

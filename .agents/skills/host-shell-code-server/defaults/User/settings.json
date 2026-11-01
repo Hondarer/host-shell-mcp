@@ -4,8 +4,8 @@
     // Use Visual Studio Dark for C/C++ as the color theme on first start
     "workbench.colorTheme": "Visual Studio Dark - C++",
     // Use the UDEV Gothic HSRFJPDOCEM font at 15px
-    "editor.fontFamily": "'UDEV Gothic HSRFJPDOCEM'",
-    "editor.fontSize": 15,
+    //"editor.fontFamily": "'UDEV Gothic HSRFJPDOCEM'",
+    //"editor.fontSize": 15,
     // Enable git auto fetch
     "git.autofetch": true,
     // Show all whitespace characters in the editor
@@ -13,5 +13,5 @@
     // Show trailing whitespace differences as changes in diffs
     "diffEditor.ignoreTrimWhitespace": false,
     // Path of the PlantUML JAR used by Markdown Preview Enhanced
-    "markdown-preview-enhanced.plantumlJarPath": "${env:PLANTUML_HOME}/plantuml.jar",
+    //"markdown-preview-enhanced.plantumlJarPath": "${env:PLANTUML_HOME}/plantuml.jar",
 }
