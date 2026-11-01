@@ -18,11 +18,13 @@
 
 前案件の残課題一覧 (同じフォルダーの `261101-code-server-followup-backlog.md`) の 2 件は、この案件ですべて解消したため、転記した項目はありません。
 
+この一覧の BL-001 は、継続案件 261101-socks-linger-close (同じフォルダーの `261101-socks-linger-close-discussion.md`、`261101-socks-linger-close-design.md`) で解消しました。「経緯と対処」に記録しています。
+
 ## 残課題一覧
 
 | 課題 ID | 題名 | 区分 | 優先度 / 影響度 | 状態 |
 | --- | --- | --- | --- | --- |
-| BL-001 | Windows で、SOCKS4 の拒否の応答がクライアントに届かない場合がある | 作業中摘出 | 低 | 未着手 |
+| BL-001 | Windows で、SOCKS4 の拒否の応答がクライアントに届かない場合がある | 作業中摘出 | 低 | 解消 (2026-11-01、261101-socks-linger-close) |
 
 ## BL-001 Windows で、SOCKS4 の拒否の応答がクライアントに届かない場合がある
 
@@ -46,3 +48,9 @@
 
 - **恒久対応案**: 応答を書いた後、閉じる前に書き込み側を閉じ (`CloseWrite`)、残りの受信データを短い期限付きで読み捨ててから閉じる (いわゆる lingering close) 処理を、拒否の応答を返して閉じるすべての経路に共通で入れます。テストは、Windows で繰り返し実行して確かめます。
 - **参考情報**: `internal/forward/socks.go` の `Manager.socks`、`internal/forward/forward_test.go` の `TestSOCKS` (352 行目付近)、CI run 41313691879。
+
+### 経緯と対処
+
+- **状態**: 解消 (2026-11-01、261101-socks-linger-close)
+- **原因の確認**: クライアントが応答を読む前に 100 ミリ秒待つと、作業環境の Windows で、SOCKS4 の要求と、SOCKS5 の未対応のアドレス種別の要求の両方が、毎回接続のリセットで失敗しました (Linux では成功)。上記の見立て (読み残しのある接続を閉じると RST になり、Windows が未読の応答を捨てる) を確かめました。
+- **対処**: `internal/forward/socks.go` に `lingerClose` を加え、`Manager.socks` で応答を書いて閉じる 8 つの経路すべてで使うようにしました。書き込み側を閉じ、残りの受信を最大 1 秒、64 KiB まで読み捨ててから閉じます。テスト `TestSOCKSRejectReplyDelivered` (待ってから応答を読む。修正前のコードは Windows で失敗) と `TestLingerClose` (期限と量の上限) を加えました。作業環境の Windows で、`TestSOCKS` と `TestSOCKSRejectReplyDelivered` を各 300 回繰り返して失敗は 0 回でした。

@@ -636,6 +636,92 @@ func TestRemotePortRanges(t *testing.T) {
 	}
 }
 
+// TestSOCKSRejectReplyDelivered reads rejection replies only after the bridge has had time to
+// close the connection with request bytes still unread; without lingerClose, Windows resets the
+// connection and discards the reply.
+func TestSOCKSRejectReplyDelivered(t *testing.T) {
+	s := start(t, sessionOptions{
+		specs:      []Spec{{SOCKS, "127.0.0.1", 0, "", 0}},
+		allowLocal: []string{"127.0.0.1"},
+		local:      true,
+		allowHost:  []string{"127.0.0.1"},
+	})
+	sp := s.forward(t, 1).ListenPort
+	for _, tc := range []struct {
+		name              string
+		greeting, request []byte
+		replyLen          int
+		want              byte
+	}{
+		{"SOCKS4", nil, []byte{4, 1, 0, 80, 127, 0, 0, 1, 0}, 8, 0x5b},
+		{"unsupported address type", []byte{5, 1, 0}, []byte{5, 1, 0, 9, 1, 2, 3, 4, 0, 80}, 10, socksAddressUnsupport},
+	} {
+		c := dial(t, "127.0.0.1", sp)
+		c.SetDeadline(time.Now().Add(10 * time.Second))
+		if tc.greeting != nil {
+			c.Write(tc.greeting)
+			if _, err := io.ReadFull(c, make([]byte, 2)); err != nil {
+				t.Fatalf("%s: method reply: %v", tc.name, err)
+			}
+		}
+		c.Write(tc.request)
+		time.Sleep(100 * time.Millisecond)
+		r := make([]byte, tc.replyLen)
+		if _, err := io.ReadFull(c, r); err != nil || r[1] != tc.want {
+			t.Fatalf("%s: reply %v %v", tc.name, r, err)
+		}
+		if n, err := c.Read(r); err != io.EOF {
+			t.Fatalf("%s: after the reply: %d bytes, %v (want EOF)", tc.name, n, err)
+		}
+		c.Close()
+	}
+}
+
+// TestLingerClose checks the limits that keep a rejected connection from being held.
+func TestLingerClose(t *testing.T) {
+	l, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	pair := func() (client, server net.Conn) {
+		client = dial(t, "127.0.0.1", l.Addr().(*net.TCPAddr).Port)
+		server, err := l.Accept()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return client, server
+	}
+	// A client that neither sends nor closes: lingerClose gives up at the timeout.
+	client, server := pair()
+	begin := time.Now()
+	lingerClose(server)
+	if d := time.Since(begin); d < socksLingerTimeout*8/10 || d > 3*socksLingerTimeout {
+		t.Fatalf("idle client: lingerClose took %v", d)
+	}
+	client.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := client.Read(make([]byte, 1)); err != io.EOF {
+		t.Fatalf("idle client: read %v (want EOF)", err)
+	}
+	client.Close()
+	// A client that keeps sending: lingerClose stops at the size limit, well before the timeout.
+	client, server = pair()
+	go func() {
+		chunk := make([]byte, 4096)
+		for {
+			if _, err := client.Write(chunk); err != nil {
+				return
+			}
+		}
+	}()
+	begin = time.Now()
+	lingerClose(server)
+	if d := time.Since(begin); d > socksLingerTimeout/2 {
+		t.Fatalf("sending client: lingerClose took %v", d)
+	}
+	client.Close()
+}
+
 // TestCloseRecordsUnlisten checks that Target.Close returns only after every listener's
 // forward_unlisten record is written, even when a closed connection's goroutine began removing it.
 func TestCloseRecordsUnlisten(t *testing.T) {

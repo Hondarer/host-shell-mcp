@@ -35,12 +35,12 @@
     - ✅ 3.2. 最終仕様における受入条件と整合性の確認
     - ✅ 3.3. 対話セッションにおける最終仕様の承認の受付 (第 2 ゲート: 作業着手の合意、Tetsuo Honda が対話「承認」で版 1 を承認、確認日時: 2026-11-01 23:38:17 JST)
 - 🔄 4. 承認された最終仕様に従った作業の実施
-    - 🔄 4.1. 作業ブランチの準備 ([Q-007](#q-007-作業ブランチと-pr-とマージの運用)) ← **CURRENT**
-    - ⏸️ 4.2. SOCKS の拒否の応答の後の閉じ方の修正 (`internal/forward/socks.go`) ([Q-001](#q-001-修正の方式)〜[Q-004](#q-004-読み捨てる量の上限))
-    - ⏸️ 4.3. テストの追加 (`internal/forward/forward_test.go`) ([Q-005](#q-005-テスト))
-    - ⏸️ 4.4. 確認 (作業環境の Windows と Linux)
-    - ⏸️ 4.5. 元案件の残課題一覧 (`docs/prompts/past/261101-session-socket-ci-backlog.md`) の状態の更新
-    - ⏸️ 4.6. make、main 向けドラフト PR の作成と全 OS CI の実行
+    - ✅ 4.1. 作業ブランチの準備 ([Q-007](#q-007-作業ブランチと-pr-とマージの運用)、コミット 963e01e、ドラフト PR #7)
+    - ✅ 4.2. SOCKS の拒否の応答の後の閉じ方の修正 (`internal/forward/socks.go`) ([Q-001](#q-001-修正の方式)〜[Q-004](#q-004-読み捨てる量の上限))
+    - ✅ 4.3. テストの追加 (`internal/forward/forward_test.go`) ([Q-005](#q-005-テスト))
+    - ✅ 4.4. 確認 (作業環境の Windows と Linux)
+    - ✅ 4.5. 元案件の残課題一覧 (`docs/prompts/past/261101-session-socket-ci-backlog.md`) の状態の更新
+    - 🔄 4.6. make、main 向けドラフト PR の作成と全 OS CI の実行 ← **CURRENT**
     - ⏸️ 4.7. 受入条件への適合確認 (全完確認)
     - ⏸️ 4.8. 残課題一覧 (`261101-socks-linger-close-backlog.md`) の再構築と整理
     - ⏸️ 4.9. 検討記録の `docs/prompts/past/` への移動、全 OS の CI の成功の確認とマージ
