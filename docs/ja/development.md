@@ -38,10 +38,11 @@ Table: make のターゲット
 
 ```text
 cmd/host-shell/        エントリー ポイント (フラグ解析、操作ログ初期化、stdio 起動、bridge サブコマンド振り分け)
-internal/server/       MCP サーバーの構築 (ポリシー解決、ツール登録、初期化案内)
-internal/policy/       ポリシー (ツール選択、許可パス、許可・拒否コマンド、接続先ホスト、環境変数除外、事前確認、伏せ字) の解析と検査
+internal/server/       MCP サーバーの構築 (ポリシー解決、実行時部品 (Session) の受け渡し、ツール登録、初期化案内)
+internal/policy/       ポリシー (ツール選択、許可パス、許可・拒否コマンド、接続先ホスト、環境変数除外、事前確認、伏せ字) の解析と検査、リモート転送の待ち受けポート範囲
 internal/tools/        各ツールの実装
   tools.go             ツール グループと登録、ポリシー検査・事前確認・伏せ字・操作ログ記録の共通ラッパー
+  args.go              引数解釈の共通処理 (文字コード、text / base64、until、出力上限)
   policy.go            入力型ごとのパス検査対象 (PathArgs)、事前確認 (multi round-trip)、伏せ字処理
   progress.go          進捗通知
   ansi.go              端末出力の整形 (エスケープ シーケンス除去と CR 処理)
@@ -54,17 +55,18 @@ internal/tools/        各ツールの実装
   search.go            search_grep、search_find、fs_manifest
   glob.go              glob 照合 (**、{a,b})
   system.go            exec_sudo、sys_get_info、proc_list
+  processes_*.go       proc_list の OS 別実装 (/proc、Windows API)
   net*.go              net_request_http、net_exchange、net_check、net_list_listeners、net_list_interfaces
   listen_*.go          net_list_listeners の OS 別実装 (/proc/net、netstat)
   admin.go             proc_kill、svc_*、log_query、disk_list の入出力定義と共通処理
   admin_*.go           OS 別管理実装 (systemd / journald、サービス コントロール マネージャー / イベント ログ)
   registry*.go         reg_read、reg_write、reg_delete (Windows)
 internal/bridge/       host-shell bridge (ローカル中継、transfer_push、transfer_pull、転送・プロキシ ツールの公開)
-internal/channel/      SSH stdio 上の多重化チャネル (機能ネゴシエーション、双方向ストリーム、フロー制御、診断履歴)
+internal/channel/      SSH stdio 上の多重化チャネル (機能ネゴシエーション、双方向ストリーム、フロー制御) と、その上の機能が共有する部品 (接続の応答と中継、失敗コードと理由の対応、状態ツールの履歴と出力型)
 internal/clientproxy/  クライアント経由 HTTP プロキシ (bridge 側の宛先検査と上流接続、接続先側の認証付きプロキシ)
 internal/forward/      ポート転送 (常設転送の書式解析、bridge 側の待ち受け・SOCKS5・forward_*、接続先側の発信と待ち受け)
-internal/proc/         子プロセス起動、OS 別シェル実行、プロセス ツリー終了、シグナル送信
-  proc_unix.go         Linux (プロセス グループ、SIGKILL)
+internal/proc/         子プロセス起動、OS 別シェル実行、プロセス ツリー終了、シグナル送信、生存確認
+  proc_unix.go         Linux (プロセス グループ、SIGKILL、シグナル名の表)
   proc_windows.go      Windows (cmd コマンドライン、taskkill /T)
 internal/pty/          疑似端末 (Linux は creack/pty、Windows は ConPTY API)
 internal/jobs/         長時間ジョブ管理 (パイプ・疑似端末、シグナル、終了済みジョブの破棄)
@@ -73,7 +75,7 @@ internal/textenc/      文字コード変換 (エンコーディング名解決�
   system_unix.go       Linux (ロケール環境変数から判定)
   system_windows.go    Windows (GetOEMCP、GetACP)
 internal/audit/        操作ログ (JSON Lines)
-internal/config/       設定と既定値
+internal/config/       起動オプションの設定値と既定値 (実行時に生成する部品は持たない)
 internal/askpass/      exec_sudo のパスワードを sudo -A へ渡す askpass ヘルパー
 internal/wire/         bridge と接続先ツールが共有する名前と転送データ型
 internal/testutil/     パッケージ横断のテスト用ヘルパー
@@ -95,6 +97,10 @@ docs/en/               文書の英語版 (docs/ja/ の英訳)
 - **出力サイズの上限設定**: ツールの出力は `limit` パッケージまたは件数上限により `--max-output` 程度に収め、切り詰めた場合は `truncated` フィールド等で明示します。
 - **機密引数のログ出力抑制**: 書き込み内容や標準入力など操作ログに残すべきでない引数は、入力型に `AuditArgs() any` (`audit.Redactor`) を実装してマスクします。
 - **ツール内部での文字コード変換**: ツールの入出力は常に UTF-8 とします。接続先の文字コードとの変換には `textenc` パッケージを、文字コード指定引数の解決には `textenc.ParseAuto` (自動判定を許す引数) または `textenc.ParseFixed` (既定の文字コードを持つ引数) を使用し、分割読み取り時はマルチバイト文字の境界を分断しないようにします。
+- **共通部品の再利用**: 同じ処理を各ツールで再実装しないでください。引数の解釈には `internal/tools/args.go` (`readCharset`、`writeCharset`、`decodeData`、`compileUntil`、`clampMax`)、BOM と UTF-16 の判定には `textenc.Choice.Detect`、UTF-8 以外の復号には `Encoding.DecodeUnlessUTF8`、出力の伏せ字とプロキシ認証情報のマスクには `d.redact` と `d.mask`、プロセスの生存確認には `proc.Alive` を使用します。
+- **設定と実行時部品の分離**: `config.Config` は起動オプションの値のみを持ちます。実行時に生成する部品 (クライアント プロキシとポート転送の接続先側) は `server.Session` を経由して `tools.Deps` に渡します。ポリシーは `server.NewPolicy` で 1 回だけ生成し、ツールとポート転送で共有します。
+- **bridge と接続先ツールの分離**: `internal/bridge` は `internal/tools` を import しません。両者が共有するクライアント名、転送単位、マニフェストのデータ型は `internal/wire` に置きます。
+- **フラグ引数を避けた API**: 動作を切り替える bool 引数は追加せず、関数を分ける (`CheckRead` と `CheckWrite`、`Signal` と `SignalGroup`、`ParseAuto` と `ParseFixed`) か、名前付きフィールドを持つ構造体 (`forward.TargetOptions`、`policy.Tool`) で受け取ります。
 - **MCP 情報のみでの自己完結**: ツール説明、引数説明、`help_get` 本文、エラー メッセージは、エージェントが次の操作を判断できるよう具体的に記述します。
 - **OS 差異の内部吸収**: OS 固有処理は `runtime.GOOS` 分岐または `_unix.go`、`_windows.go` ファイルに分離します。
 - **既定は無制限・明示指定のみ制限**: 起動オプションで指定されたポリシーのみを適用します。新規ツールで制限が回避されないよう、パス引数を持つ入力型には `PathArgs`、プログラムを起動する入力型には `CommandArgs` を実装し、ネットワーク接続先は `d.Policy.CheckHost` で検査します。
@@ -106,14 +112,14 @@ docs/en/               文書の英語版 (docs/ja/ の英訳)
 
 1. 入力型と出力型を定義し、`json` タグでフィールド名、`jsonschema` タグで説明を指定します。省略可能な引数には `omitempty` を付与します (付与しない引数は必須になります)。
 2. `func (d *Deps) xxx(ctx context.Context, req *mcp.CallToolRequest, in XxxInput) (*mcp.CallToolResult, XxxOutput, error)` のシグネチャでハンドラーを実装します。操作失敗時に `error` を返すと `isError: true` の結果に変換されます。
-3. `tools.Register` (または `registerNet` などの下位関数) 内で `add` を呼び出し、グループ (`groupFiles` など) とツール注釈 (`readOnly()`、`destructive()`、`network()`) を指定して登録します。注釈は `--read-only` と `--confirm destructive` の判定にも使用されます。
+3. `definitions` (または `registerNet`、`registerAdmin` などの下位関数) 内で `add` を呼び出し、グループ (`groupFiles` など) とツール注釈 (`readOnly()`、`destructive()`、`network()`) を指定して登録します。注釈は `--read-only` と `--confirm destructive` の判定にも使用されます。
 4. パス引数を受け取る場合は、入力型に `PathArgs() (read, write []string)` を実装します (`internal/tools/policy.go`)。
-5. `internal/server` に結合テストを追加します。
+5. `internal/server` に結合テストを追加します。ツールの呼び出しと結果の検証には `testutil.Call`、`testutil.CallErr` を使用します。
 6. 必要に応じて `internal/tools/help/*.md` の該当トピックと `Instructions` の案内文を更新します。
 7. [リファレンス](reference.md) にツール仕様とツール グループ表を追記します。
 
 ```go
-add(s, d, groupFiles, &mcp.Tool{
+add(r, groupFiles, &mcp.Tool{
     Name:        "fs_example",
     Description: "One-line description for agents.",
     Annotations: readOnly(),
@@ -127,6 +133,7 @@ add(s, d, groupFiles, &mcp.Tool{
 ## テスト
 
 `internal/server` のテストは、インメモリ トランスポート (`mcp.NewInMemoryTransports`) でサーバーとクライアントを接続して各ツールを呼び出します。`connectWith` でポリシーとクライアント設定 (elicitation、進捗通知の受信) を指定できます。  
+パッケージをまたいで使うテスト用ヘルパー (ツール呼び出しの `Call`、ツール名一覧の `ToolNames` と `ToolSet`、空きポートの `FreePort`、条件待ちの `WaitFor`、`exec_sudo` を使うテスト バイナリ向けの `Main` など) は `internal/testutil` に置き、各テストで再実装しないでください。  
 `internal/bridge` のテストは、「エージェント - bridge - 接続先 host-shell」の 3 者をインメモリ トランスポートで接続し、中継とファイル転送を検証します。  
 OS ごとに挙動が異なるツールは `runtime.GOOS` でテスト用コマンドを切り替え、実行環境に存在しない機能 (systemd のないコンテナー環境での `svc_list` など) は失敗とせずスキップしてログに記録します。
 
@@ -204,6 +211,7 @@ Windows 環境ではウイルス対策ソフトが Go 製バイナリを誤検�
 利用者向けの仕様は [クライアント経由 HTTP プロキシ](client-proxy.md) および [SSH stdio 経由のポート転送](port-forward.md) を参照してください。
 
 - **`internal/channel/`**: `bridge` と接続先の `mcp.Connection` ラッパーとして `host-shell/channel/*` 通知を処理し、通常の MCP 層へは渡しません。接続開始時のネゴシエーションでは、`bridge` が要求する機能 (`http_proxy`、`forward_local`、`forward_remote`) と接続先が許可する機能を `hello` フレームで交換し、常設リモート転送の待ち受け (`listen`) を完了させてから `ready` フレームで MCP の初期化へ進みます。接続先は許可オプションが指定されていない場合でも最初のメッセージを確認し、通常の MCP メッセージであればそのまま処理します。データ ストリームは両端のどちらからでも開始でき、接続 ID は `bridge` 起点が奇数、接続先起点が偶数を使用します。なお、接続先側から開けるストリームは `bridge` が `listen` で登録したリモート転送への着信のみであり、接続先から任意の宛先を指定して `bridge` に発信させることはできません。
+- **共有部品**: `internal/channel/` は、その上の機能が共通に使う部品も提供します。着信ストリームへの応答 (発信、失敗時の拒否、受け付け) は `Incoming.Answer`、双方向の中継 (半クローズの伝達、アイドル タイムアウト、残存時間) は `Relay`、失敗コードから結果 (`allowed`、`denied`、`failed`) と固定の理由文字列への対応は `Describe` が担います。状態ツールの出力は `EventHead`、`Outcome`、`Recent` を埋め込んで構成し、`Snapshot` で履歴とセッション状態から生成します。理由は固定文字列とし、認証情報を含みうるネットワーク エラーの文字列は記録しません。
 - **`internal/clientproxy/`**: `internal/channel/` の上に、認証付きローカル HTTP プロキシ、上流接続、および診断機能 (`proxy_status`) を実装します。
 - **`internal/forward/`**: `internal/channel/` の上に、ローカル転送、リモート転送、SOCKS5、および転送管理ツール (`forward_*`) を実装します。
 

@@ -38,10 +38,11 @@ To specify a version explicitly, run `make dist VERSION=1.0.0`.
 
 ```text
 cmd/host-shell/        Entry point (flag parsing, audit log init, stdio server startup, bridge subcommand dispatch)
-internal/server/       MCP server construction (policy resolution, tool registration, initialization guidance)
-internal/policy/       Policy parsing and checks (tool selection, allowed paths, allowed/denied commands, destination hosts, env var filtering, confirmation, redaction)
+internal/server/       MCP server construction (policy resolution, passing runtime components (Session), tool registration, initialization guidance)
+internal/policy/       Policy parsing and checks (tool selection, allowed paths, allowed/denied commands, destination hosts, env var filtering, confirmation, redaction), remote forward listen port ranges
 internal/tools/        Tool implementations
   tools.go             Tool groups, registration, and common wrapper for policy checks, confirmation, redaction, and audit logging
+  args.go              Shared argument handling (charsets, text / base64, until, output limits)
   policy.go            Per-input path extraction (PathArgs), confirmation (multi round-trip), redaction
   progress.go          Progress notifications
   ansi.go              Terminal output cleanup (escape sequence stripping and CR handling)
@@ -54,17 +55,18 @@ internal/tools/        Tool implementations
   search.go            search_grep, search_find, fs_manifest
   glob.go              Glob matching (**, {a,b})
   system.go            exec_sudo, sys_get_info, proc_list
+  processes_*.go       OS-specific proc_list implementations (/proc, Windows API)
   net*.go              net_request_http, net_exchange, net_check, net_list_listeners, net_list_interfaces
   listen_*.go          OS-specific net_list_listeners implementations (/proc/net, netstat)
   admin.go             Input/output types and shared logic for proc_kill, svc_*, log_query, disk_list
   admin_*.go           OS-specific administration (systemd / journald, Service Control Manager / Event Log)
   registry*.go         reg_read, reg_write, reg_delete (Windows)
 internal/bridge/       host-shell bridge (local relay, transfer_push, transfer_pull, proxy and forward tools)
-internal/channel/      Multiplexed channel over SSH stdio (feature negotiation, bidirectional streams, flow control, diagnostic history)
+internal/channel/      Multiplexed channel over SSH stdio (feature negotiation, bidirectional streams, flow control) and parts shared by the features on top of it (answering and relaying connections, mapping failure codes to reasons, status-tool history and output types)
 internal/clientproxy/  HTTP proxy through the client (bridge-side destination checks and upstream connections, target-side authenticated proxy)
 internal/forward/      Port forwarding (persistent forward syntax, bridge listeners, SOCKS5 and forward_*, target-side connections and listeners)
-internal/proc/         Child process spawning, OS shell execution, process tree termination, signal delivery
-  proc_unix.go         Linux (process groups, SIGKILL)
+internal/proc/         Child process spawning, OS shell execution, process tree termination, signal delivery, liveness checks
+  proc_unix.go         Linux (process groups, SIGKILL, signal name table)
   proc_windows.go      Windows (cmd command lines, taskkill /T)
 internal/pty/          Pseudo-terminals (creack/pty on Linux, ConPTY API on Windows)
 internal/jobs/         Background job management (pipes/PTYs, signals, pruning finished jobs)
@@ -73,7 +75,7 @@ internal/textenc/      Character encoding conversion (name resolution, detection
   system_unix.go       Linux (detected from locale environment variables)
   system_windows.go    Windows (GetOEMCP, GetACP)
 internal/audit/        Audit log (JSON Lines)
-internal/config/       Configuration and defaults
+internal/config/       Startup option values and defaults (no components created at runtime)
 internal/askpass/      Askpass helper that passes the exec_sudo password to sudo -A
 internal/wire/         Names and transfer payloads shared by the bridge and target tools
 internal/testutil/     Test helpers shared across packages
@@ -95,6 +97,10 @@ Follow these rules when modifying the codebase.
 - **Enforce output size limits**: Cap tool output around `--max-output` using the `limit` package or entry count limits, and indicate truncation via fields such as `truncated`.
 - **Redact sensitive arguments in audit logs**: For arguments that must not be logged in full (such as written file content or standard input), implement `AuditArgs() any` (`audit.Redactor`) on the input type.
 - **Convert encodings inside tools**: Tool inputs and outputs are always UTF-8. Use the `textenc` package for target encoding conversion and `textenc.ParseAuto` (arguments that allow detection) or `textenc.ParseFixed` (arguments with a default encoding) for encoding arguments, and avoid splitting multibyte characters across chunk boundaries.
+- **Reuse shared helpers**: Do not reimplement the same processing in each tool. Use `internal/tools/args.go` (`readCharset`, `writeCharset`, `decodeData`, `compileUntil`, `clampMax`) for arguments, `textenc.Choice.Detect` for BOM and UTF-16 detection, `Encoding.DecodeUnlessUTF8` for decoding non-UTF-8 data, `d.redact` and `d.mask` for output redaction and masking the proxy credential, and `proc.Alive` for process liveness.
+- **Separate settings from runtime components**: `config.Config` holds startup option values only. Components created at runtime (the client proxy and the target side of port forwarding) reach `tools.Deps` through `server.Session`. Build the policy once with `server.NewPolicy` and share it between the tools and port forwarding.
+- **Keep the bridge independent of the target tools**: `internal/bridge` does not import `internal/tools`. The client name, transfer chunk size and manifest types both use live in `internal/wire`.
+- **Avoid flag parameters in APIs**: Do not add bool parameters that switch behavior. Split the function (`CheckRead` and `CheckWrite`, `Signal` and `SignalGroup`, `ParseAuto` and `ParseFixed`) or take a struct with named fields (`forward.TargetOptions`, `policy.Tool`).
 - **Keep MCP guidance self-contained**: Write tool descriptions, argument descriptions, `help_get` topics, and error messages concretely enough for agents to determine their next action without external docs.
 - **Isolate OS differences internally**: Place OS-specific logic behind `runtime.GOOS` checks or in `_unix.go` and `_windows.go` files.
 - **Unrestricted by default, restricted only when specified**: Apply only policies explicitly passed via startup flags. To prevent new tools from bypassing restrictions, implement `PathArgs` on input types taking paths, implement `CommandArgs` on input types spawning programs, and validate network destinations with `d.Policy.CheckHost`.
@@ -106,14 +112,14 @@ Follow these rules when modifying the codebase.
 
 1. Define input and output structs with `json` tags for field names and `jsonschema` tags for descriptions. Mark optional arguments with `omitempty` (fields without `omitempty` are required).
 2. Implement the handler with signature `func (d *Deps) xxx(ctx context.Context, req *mcp.CallToolRequest, in XxxInput) (*mcp.CallToolResult, XxxOutput, error)`. Returning a non-nil `error` produces a tool result with `isError: true`.
-3. Register the tool via `add` in `tools.Register` (or a group helper such as `registerNet`) with a tool group (`groupFiles`, etc.) and annotations (`readOnly()`, `destructive()`, `network()`). Annotations also govern `--read-only` and `--confirm destructive`.
+3. Register the tool via `add` in `definitions` (or a group helper such as `registerNet` or `registerAdmin`) with a tool group (`groupFiles`, etc.) and annotations (`readOnly()`, `destructive()`, `network()`). Annotations also govern `--read-only` and `--confirm destructive`.
 4. If the input struct takes file paths, implement `PathArgs() (read, write []string)` (`internal/tools/policy.go`).
-5. Add integration tests in `internal/server`.
+5. Add integration tests in `internal/server`. Use `testutil.Call` and `testutil.CallErr` to call tools and check results.
 6. Update the relevant topic in `internal/tools/help/*.md` and `Instructions` if needed.
 7. Document the tool specification and group table in the [Reference](reference.md).
 
 ```go
-add(s, d, groupFiles, &mcp.Tool{
+add(r, groupFiles, &mcp.Tool{
     Name:        "fs_example",
     Description: "One-line description for agents.",
     Annotations: readOnly(),
@@ -127,6 +133,7 @@ Format error messages as a single sentence stating both cause and remedy (for ex
 ## Testing
 
 Tests in `internal/server` connect a server and client over in-memory transports (`mcp.NewInMemoryTransports`) to exercise each tool. Use `connectWith` to configure policies and client capabilities (elicitation and progress notifications).  
+Test helpers used across packages (`Call` for tool calls, `ToolNames` and `ToolSet` for tool lists, `FreePort` for unused ports, `WaitFor` for polling, `Main` for test binaries that run `exec_sudo`, and more) live in `internal/testutil`; do not reimplement them in individual tests.  
 Tests in `internal/bridge` connect an agent, `bridge`, and target `host-shell` over in-memory transports to verify relaying and file transfers.  
 For tools with OS-dependent behavior, branch test commands on `runtime.GOOS`, and skip (rather than fail) tests when required system services are absent (such as `svc_list` in a container without systemd).
 
@@ -204,6 +211,7 @@ On Windows, antivirus software may falsely flag unsigned Go binaries; consider c
 For user-facing specifications, see [HTTP proxy through the client](client-proxy.md) and [Port forwarding over SSH stdio](port-forward.md).
 
 - **`internal/channel/`**: Wraps `mcp.Connection` on both `bridge` and the target to intercept `host-shell/channel/*` notifications before they reach the MCP layer. During startup negotiation, `hello` frames exchange the features requested by `bridge` (`http_proxy`, `forward_local`, `forward_remote`) and permitted by the target; persistent remote forward listeners are registered via `listen` frames before `ready` proceeds to standard MCP initialization. Even when no permission flags are set on the target, it inspects the first incoming message and passes standard MCP traffic through unchanged. Either peer can open data streams (`bridge` uses odd connection IDs and the target uses even IDs), but the target can only open incoming connections for remote forwards registered by `bridge` via `listen`—it cannot specify arbitrary destinations or cause `bridge` to dial out to unapproved hosts.
+- **Shared parts**: `internal/channel/` also provides parts the features on top of it share. `Incoming.Answer` answers an incoming stream (dial, reject on failure, accept), `Relay` relays both directions (passing half-closes on, idle timeout, linger), and `Describe` maps failure codes to results (`allowed`, `denied`, `failed`) and fixed reason strings. Status tool outputs embed `EventHead`, `Outcome` and `Recent`, and `Snapshot` builds them from the history and the session state. Reasons are fixed strings; network error text, which can contain credentials, is never recorded.
 - **`internal/clientproxy/`**: Implements the authenticated local HTTP proxy, upstream dialing, and diagnostics (`proxy_status`) on top of `internal/channel/`.
 - **`internal/forward/`**: Implements local forwards, remote forwards, SOCKS5, and the forwarding management tools (`forward_*`) on top of `internal/channel/`.
 
