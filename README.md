@@ -34,7 +34,7 @@ Table: Comparison with client-side SSH MCP servers
 - **Network diagnostics and requests**: Supports HTTP requests from the target (`net_request_http`, including the Docker API over Unix sockets), TCP send/receive (`net_exchange`), DNS/connectivity/certificate checks (`net_check`), and listening port inspection (`net_list_listeners`).
 - **Unified OS administration**: Manages services (systemd / Windows services), system logs (journald / Event Log), process termination, disk usage, and the Windows registry through a consistent interface.
 - **Direct file transfer**: With local `host-shell bridge`, transfers files and directories directly without passing through the agent context (`transfer_push`, `transfer_pull`), verifying SHA-256 hashes and skipping unchanged files.
-- **Port forwarding without SSH forwarding**: `host-shell bridge` can forward TCP ports both ways and serve SOCKS5 over the same SSH session, when the target permits it (`--forward-local`, `--forward-remote`, `--forward-socks`, `forward_open`).
+- **Port forwarding and HTTP proxy without SSH forwarding**: When enabled on both ends, `host-shell bridge` can forward TCP ports in both directions, serve a SOCKS5 proxy, and relay target HTTP/HTTPS traffic through the client network over the same SSH session (`--forward-local`, `--forward-remote`, `--forward-socks`, `forward_open`, `--proxy`).
 - **Progress notifications and cancellation**: Reports progress for long commands, downloads, and file transfers via MCP notifications, and terminates execution when the agent cancels a request.
 - **Policy restrictions via startup options**: Runs with the connecting user's permissions by default; startup options can restrict published tool groups, enforce read-only mode, limit allowed paths/commands/hosts, require user confirmation, and mask secrets.
 - **Self-describing agent guidance**: Initialize instructions, tool descriptions, and the `help_get` tool allow agents to choose appropriate tools without user instructions.
@@ -106,20 +106,19 @@ See [`docs/`](docs/README.md). **The Japanese documents (`docs/ja/`) are the sin
 | [User Guide](docs/en/user-guide.md) | Architecture, binary deployment, SSH route checks, agent registration, usage examples, troubleshooting |
 | [Operations Guide](docs/en/operations.md) | Security model, restriction options, dedicated user and key, pinning the startup command, sudo configuration, audit log management |
 | [Reference](docs/en/reference.md) | Startup options, policy restrictions, MCP specification, tool inputs and outputs, bridge, process management, audit log format, limitations |
-| [Development Guide](docs/en/development.md) | Building, source layout, design rules, adding tools, testing |
-| [HTTP proxy through the client](docs/en/client-proxy.md) | Routing target HTTP/HTTPS through the bridge's network |
-| [Port forwarding](docs/en/port-forward.md) | Local forwards, remote forwards and SOCKS5 over SSH stdio |
+| [Development Guide](docs/en/development.md) | Building, source layout, design rules, adding tools, testing, releases |
+| [HTTP proxy through the client](docs/en/client-proxy.md) | Routing target HTTP/HTTPS traffic through the bridge's network |
+| [Port forwarding](docs/en/port-forward.md) | Local forwards, remote forwards, and SOCKS5 over SSH stdio |
+| [Injecting code-server](docs/en/code-server.md) | Installing code-server with default settings and extensions on a closed-network target and opening it via a local forward |
+| [Connecting into containers](docs/en/container.md) | Deploying and registering `host-shell` inside a running Podman, Docker, or Kubernetes container via `exec -i` |
 
 Table: Documentation
-
-For HTTP proxy aware target applications, an optional [client proxy](docs/en/client-proxy.md) routes HTTP/HTTPS through the bridge over the same SSH session. Both peers must enable it explicitly, and the bridge requires destination allow rules.
-
-Optional [port forwarding](docs/en/port-forward.md) provides local forwards, remote forwards and SOCKS5 over the same session. The target permits each direction with `--allow-forward-local` or `--allow-forward-remote`. Neither feature uses sshd forwarding, so sshd's `no-port-forwarding` does not stop them; leave the target options out of `command=` to forbid them.
 
 ### Security
 
 When used over SSH, `host-shell` operates with the same user permissions as a regular SSH session; it does not grant additional OS privileges or require an externally reachable listening port. Existing SSH authentication, OS file permissions, and `sudoers` rules continue to apply.  
 Beyond these SSH and OS controls, `host-shell` provides startup options to narrow the operations available to an agent: read-only access (`--read-only`), tool selection (`--tools`), file access restrictions (`--allow-path`), and per-call user confirmation (`--confirm`). Dedicated OS users and SSH keys can be combined with these options to tailor access to your workflow.  
+Optional [client HTTP proxy](docs/en/client-proxy.md) and [port forwarding](docs/en/port-forward.md) run over the MCP channel rather than `sshd` forwarding, so `no-port-forwarding` and `AllowTcpForwarding no` in `sshd` do not block them. Both features are disabled by default and require explicit target flags (`--client-proxy`, `--allow-forward-local`, `--allow-forward-remote`); omit those flags from `command=` in `authorized_keys` when you want to prohibit them.  
 See the [Operations Guide](docs/en/operations.md) for details.
 
 ## 日本語
@@ -154,7 +153,7 @@ Table: クライアント側の SSH 系 MCP との違い
 - **ネットワーク診断・通信ツール**: 接続先からの HTTP リクエスト (`net_request_http`、Unix ソケットの Docker API を含む)、TCP 送受信 (`net_exchange`)、名前解決・疎通・証明書確認 (`net_check`)、待ち受けポート一覧 (`net_list_listeners`) を提供します。
 - **OS 管理の統一インターフェイス**: サービス (systemd / Windows サービス)、システム ログ (journald / イベント ログ)、プロセス停止、ディスク使用量、Windows レジストリを共通の形式で操作できます。
 - **ローカル・接続先間のファイル転送**: ローカル側に `host-shell bridge` を挟むと、エージェントのコンテキストを経由せずにファイルやディレクトリを直接転送できます (`transfer_push`、`transfer_pull`)。SHA-256 で照合し、同一内容のファイルは転送を省略します。
-- **SSH の転送を使わないポート転送**: 接続先が許可すると、`host-shell bridge` が同じ SSH セッションで双方向の TCP ポート転送と SOCKS5 を提供します (`--forward-local`、`--forward-remote`、`--forward-socks`、`forward_open`)。
+- **SSH 転送に依存しないポート転送・HTTP プロキシ**: 両端で明示的に有効化すると、`host-shell bridge` が同じ SSH セッション上で双方向の TCP ポート転送、SOCKS5、およびクライアント側ネットワーク経由の HTTP/HTTPS プロキシを提供します (`--forward-local`、`--forward-remote`、`--forward-socks`、`forward_open`、`--proxy`)。
 - **進捗通知とキャンセル**: 長時間コマンド、ダウンロード、ファイル転送の進捗を MCP 通知で送り、エージェントが要求をキャンセルすると処理を停止します。
 - **起動オプションによるポリシー制限**: 既定では接続ユーザーの全権限で動作し、必要に応じて公開ツール グループ、読み取り専用、許可パス、許可コマンド、接続先ホスト、事前確認、機密情報の伏せ字化を起動オプションで制限できます。
 - **エージェント向けの自己記述案内**: 初期化応答、ツール説明、`help_get` ツールにより、利用者が手順を指示しなくてもエージェント自身が適切なツールを選択できます。
@@ -226,18 +225,17 @@ GitHub Release には、タグ名の先頭の `v` を残したアーカイブ (`
 | [利用ガイド](docs/ja/user-guide.md) | 仕組み、バイナリ配置、SSH 経路の確認、エージェントへの登録、利用例、トラブルシューティング |
 | [運用ガイド](docs/ja/operations.md) | セキュリティ設計、制限オプション、専用ユーザーと鍵、起動コマンドの固定、sudo 設定、操作ログ管理 |
 | [リファレンス](docs/ja/reference.md) | 起動オプション、制限 (方針)、MCP 仕様、各ツールの入出力、bridge、プロセス管理、操作ログ形式、制限事項 |
-| [開発ガイド](docs/ja/development.md) | ビルド、ソース構成、設計規約、ツールの追加手順、テスト |
+| [開発ガイド](docs/ja/development.md) | ビルド、ソース構成、設計規約、ツールの追加手順、テスト、リリース |
 | [クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |
 | [ポート転送](docs/ja/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
+| [code-server の導入](docs/ja/code-server.md) | 閉鎖環境の接続先への code-server・既定設定・拡張機能の導入とローカル転送での利用 |
+| [コンテナーへの接続](docs/ja/container.md) | 稼働中の Podman、Docker、Kubernetes コンテナー内への `exec -i` による `host-shell` の配置と登録 |
 
 Table: ドキュメント
-
-接続先の HTTP プロキシ対応アプリには、同じ SSH セッションを通じて bridge のネットワークを利用する [クライアントプロキシ](docs/ja/client-proxy.md) も用意しています。両端の明示有効化と、bridge 側の宛先許可リストが必要です。
-
-同じセッションでローカル転送・リモート転送・SOCKS5 を行う [ポート転送](docs/ja/port-forward.md) も用意しています。接続先は `--allow-forward-local`、`--allow-forward-remote` で方向ごとに許可します。いずれの機能も sshd の転送を使わないため、sshd の `no-port-forwarding` では止められません。禁止する場合は接続先のオプションを `command=` に書かないでください。
 
 ### 安全性
 
 SSH 経由で使用する `host-shell` は、通常の SSH 接続と同じユーザー権限で動作し、追加の OS 権限や外部から接続可能な待ち受けポートを必要としません。既存の SSH 認証、OS のファイル権限、sudoers による制御がそのまま適用されます。  
 さらに、SSH と OS による制御に加え、エージェントに許可する操作を絞り込む機能を備えています。起動オプションで、読み取り専用化 (`--read-only`)、公開ツールの選択 (`--tools`)、ファイルのアクセス範囲の制限 (`--allow-path`)、呼び出しごとのユーザー確認 (`--confirm`) を設定できます。専用ユーザーや専用 SSH 鍵と組み合わせ、用途に応じた操作範囲を設定できます。  
+また、[クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md) と [ポート転送](docs/ja/port-forward.md) は `sshd` の転送機能ではなく MCP の通信路を使用するため、`sshd` の `no-port-forwarding` や `AllowTcpForwarding no` では制限されません。いずれも既定では無効であり、接続先で `--client-proxy`、`--allow-forward-local`、`--allow-forward-remote` を指定した場合にのみ有効になります。禁止する場合は、`authorized_keys` の `command=` にこれらのオプションを指定しないでください。  
 詳細は [運用ガイド](docs/ja/operations.md) を参照してください。

@@ -54,14 +54,14 @@ internal/tools/        Tool implementations
   search.go            search_grep, search_find, fs_manifest
   glob.go              Glob matching (**, {a,b})
   system.go            exec_sudo, sys_get_info, proc_list
-  net.go               net_request_http, net_exchange, net_check, net_list_listeners, net_list_interfaces
+  net*.go              net_request_http, net_exchange, net_check, net_list_listeners, net_list_interfaces
   listen_*.go          OS-specific net_list_listeners implementations (/proc/net, netstat)
   admin.go             Input/output types and shared logic for proc_kill, svc_*, log_query, disk_list
   admin_*.go           OS-specific administration (systemd / journald, Service Control Manager / Event Log)
   registry*.go         reg_read, reg_write, reg_delete (Windows)
-internal/bridge/       host-shell bridge (local relay, transfer_push, transfer_pull, forward tools)
+internal/bridge/       host-shell bridge (local relay, transfer_push, transfer_pull, proxy and forward tools)
 internal/channel/      Multiplexed channel over SSH stdio (feature negotiation, bidirectional streams, flow control, diagnostic history)
-internal/clientproxy/  HTTP proxy through the client (bridge-side destination checks and connections, target-side authenticated proxy)
+internal/clientproxy/  HTTP proxy through the client (bridge-side destination checks and upstream connections, target-side authenticated proxy)
 internal/forward/      Port forwarding (persistent forward syntax, bridge listeners, SOCKS5 and forward_*, target-side connections and listeners)
 internal/proc/         Child process spawning, OS shell execution, process tree termination, signal delivery
   proc_unix.go         Linux (process groups, SIGKILL)
@@ -143,7 +143,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs the following jobs on every pus
 
 Table: CI jobs
 
-Test output filters `go test -v` to show only result lines and indented "file.go:line:" lines. The latter hold the reasons for failures and skips, and test logs. Lines from files other than tests (such as `testing.go`, which reports cleanup failures) are kept too.
+Test output filters `go test -v` to show only result lines and indented `file.go:line:` lines, which contain failure and skip reasons as well as test log messages (including lines from non-test files such as `testing.go` for cleanup errors).
 
 ## Releases
 
@@ -196,31 +196,29 @@ Table: Supported operating systems
 Older OS versions are unsupported (see [Go MinimumRequirements](https://go.dev/wiki/MinimumRequirements)).  
 On Windows, antivirus software may falsely flag unsigned Go binaries; consider code signing when distributing executables.
 
-## Proxy relay structure
+## Multiplexed channel, proxy, and port forwarding architecture
 
-[HTTP proxy through the client](client-proxy.md) describes startup, restrictions, proxy_status, environment precedence, and limits.
+For user-facing specifications, see [HTTP proxy through the client](client-proxy.md) and [Port forwarding over SSH stdio](port-forward.md).
 
-[Port forwarding over SSH stdio](port-forward.md) describes forward startup, how requests are matched with permissions, tools, and limits.
-
-internal/channel/ provides Connection wrappers on the bridge and the target that consume `host-shell/channel/*` notifications without passing them to ordinary MCP. In negotiation, hello carries the features the bridge requests (`http_proxy`, `forward_local`, `forward_remote`) and the features the target permits; persistent remote forward listeners are set up with listen, then ready proceeds to MCP initialization. The target inspects the first message even without permissions and handles ordinary MCP unchanged. Either side may open streams, with odd connection IDs from the bridge and even IDs from the target. The target can only open incoming remote forwards that the bridge registered with listen; it cannot name destinations, so it cannot make the bridge connect anywhere else.
-
-internal/clientproxy/ implements the authenticated HTTP proxy, upstream connections and diagnostics, and internal/forward/ implements port forwarding, both on top of internal/channel/.
+- **`internal/channel/`**: Wraps `mcp.Connection` on both `bridge` and the target to intercept `host-shell/channel/*` notifications before they reach the MCP layer. During startup negotiation, `hello` frames exchange the features requested by `bridge` (`http_proxy`, `forward_local`, `forward_remote`) and permitted by the target; persistent remote forward listeners are registered via `listen` frames before `ready` proceeds to standard MCP initialization. Even when no permission flags are set on the target, it inspects the first incoming message and passes standard MCP traffic through unchanged. Either peer can open data streams (`bridge` uses odd connection IDs and the target uses even IDs), but the target can only open incoming connections for remote forwards registered by `bridge` via `listen`—it cannot specify arbitrary destinations or cause `bridge` to dial out to unapproved hosts.
+- **`internal/clientproxy/`**: Implements the authenticated local HTTP proxy, upstream dialing, and diagnostics (`proxy_status`) on top of `internal/channel/`.
+- **`internal/forward/`**: Implements local forwards, remote forwards, SOCKS5, and the forwarding management tools (`forward_*`) on top of `internal/channel/`.
 
 ## Maintaining the code-server injection skill
 
-The scripts in `.agents/skills/host-shell-code-server/` are copies of the download, install, start and uninstall scripts and shared code of [code-server-launcher](https://github.com/Hondarer/code-server-launcher) (MIT License), extended as follows. The user documentation is [Injecting code-server](code-server.md).
+The scripts in `.agents/skills/host-shell-code-server/` are adapted from `download`, `install`, `start`, `uninstall`, and shared helpers in [code-server-launcher](https://github.com/Hondarer/code-server-launcher) (MIT License) with the following changes for `host-shell` (for user documentation, see [Injecting code-server](code-server.md)):
 
-- Linux arm64 support, and listening fixed to `127.0.0.1`
-- No `python3`, `openssl`, `ss` or `curl` on (Linux) targets, for minimal closed environments
-- The password is never printed, because tool results stay in the conversation
-- The installation name is `host-shell-code-server`, separate from the launcher's
-- Default settings and extensions injected on the first install (`defaults/` matches the defaults of code-server-container)
+- Added Linux arm64 support and fixed the bind address to `127.0.0.1`
+- Removed dependencies on `python3`, `openssl`, `ss`, and `curl` on Linux targets to support minimal closed-network environments
+- Suppressed printing the password to standard output so it never enters the agent conversation history
+- Renamed the installation directory to `host-shell-code-server` to avoid colliding with `code-server-launcher`
+- Applied default settings and extensions on the initial install (`defaults/` matches the defaults in `code-server-container`)
 
-Script comments and output are in English and the files contain only ASCII characters, so that Windows PowerShell 5.1 reads them without a BOM.
+Keep script comments and output in English using ASCII characters only so Windows PowerShell 5.1 can read the scripts without a UTF-8 BOM.
 
-To update the code-server version:
+To update the bundled code-server version:
 
-1. Update `CODE_SERVER_VERSION`, `CODE_SERVER_VSCODE_VERSION` (the `Code` version in the release notes) and the SHA-256 of the three release archives (linux-amd64, linux-arm64, windows-amd64; the GitHub Releases digests) in `version.env`.
-2. Verify fetching, sending, installing, starting, forwarding and logging in on Linux and Windows targets. code-server for Windows is not tested by the upstream CI, so check it for every version.
-3. Update the version in `docs/*/code-server.md`.
+1. Update `CODE_SERVER_VERSION`, `CODE_SERVER_VSCODE_VERSION` (the `Code` version in the upstream release notes), and the SHA-256 digests of the three release archives (`linux-amd64`, `linux-arm64`, `windows-amd64`) in `version.env`.
+2. Verify downloading (`download`), uploading (`transfer_push`), installing (`install`), starting (`start`), port forwarding, and logging in on both Linux and Windows targets (because upstream CI does not test the Windows build of code-server automatically, verify it on Windows for every release).
+3. Update the version numbers documented in `docs/ja/code-server.md` and `docs/en/code-server.md`.
 

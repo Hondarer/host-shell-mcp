@@ -3,9 +3,9 @@
 > [!NOTE]
 > This is an English translation. The Japanese version ([../ja/code-server.md](../ja/code-server.md)) is the single source of truth (SSOT) and takes precedence if they differ.
 
-host-shell can install and start [code-server](https://github.com/coder/code-server) (VS Code in the browser) on a target in a closed network without internet access, and open it in the local browser through [port forwarding](port-forward.md). The first install also injects default settings and extensions.
+This guide explains how to install and start [code-server](https://github.com/coder/code-server) (VS Code in the browser) on a target machine in a closed network without internet access through `host-shell`, and open it in a local browser via [port forwarding](port-forward.md). On the initial installation, default settings and extensions are also applied.
 
-The procedure is the `host-shell-code-server` skill (`.agents/skills/host-shell-code-server/`), which the agent runs with MCP tools. This document describes what the user prepares, what is injected, and what to watch out for.
+The workflow is packaged in the `host-shell-code-server` skill (`.agents/skills/host-shell-code-server/`), which the agent executes automatically using MCP tools. This document covers the required preparation, what gets installed, and operational caveats.
 
 ## Overview
 
@@ -14,173 +14,172 @@ sequenceDiagram
     participant U as User (browser)
     participant A as Agent (client)
     participant T as Target (host-shell)
-    A->>A: download (fetch and verify the release archive and default extensions)
+    A->>A: download (fetch release archive and default extensions, verify SHA-256)
     A->>T: transfer_push (scripts, default settings, archive, extensions)
-    A->>T: exec_run: install (the first install also injects settings and extensions)
-    A->>A: transfer_pull (copy the configuration file to the client)
-    A->>T: job_start: start (first free port in 127.0.0.1:8000-8079)
+    A->>T: exec_run: install (first install also applies default settings and extensions)
+    A->>A: transfer_pull (copy config.yaml to client)
+    A->>T: job_start: start (bind first free port in 127.0.0.1:8000-8079)
     A->>T: forward_open (local forward)
-    A->>U: URL and the path of the configuration file
-    U->>T: http://127.0.0.1:<client port>/ (through the forward)
+    A->>U: Report URL and local config.yaml path
+    U->>T: http://127.0.0.1:<client port>/ (over local forward)
 ```
 
-- The target never connects to the internet. The release archive and extensions are fetched on the client, verified by SHA-256 and then sent. The target verifies the same SHA-256 again.
-- code-server listens only on the first free port in 8000-8079 on `127.0.0.1` of the target ([Listening port](#listening-port)) and is reached from the client through a local forward. The client port is assigned automatically.
-- code-server and the forward stop when the MCP session ends.
+- The target never connects to the internet. Release archives and extensions are downloaded on the client, verified by SHA-256, and transferred to the target, where the same SHA-256 hashes are verified again before extraction and installation.
+- code-server listens only on `127.0.0.1` on the target, selecting the first free port in the range 8000–8079 ([Listening port](#listening-port)), and is accessed from the client through a local port forward. The client listening port is assigned automatically.
+- Both code-server and the port forward terminate when the MCP session ends.
 
-## Targets
+## Supported targets
 
-| Target | Verification |
+| Target | Verification status |
 | --- | --- |
-| Linux x86_64 | Verified on a real machine |
-| Linux arm64 (aarch64) | Only fetching, verifying and selecting the release archive (not verified on a real machine) |
-| Windows amd64 | Verified on a real machine |
+| Linux x86_64 | Verified on a target machine |
+| Linux arm64 (aarch64) | Verified archive download, hash check, and selection only (not tested on a physical/VM arm64 target) |
+| Windows amd64 | Verified on a target machine |
 
 Table: Supported targets
 
-Windows arm64 is not supported (code-server's official releases have no build for it). The code-server version is 4.144.0 (VS Code 1.144.0).
+Windows arm64 is not supported because upstream code-server releases do not provide a Windows arm64 build. The bundled code-server version is 4.144.0 (based on VS Code 1.144.0).
 
-A Linux target needs `bash`, `tar`, `gzip`, `sha256sum` and `od`; `python3` and `curl` are not needed. code-server's node needs glibc, so musl-based systems such as Alpine are not supported. install stops before extracting when glibc is missing or HOME is not writable. A Windows target uses Windows PowerShell 5.1 or later and the OS `tar.exe`.
-
-Clients can be Linux, macOS or Windows. Linux and macOS clients use `curl` and `python3`.
-
-code-server can also be injected into a running container (connected with `podman exec -i` and similar). See [Connecting into containers](container.md) for the container-specific conditions.
+- **Linux targets**: Require `bash`, `tar`, `gzip`, `sha256sum`, and `od` (`python3` and `curl` are not required on the target). Because the Node.js runtime bundled with code-server requires glibc, musl-based distributions such as Alpine Linux are not supported. The `install` script stops before extracting the archive if glibc is absent or `HOME` is not writable.
+- **Windows targets**: Use Windows PowerShell 5.1 or later and the built-in OS `tar.exe`.
+- **Clients**: Supported on Linux, macOS, and Windows. Linux and macOS clients use `curl` and `python3` during the download step.
+- **Containers**: code-server can also be injected into a running Linux container connected via `podman exec -i` or similar. See [Connecting into containers](container.md) for container-specific requirements.
 
 ## Preparation (registration command)
 
-The local forward requires these options in the MCP server registration command. After changing the registration, reconnect the MCP server in the agent.
+Because code-server is accessed through a local port forward, include the following options in the MCP server registration command. After updating the registration, reconnect to the MCP server in your agent.
 
 | Side | Option | Description |
 | --- | --- | --- |
-| Target | `--allow-forward-local` | Permits local forwards. If the target uses `--allow-host`, also allow `127.0.0.1:80[0-7]?` |
-| bridge | `--forward-allow-local '127.0.0.1:80[0-7]?'` | Limits what the agent can open with forward_open to code-server's ports (8000-8079) on the target |
+| Target | `--allow-forward-local` | Permits local port forwarding. If `--allow-host` is also set on the target, include `127.0.0.1:80[0-7]?` |
+| `bridge` | `--forward-allow-local '127.0.0.1:80[0-7]?'` | Restricts destinations that the agent can open with `forward_open` to code-server's port range (8000–8079) on the target |
 
 Table: Required options
 
-```sh
+```bash
 host-shell bridge --forward-allow-local '127.0.0.1:80[0-7]?' \
-  -- ssh -T target /path/to/host-shell --mcp --allow-forward-local
+    -- ssh -T target /path/to/host-shell --mcp --allow-forward-local
 ```
 
-- `80[0-7]?` is a port glob in the allow rule that matches 8000-8079. Quote it so that the shell does not expand it.
-- The scripts and archives are sent with the bridge's transfer_push, so targets with `--read-only` and bridges with `--no-transfer` cannot be used.
-- If an option is missing, the agent stops and tells the user which option to add.
+- `80[0-7]?` is a port glob matching ports 8000–8079. Quote the argument so the shell does not expand it.
+- Because scripts and packages are uploaded using `transfer_push` on `bridge`, targets running with `--read-only` or bridges started with `--no-transfer` cannot be used.
+- If a required option is missing, the agent stops and tells you which option to add.
 
 ## Listening port
 
-start checks ports 8000 to 8079 on the target's `127.0.0.1` in order and starts code-server on the first free one. The agent reads the port from code-server's `HTTP server listening on http://127.0.0.1:<port>/` line and opens the forward to it.
+The `start` script checks ports 8000 through 8079 on the target's `127.0.0.1` in order and launches code-server on the first free port. The agent parses the bound port from code-server's `HTTP server listening on http://127.0.0.1:<port>/` log line and opens a local forward to that port.
 
-- If all of 8000-8079 are in use, start stops with `no free port in 8000-8079 on 127.0.0.1`.
-- The environment variable `CODE_SERVER_PORT` pins a single port; start stops if it is in use.
-- If another process takes the port between the check and the bind, code-server exits with `EADDRINUSE`. The agent runs start again.
-- With a registration whose bridge rule allows only `127.0.0.1:8000`, the forward is refused when 8000 was in use. The agent stops code-server and asks the user to change the rule to `'127.0.0.1:80[0-7]?'` and reconnect.
+- If all ports in 8000–8079 are in use, `start` exits with `no free port in 8000-8079 on 127.0.0.1`.
+- Setting the `CODE_SERVER_PORT` environment variable pins a single port (and fails if that port is already in use).
+- If another process binds the chosen port between the availability check and startup, code-server exits with `EADDRINUSE` and the agent runs `start` again.
+- If `bridge` was registered with an allow rule for `127.0.0.1:8000` only and port 8000 is already in use, forwarding to the fallback port is rejected. In that case, the agent stops code-server and asks you to update the rule to `'127.0.0.1:80[0-7]?'` and reconnect.
 
 ## Password
 
-code-server starts with password authentication. The password is generated on the target on the first install (48 hexadecimal digits) and stored in the configuration file `config.yaml`.
+code-server runs with password authentication enabled. A random 48-digit hexadecimal password is generated on the target during the first installation and saved in `config.yaml`.
 
-- The password does not appear in tool results, so it never enters the conversation with the agent.
-- The agent copies the configuration file with transfer_pull to `~/.config/host-shell-code-server/<target name>/config.yaml` on the client (`%USERPROFILE%\.config\host-shell-code-server\<target name>\config.yaml` on a Windows client) and gives only its path. The `password:` line of the file is the login password.
-- The configuration file on the target is readable only by the user who created it.
-- The browser keeps the login per client port. Reopening the forward changes the port, so you may need to log in again.
+- Because the password is never printed in tool output, it does not enter the agent conversation history.
+- The agent copies `config.yaml` via `transfer_pull` to `~/.config/host-shell-code-server/<target name>/config.yaml` on the client (`%USERPROFILE%\.config\host-shell-code-server\<target name>\config.yaml` on Windows clients) and reports only that file path. Use the value on the `password:` line to log in.
+- On the target, `config.yaml` is created with permissions readable only by its owner.
+- Browser login cookies are scoped to the client port. If reopening a forward assigns a different client port, log in again.
 
 ## Default settings and extensions
 
-The files in the skill's `defaults/` are injected into code-server on the target on the first install. Users can edit them.
+Files under `defaults/` in the skill directory are applied to code-server on the target during the first installation. You can customize these files before running the skill.
 
-| File | Injected into (code-server user data) | When |
+| File | Target location (under code-server user data) | Condition |
 | --- | --- | --- |
-| `defaults/User/settings.json` | `User/settings.json` | Only if no file exists there |
-| `defaults/Machine/settings.json` | `Machine/settings.json` | Only if no file exists there |
-| `defaults/extensions.txt` | The extensions folder | Only while the marker file `.host-shell-code-server-defaults` is absent |
+| `defaults/User/settings.json` | `User/settings.json` | Applied only if the target file does not exist |
+| `defaults/Machine/settings.json` | `Machine/settings.json` | Applied only if the target file does not exist |
+| `defaults/extensions.txt` | Extensions directory | Applied only if the marker file `.host-shell-code-server-defaults` does not exist |
 
 Table: Default settings and extensions
 
-The bundled settings and what they rely on are listed below. Without the prerequisite, the setting simply has no effect; it causes no error.
+The main bundled settings and their prerequisites are listed below (if a prerequisite is absent, the setting simply has no effect and causes no error):
 
 | Setting | Prerequisite |
 | --- | --- |
 | Color theme `Visual Studio Dark - C++` | The `ms-vscode.cpptools-themes` extension (included in the default extensions) |
-| Font `UDEV Gothic HSRFJPDOCEM` (15px) | The font is available in the client's browser |
-| PlantUML JAR paths (`plantuml.jar`, `markdown-preview-enhanced.plantumlJarPath`) | The JAR exists on the target |
-| Disabled workspace trust, git auto fetch, visible whitespace, trailing whitespace in diffs | None |
+| Font `UDEV Gothic HSRFJPDOCEM` (15px) | The font is installed on the client machine running the browser |
+| PlantUML JAR paths (`plantuml.jar`, `markdown-preview-enhanced.plantumlJarPath`) | The JAR file exists at that path on the target |
+| Workspace trust disabled, Git auto-fetch, visible whitespace, trailing whitespace in diffs | None |
 
 Table: Bundled settings
 
 ### Fetching extensions
 
-`extensions.txt` lists one `publisher.name` or `publisher.name@version` per line (text after `#` is a comment). The client's download fetches the extensions from Open VSX for each target type.
+`extensions.txt` lists one extension per line as `publisher.name` or `publisher.name@version` (text after `#` is treated as a comment). On the client, the `download` script fetches extensions from Open VSX for the target platform:
 
-1. It looks for versions for the target platform (`linux-x64`, `linux-arm64`, `win32-x64`) and uses the platform-independent (`universal`) versions if there are none.
-2. Excluding pre-releases, it takes the `@version` given, or else the newest version that runs on VS Code 1.144.0.
-3. It verifies the SHA-256 published by Open VSX before saving, and records the chosen versions and SHA-256 in `packages/extensions/<type>/resolved-extensions.txt`.
-4. Extensions that cannot be found are skipped with a warning, and the reason is recorded as a comment.
+1. It looks for a build matching the target platform (`linux-x64`, `linux-arm64`, `win32-x64`) and falls back to the platform-independent (`universal`) build if none exists.
+2. Excluding pre-release versions, it selects the specified `@version` or the latest version compatible with VS Code 1.144.0.
+3. It verifies the package against the SHA-256 digest published by Open VSX before saving, and records the resolved version and SHA-256 in `packages/extensions/<type>/resolved-extensions.txt`.
+4. Extensions that cannot be found are skipped with a warning and noted as a comment in `resolved-extensions.txt`.
 
-The target's install verifies the recorded SHA-256 and installs without connecting to the network. It creates the marker file only after everything is installed. If it fails, no marker is created, so the next install tries again.
+On the target, `install` verifies each recorded SHA-256 hash and installs the extensions offline. It creates the `.host-shell-code-server-defaults` marker file only after all extensions succeed; if installation fails partway, no marker is created and the next `install` run retries.
 
-### Restoring the defaults
+### Restoring defaults
 
-Settings changed in code-server are not overwritten by running install again, and extensions the user removed do not come back. To restore defaults, delete the files you want restored among `User/settings.json`, `Machine/settings.json` and the marker `.host-shell-code-server-defaults` in the target's user data, then run install again.
+Settings modified in code-server and extensions uninstalled by the user are not overwritten or restored when `install` runs again. To restore the defaults, delete whichever of `User/settings.json`, `Machine/settings.json`, or `.host-shell-code-server-defaults` you want to reset in the target's user data directory, then re-run `install`.
 
-## Installing other extensions
+## Installing additional extensions
 
-code-server in a closed network cannot reach the extension marketplace (Open VSX) by itself. Use either of these:
+In a closed network, code-server cannot reach the Open VSX marketplace directly. Use either of the following approaches to install additional extensions:
 
-- A `.vsix` file: the agent sends a `.vsix` prepared on the client and installs it with `install --extension <file>`.
-- The [HTTP proxy through the client](client-proxy.md): enable `--client-proxy` on the target and `--proxy` on the bridge, with `--proxy-allow-host open-vsx.org:443` and `--proxy-allow-host openvsx.eclipsecontent.org:443`. `--proxy-allow-host` does not accept commas, so give one per destination. code-server connects to the marketplace through HTTPS_PROXY, so both `install --extension <ID>` and the extensions view in the browser work (both verified).
+- **Uploading a `.vsix` file**: Have the agent upload a `.vsix` file from the client and install it with `install --extension <file>`.
+- **Using the [HTTP proxy through the client](client-proxy.md)**: Enable `--client-proxy` on the target and `--proxy` on `bridge` with `--proxy-allow-host open-vsx.org:443` and `--proxy-allow-host openvsx.eclipsecontent.org:443` (pass `--proxy-allow-host` once per host; comma-separated values are not supported). Because code-server uses `HTTPS_PROXY` to reach the marketplace, both `install --extension <ID>` and installing from the Extensions view in the browser work (both verified).
 
-In the extensions view, which side communicates depends on the operation.
+When using the Extensions view in the browser, different operations originate from different sides:
 
-| Operation | Communicating side | Required connection |
+| Operation | Origin | Required connectivity |
 | --- | --- | --- |
-| Searching, showing details | The client's browser | The browser connects directly to `open-vsx.org` and `openvsx.eclipsecontent.org` (not through the proxy) |
-| Installing | code-server on the target | The two `--proxy-allow-host` rules above |
+| Searching and viewing extension details | Client browser | Direct access from the browser to `open-vsx.org` and `openvsx.eclipsecontent.org` (does not pass through the `bridge` proxy) |
+| Installing an extension | Target code-server | The two `--proxy-allow-host` rules above on `bridge` |
 
-Table: Communication of the extensions view
+Table: Connectivity for the Extensions view
 
-- The first install from a publisher asks whether to trust the publisher.
-- bridge's `proxy_status` may list `mobile.events.data.microsoft.com` (telemetry) as denied; searching and installing do not need it.
+- Installing an extension from a publisher for the first time prompts you to trust the publisher.
+- `proxy_status` on `bridge` may report `mobile.events.data.microsoft.com` (telemetry) as denied; extension search and installation work without it.
 
-## Stopping and removing
+## Stopping and uninstalling
 
-- Stop: the agent calls forward_close and job_stop. Both also stop when the MCP session ends.
-- Remove: after job_stop, run uninstall. By default it removes only code-server itself and keeps the configuration, user data, extensions and the sent files. With `--purge` (`-Purge` on Windows) it removes all of them.
+- **Stopping**: The agent calls `forward_close` and `job_stop` (both also stop automatically when the MCP session ends).
+- **Uninstalling**: Run `uninstall` after `job_stop`. By default, `uninstall` removes only the code-server binary directory while keeping configuration, user data, extensions, and the uploaded kit. Pass `--purge` (`-Purge` on Windows) to remove all of them.
 
-Locations on the target are listed below. They use a different name from [code-server-launcher](https://github.com/Hondarer/code-server-launcher), so a code-server installed with the launcher on the same target is not affected.
+File locations on the target are listed below. Because `host-shell-code-server` uses its own directory names separate from [code-server-launcher](https://github.com/Hondarer/code-server-launcher), it does not conflict with a launcher-installed instance on the same machine.
 
 | Purpose | Linux | Windows |
 | --- | --- | --- |
-| Sent files (kit) | `~/.local/share/host-shell-code-server/kit/` | `%LOCALAPPDATA%\host-shell-code-server\kit\` |
-| code-server | `~/.local/lib/host-shell-code-server/code-server-<version>/` | `%LOCALAPPDATA%\host-shell-code-server\code-server-<version>\` |
+| Uploaded kit | `~/.local/share/host-shell-code-server/kit/` | `%LOCALAPPDATA%\host-shell-code-server\kit\` |
+| code-server binary | `~/.local/lib/host-shell-code-server/code-server-<version>/` | `%LOCALAPPDATA%\host-shell-code-server\code-server-<version>\` |
 | Configuration file | `~/.config/host-shell-code-server/config.yaml` | `%USERPROFILE%\.config\host-shell-code-server\config.yaml` |
 | User data | `~/.local/share/host-shell-code-server/user-data/` | `%LOCALAPPDATA%\host-shell-code-server\user-data\` |
 | Extensions | `~/.local/share/host-shell-code-server/extensions/` | `%LOCALAPPDATA%\host-shell-code-server\extensions\` |
-| Session socket | `code-server-ipc.sock` in the user data. If that path exceeds the Unix domain socket limit (107 bytes), `$XDG_RUNTIME_DIR/host-shell-code-server-ipc.sock`, or `/tmp/host-shell-code-server-<uid>/ipc.sock` without `XDG_RUNTIME_DIR` | A named pipe (no file) |
+| Session socket | `code-server-ipc.sock` inside user data; if that path exceeds the Unix domain socket limit (107 bytes), `$XDG_RUNTIME_DIR/host-shell-code-server-ipc.sock`, or `/tmp/host-shell-code-server-<uid>/ipc.sock` when `XDG_RUNTIME_DIR` is unset | Named pipe (no file created) |
 
-Table: Locations on the target
+Table: File locations on the target
 
-Besides these, code-server and its extensions create small files (a few tens of KB in total) in locations shared with other VS Code based products (such as `~/.vscode-oss-shared/`, `~/.copilot/logs/`, `~/.cache/Microsoft/` and `~/.local/state/crossnote/`; under `%USERPROFILE%` on Windows). Because these are shared, `--purge` does not remove them. It does remove `coder-logs` and `heartbeat`, which code-server writes to its default location.
+In addition to the paths above, code-server and its extensions may create small files (a few tens of kilobytes in total) in directories shared with other VS Code-based tools (`~/.vscode-oss-shared/`, `~/.copilot/logs/`, `~/.cache/Microsoft/`, `~/.local/state/crossnote/`, etc.; under `%USERPROFILE%` on Windows). Because those directories are shared, `--purge` leaves them intact, while removing `coder-logs` and `heartbeat` written by code-server.
 
 ## Transfer size and time
 
-Measured in the development environment (WSL) by connecting the bridge directly to the target host-shell, without SSH. Actual times depend on the bandwidth of the SSH route (transfer_push sends base64, so the traffic is about 1.33 times the size).
+The table below shows reference measurements taken in a development environment (WSL) with `bridge` connected directly to `host-shell` without SSH. Actual transfer times depend on the bandwidth of your SSH route (`transfer_push` encodes chunks in base64, so wire traffic is approximately 1.33× the raw file size).
 
-| Item | Linux x86_64 | Windows amd64 |
+| Step | Linux x86_64 | Windows amd64 |
 | --- | --- | --- |
 | Release archive | 231 MB, 16 s | 212 MB, 17 s |
 | Default extensions (20) | 144 MB, 3 s | 144 MB, 4 s |
-| install (extraction and extension installation) | 43 s | 82 s |
+| `install` (extraction and extension setup) | 43 s | 82 s |
 
 Table: Transfer size and time (measured)
 
-Later transfers skip files whose contents are unchanged.
+On subsequent runs, unchanged files with matching SHA-256 hashes are skipped.
 
-## Security
+## Security considerations
 
-- code-server's built-in terminal and file operations do not go through host-shell's restrictions (such as `--allow-command`, `--allow-path`, `--deny-command`) and are not recorded in host-shell's audit log. Only the forwarded connections (`forward_connect`) appear in the target's audit log. When the target has restrictions, the agent explains this and continues only with the user's approval. Target administrators control this path by whether they permit `--allow-forward-local`.
-- The client's listening port does not authenticate connections, so other users on the client can connect. Do not disable code-server's password authentication.
-- code-server listens only on the target's `127.0.0.1`, so it cannot be reached from the target's network.
+- Operations performed inside code-server's built-in terminal and file explorer bypass `host-shell` policy restrictions (`--allow-command`, `--allow-path`, `--deny-command`, etc.) and are not logged in `host-shell`'s audit log (only the port-forward connection `forward_connect` is logged on the target). When policy restrictions are active on the target, the agent explains this and asks for explicit user approval before proceeding. Target administrators control whether this path is available via `--allow-forward-local`.
+- Because the local listening port on the client does not authenticate callers, other local users on the client machine can connect to it. Do not disable code-server's password authentication.
+- code-server binds exclusively to `127.0.0.1` on the target and is not reachable from the target's external network interfaces.
 
 ## Maintenance
 
-The skill's scripts are copies of code-server-launcher's download, install, start and uninstall, with extensions for this purpose. The default settings and extension list match the defaults of code-server-container. See the [development guide](development.md) for updating the version.
+The skill scripts are adapted from `download`, `install`, `start`, and `uninstall` in [code-server-launcher](https://github.com/Hondarer/code-server-launcher), and the default settings and extension list match `code-server-container`. For instructions on updating the bundled code-server version, see the [Development Guide](development.md#maintaining-the-code-server-injection-skill).

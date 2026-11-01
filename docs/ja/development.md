@@ -54,15 +54,15 @@ internal/tools/        各ツールの実装
   search.go            search_grep、search_find、fs_manifest
   glob.go              glob 照合 (**、{a,b})
   system.go            exec_sudo、sys_get_info、proc_list
-  net.go               net_request_http、net_exchange、net_check、net_list_listeners、net_list_interfaces
+  net*.go              net_request_http、net_exchange、net_check、net_list_listeners、net_list_interfaces
   listen_*.go          net_list_listeners の OS 別実装 (/proc/net、netstat)
   admin.go             proc_kill、svc_*、log_query、disk_list の入出力定義と共通処理
   admin_*.go           OS 別管理実装 (systemd / journald、サービス コントロール マネージャー / イベント ログ)
   registry*.go         reg_read、reg_write、reg_delete (Windows)
-internal/bridge/       host-shell bridge (ローカル中継、transfer_push、transfer_pull、転送ツールの公開)
-internal/channel/      SSH stdio 上の多重化チャネル (機能の交渉、双方向のストリーム、フロー制御、診断履歴)
-internal/clientproxy/  クライアント経由 HTTP プロキシ (bridge 側の宛先検査と接続、接続先側の認証付きプロキシ)
-internal/forward/      ポート転送 (常設転送の書式、bridge 側の待ち受け・SOCKS5・forward_*、接続先側の発信と待ち受け)
+internal/bridge/       host-shell bridge (ローカル中継、transfer_push、transfer_pull、転送・プロキシ ツールの公開)
+internal/channel/      SSH stdio 上の多重化チャネル (機能ネゴシエーション、双方向ストリーム、フロー制御、診断履歴)
+internal/clientproxy/  クライアント経由 HTTP プロキシ (bridge 側の宛先検査と上流接続、接続先側の認証付きプロキシ)
+internal/forward/      ポート転送 (常設転送の書式解析、bridge 側の待ち受け・SOCKS5・forward_*、接続先側の発信と待ち受け)
 internal/proc/         子プロセス起動、OS 別シェル実行、プロセス ツリー終了、シグナル送信
   proc_unix.go         Linux (プロセス グループ、SIGKILL)
   proc_windows.go      Windows (cmd コマンドライン、taskkill /T)
@@ -78,7 +78,7 @@ internal/version/      バージョン情報
 .agents/skills/host-shell-connect/
                        接続先へのバイナリ配置・起動確認スキル (bin/ は make dist で生成、Git 管理外)
 .agents/skills/host-shell-code-server/
-                       接続先への code-server の注入スキル (packages/ は download で取得、Git 管理外)
+                       接続先への code-server 導入スキル (packages/ は download で取得、Git 管理外)
 docs/ja/               文書の日本語版 (正本)
 docs/en/               文書の英語版 (docs/ja/ の英訳)
 ```
@@ -143,7 +143,7 @@ GitHub Actions (`.github/workflows/ci.yml`) は、`main` ブランチへの push
 
 Table: CI のジョブ
 
-テスト実行時は `-v` の出力から、結果行と、字下げされた「ファイル名.go:行:」の行だけを抽出して表示します。後者には、失敗とスキップの理由、テスト ログが含まれます。テストのファイル以外 (後片付けの失敗を出力する `testing.go` など) からの行も残します。
+テスト実行時は `-v` の出力から、結果行と字下げされた `ファイル名.go:行:` の行のみを抽出して表示します。後者には失敗・スキップの理由やテスト ログが含まれます (`testing.go` が出力する後片付け失敗の行なども保持します)。
 
 ## リリース
 
@@ -196,31 +196,28 @@ Table: 動作する OS
 上記より古い OS はサポート対象外です ([Go MinimumRequirements](https://go.dev/wiki/MinimumRequirements) 参照)。  
 Windows 環境ではウイルス対策ソフトが Go 製バイナリを誤検知する場合があるため、配布時はコード署名の付与を検討してください。
 
-## プロキシ中継の構成
+## 多重化チャネルとプロキシ・転送の構成
 
-[クライアント経由 HTTP プロキシ](client-proxy.md) に起動設定、制限、proxy_status、環境変数の優先順位、上限を記載しています。
+利用者向けの仕様は [クライアント経由 HTTP プロキシ](client-proxy.md) および [SSH stdio 経由のポート転送](port-forward.md) を参照してください。
 
-[SSH stdio 経由のポート転送](port-forward.md) に転送の起動設定、要求と許可の照合、ツール、上限を記載しています。
+- **`internal/channel/`**: `bridge` と接続先の `mcp.Connection` ラッパーとして `host-shell/channel/*` 通知を処理し、通常の MCP 層へは渡しません。接続開始時のネゴシエーションでは、`bridge` が要求する機能 (`http_proxy`、`forward_local`、`forward_remote`) と接続先が許可する機能を `hello` フレームで交換し、常設リモート転送の待ち受け (`listen`) を完了させてから `ready` フレームで MCP の初期化へ進みます。接続先は許可オプションが指定されていない場合でも最初のメッセージを確認し、通常の MCP メッセージであればそのまま処理します。データ ストリームは両端のどちらからでも開始でき、接続 ID は `bridge` 起点が奇数、接続先起点が偶数を使用します。なお、接続先側から開けるストリームは `bridge` が `listen` で登録したリモート転送への着信のみであり、接続先から任意の宛先を指定して `bridge` に発信させることはできません。
+- **`internal/clientproxy/`**: `internal/channel/` の上に、認証付きローカル HTTP プロキシ、上流接続、および診断機能 (`proxy_status`) を実装します。
+- **`internal/forward/`**: `internal/channel/` の上に、ローカル転送、リモート転送、SOCKS5、および転送管理ツール (`forward_*`) を実装します。
 
-internal/channel/ は bridge と接続先の Connection ラッパーで `host-shell/channel/*` 通知を処理し、通常 MCP に渡しません。交渉では bridge が要求する機能 (`http_proxy`、`forward_local`、`forward_remote`)、接続先が許可する機能を hello で交換し、リモート転送の常設の待ち受け (listen) を済ませてから ready で MCP の初期化へ進みます。接続先は許可がなくても最初のメッセージを確認し、通常の MCP はそのまま処理します。ストリームはどちらの側からも開け、bridge が奇数、接続先が偶数の接続 ID を使います。接続先は bridge が listen で登録したリモート転送の着信だけを開けます。宛先を指定できないため、bridge に任意の宛先へ接続させることはできません。
+## code-server 導入スキルの保守
 
-internal/clientproxy/ は認証付き HTTP プロキシ、上流接続、診断を、internal/forward/ はポート転送を、それぞれ internal/channel/ の上に実装します。
+`.agents/skills/host-shell-code-server/` のスクリプト群は、[code-server-launcher](https://github.com/Hondarer/code-server-launcher) (MIT License) の `download`、`install`、`start`、`uninstall` および共通処理をベースに、次の拡張を加えたものです (利用者向けの手順は [code-server の導入](code-server.md) を参照)。
 
-## code-server の注入スキルの保守
+- Linux arm64 への対応、および待ち受けアドレスの `127.0.0.1` への固定
+- 最小構成の閉鎖環境でも動作するよう、Linux 接続先で `python3`、`openssl`、`ss`、`curl` に依存しない実装に変更
+- ツール結果がエージェントとの会話履歴に残らないよう、パスワードの標準出力への表示を抑止
+- 導入ディレクトリ名を `host-shell-code-server` とし、`code-server-launcher` の環境と分離
+- 初回導入時における既定設定と拡張機能の適用 (`defaults/` の内容は `code-server-container` の既定値と共通)
 
-`.agents/skills/host-shell-code-server/` のスクリプトは [code-server-launcher](https://github.com/Hondarer/code-server-launcher) (MIT License) の download、install、start、uninstall と共通処理を複写し、次の点を拡張したものです。利用者向けの説明は [code-server の注入](code-server.md) にあります。
+スクリプトのコメントと出力はすべて英語とし、ファイル内容は ASCII 文字のみで構成します (Windows PowerShell 5.1 が UTF-8 BOM なしファイルを誤読しないようにするため)。
 
-- Linux arm64 への対応と、待ち受けの `127.0.0.1` への固定
-- 接続先 (Linux) で `python3`、`openssl`、`ss`、`curl` を使わないこと (最小構成の閉鎖環境のため)
-- パスワードを表示しないこと (ツールの結果は会話に残るため)
-- 導入先の名前を `host-shell-code-server` とし、launcher と分けること
-- 既定の設定と拡張機能の初回の注入 (`defaults/` の内容は code-server-container の既定値と同じ)
+code-server のバージョンを更新する手順は次のとおりです。
 
-スクリプトのコメントと出力は英語で、内容は ASCII 文字だけとします (Windows PowerShell 5.1 が BOM なしで読めるようにするため)。
-
-code-server の版を更新する手順は次のとおりです。
-
-1. `version.env` の `CODE_SERVER_VERSION`、`CODE_SERVER_VSCODE_VERSION` (リリース ノートの `Code` の版)、3 つの配布アーカイブ (linux-amd64、linux-arm64、windows-amd64) の SHA-256 (GitHub Releases の digest) を更新します。
-2. Linux と Windows の接続先で、取得、送付、導入、起動、転送、ログインを確認します。Windows 版の code-server は上流の CI で自動テストされていないため、版ごとに確認します。
-3. `docs/*/code-server.md` の版の記載を更新します。
-
+1. `version.env` の `CODE_SERVER_VERSION`、`CODE_SERVER_VSCODE_VERSION` (リリース ノートの `Code` のバージョン)、および 3 種類の配布アーカイブ (`linux-amd64`、`linux-arm64`、`windows-amd64`) の SHA-256 (GitHub Releases の digest) を更新します。
+2. Linux と Windows の接続先で、取得 (`download`)、転送 (`transfer_push`)、導入 (`install`)、起動 (`start`)、ポート転送、およびブラウザーからのログインを確認します (Windows 版 code-server は上流の CI で自動テストされていないため、バージョン更新ごとに実機確認が必要です)。
+3. `docs/ja/code-server.md` と `docs/en/code-server.md` に記載されているバージョン番号を更新します。

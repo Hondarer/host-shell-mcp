@@ -76,7 +76,7 @@ flowchart TB
 ```
 
 `bridge` は接続先の `host-shell` が公開するツールをそのまま中継しつつ、`transfer_push` (ローカルから接続先へ) と `transfer_pull` (接続先からローカルへ) を追加します。  
-ファイル内容は `bridge` と接続先の `host-shell` 間で直接転送され、エージェントのコンテキストを経由しないため、大容量ファイルやディレクトリ全体も転送できます。  
+ファイル内容は `bridge` と接続先の `host-shell` 間で直接転送され、エージェントのコンテキストを経由しないため、大容量ファイルやディレクトリ全体も転送できます。さらに、両端で明示的に有効化すると、同じ SSH セッション上で [クライアント経由 HTTP プロキシ](client-proxy.md) や [ポート転送](port-forward.md) も利用できます。  
 `bridge` は接続先と同じ実行ファイルのサブコマンドであり、クライアント OS (Linux、Windows、macOS) 向けのバイナリを使用します。
 
 ## 必要なもの
@@ -135,7 +135,7 @@ Table: 配置する場所
 
 `.agents/skills/host-shell-connect` スキルの `scripts/deploy.sh` は、この優先順で配置、権限確認、SHA-256 照合、起動確認を自動実行します。
 
-稼働中のコンテナーの中に配置する場合は、[コンテナーの中への接続](container.md) を参照してください。
+稼働中のコンテナー内に配置する場合は、[コンテナーへの接続](container.md) を参照してください。
 
 ### SSH だけで送る
 
@@ -247,7 +247,7 @@ C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe --mcp --windows-shel
 
 ## エージェントへの登録
 
-コンテナーの中の host-shell の登録コマンドは、[コンテナーの中への接続](container.md#登録コマンド) を参照してください。
+コンテナー内の `host-shell` を登録するコマンドについては、[コンテナーへの接続](container.md#登録コマンド) を参照してください。
 
 ### Claude Code
 
@@ -446,6 +446,13 @@ SSH セッションが切断されると実行中のジョブはすべて停止�
 
 `bridge` を使わない場合も、`fs_read` (`base64`、`offset`) と `fs_write` (`base64`、`offset`) で分割転送できますが、データがエージェントのコンテキストを通過するため数 MB 程度までの利用にとどめてください (`offset` 指定の書き込みはべき等なため、中断時は `fs_stat` の `size` から再開できます)。
 
+### ポート転送と HTTP プロキシ
+
+SSH のポート転送 (`-L`、`-R`、`-D`) が使えない環境でも、`bridge` と接続先の双方で明示的に有効化すると、既存の SSH セッションの標準入出力上で次の通信中継を利用できます。
+
+- **[ポート転送](port-forward.md)**: ローカル転送 (`--forward-local`)、リモート転送 (`--forward-remote`)、SOCKS5 (`--forward-socks`)、およびツール `forward_open` による動的な転送を提供します。閉鎖環境の接続先へ [code-server を導入](code-server.md) して手元のブラウザーで開く用途にも使用できます。
+- **[クライアント経由 HTTP プロキシ](client-proxy.md)**: 接続先から外部へ直接通信できない場合に、HTTP プロキシ対応アプリケーションの HTTP / HTTPS 通信を `bridge` 側のネットワーク経由で中継します (`--proxy`、`--proxy-allow-host`、`--client-proxy`)。
+
 ### 文字コードと改行
 
 接続先が Shift_JIS や EUC-JP 環境であっても、`host-shell` が接続先側で UTF-8 と相互変換するため、エージェントは常に UTF-8 で読み書きできます。
@@ -485,9 +492,3 @@ SSH セッションが切断されると実行中のジョブはすべて停止�
 Table: トラブルシューティング
 
 原因が特定できない場合は、接続先の操作ログ ([リファレンスの操作ログ](reference.md#操作ログ)) で失敗したツール呼び出しとエラー内容を確認してください。
-
-## クライアント経由の外部通信
-
-[クライアント経由 HTTP プロキシ](client-proxy.md) に起動設定、制限、proxy_status、環境変数の優先順位、上限を記載しています。
-
-SSH のポート転送が使えない環境でポートを転送する場合は、[ポート転送](port-forward.md) を参照してください。同じ SSH セッションの標準入出力でローカル転送・リモート転送・SOCKS5 を行います。SSH のポート転送 (`-L`、`-R`、`-D`) は使用しません。

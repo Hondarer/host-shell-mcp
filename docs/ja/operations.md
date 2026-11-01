@@ -81,6 +81,7 @@ Table: 制限のオプションの例
 - `--deny-command` はコマンド ライン文字列の正規表現照合であり、表記を変えると回避できるため、誤操作防止の補助として使用しセキュリティ境界にはしないでください。
 - `--confirm` はクライアントが MCP の elicitation に対応している必要があります (非対応クライアントでは対象ツールがすべてエラーになります)。
 - `--redact` は既知パターンの機密情報のみを伏せ字化します。読み取らせたくない機密ファイルは OS のファイル権限で保護してください。
+- `--read-only` と `--tools` は MCP ツールの公開範囲のみを制御し、[クライアント経由 HTTP プロキシ](client-proxy.md) や [ポート転送](port-forward.md) の通信は制限しません。これらを有効にする場合は、`bridge` 側の宛先許可規則 (`--proxy-allow-host`、`--forward-allow-local`、`--forward-allow-remote`)、接続先の発信先制限 (`--allow-host`)、およびリモート転送の待ち受けポート制限 (`--allow-forward-remote-port`) を組み合わせて範囲を絞ってください。
 - 指定したオプションを利用者やエージェントが解除できないよう、[起動するコマンドの固定](#起動するコマンドの固定) に従って接続先の `authorized_keys` 等で固定します。
 
 ## 起動するコマンドの固定
@@ -89,7 +90,7 @@ Table: 制限のオプションの例
 万一鍵が漏洩しても、`host-shell` を介さない対話ログインやポート転送を防ぎ、全操作を操作ログに記録できます。
 
 > [!IMPORTANT]
-> host-shell の [クライアント経由 HTTP プロキシ](client-proxy.md) と [ポート転送](port-forward.md) は sshd の転送機能を使わないため、`no-port-forwarding` や `AllowTcpForwarding no` では止められません。これらは接続先の `--client-proxy`、`--allow-forward-local`、`--allow-forward-remote` を指定した場合だけ利用できます。許可しない場合は `command=` にこれらのオプションを書かないでください。
+> `host-shell` の [クライアント経由 HTTP プロキシ](client-proxy.md) と [ポート転送](port-forward.md) は `sshd` の転送機能を使用しないため、`no-port-forwarding` や `AllowTcpForwarding no` では制限されません。これらは接続先で `--client-proxy`、`--allow-forward-local`、`--allow-forward-remote` を指定した場合にのみ有効になります。許可しない場合は `command=` にこれらのオプションを含めないでください。
 
 ```{.text caption="~hsagent/.ssh/authorized_keys (Linux の接続先)"}
 command="/opt/host-shell/host-shell --mcp",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA... host-shell agent
@@ -234,9 +235,3 @@ jq -c 'select(.tool | IN("exec_run", "job_start", "job_write", "exec_sudo", "fs_
 - [ ] SSH の各段に `-T` を指定し、非対話シェルが標準出力へ不要な出力を行わないことを確認した
 - [ ] エージェント側で変更系ツールの実行前承認を設定した
 - [ ] 操作ログの保存先と、長期保持が必要な場合の外部転送を設定した
-
-## クライアント側ネットワークの制限
-
-[クライアント経由 HTTP プロキシ](client-proxy.md) に起動設定、制限、proxy_status、環境変数の優先順位、上限を記載しています。
-
-[ポート転送](port-forward.md) に、方向ごとの許可オプション、接続先の `--allow-host` による宛先の制限、待ち受けの無認証、操作ログへの記録を記載しています。

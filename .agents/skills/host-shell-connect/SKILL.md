@@ -184,9 +184,9 @@ After registration, instruct the user to reload the MCP server in their agent (i
 
 ## Containers
 
-host-shell also runs inside a running Linux container, reached with `exec -i` of its runtime instead of SSH. The user documentation is docs/en/container.md.
+`host-shell` can also run inside a running Linux container, reached via the container runtime's `exec -i` subcommand instead of SSH (see `docs/en/container.md`).
 
-| Last `ROUTE` element | Runs | Extra options (environment variable) |
+| Last `ROUTE` element | Command executed | Extra options (environment variable) |
 |---|---|---|
 | `podman:CONTAINER` | `podman exec -i ... CONTAINER sh -c COMMAND` | `HOST_SHELL_PODMAN_OPTS` (e.g. `--user dev`) |
 | `docker:CONTAINER` | `docker exec -i ... CONTAINER sh -c COMMAND` | `HOST_SHELL_DOCKER_OPTS` (e.g. `--user dev`) |
@@ -194,13 +194,13 @@ host-shell also runs inside a running Linux container, reached with `exec -i` of
 
 Table: Container route elements
 
-- Examples: `podman:web` (a container on this machine), `hop1,podman:web` (a container on hop1). A container element is allowed only at the end of the route.
-- podman is verified; docker only through podman's docker-compatible command; kubectl is not verified. Windows containers are not supported.
-- All steps above work unchanged (`detect.sh`, `deploy.sh`, `probe.sh`). Skip the SSH-specific advice (startup files, authentication). The default location inside the container is `/tmp/host-shell-<uid>/host-shell`, then `.local/bin/host-shell`.
-- The container needs `sh` and basic commands (`uname`, `id`, `dirname`, `ls`, `sha256sum`, `mkdir`, `chmod`, `mv`, `cat`, `rm`). For containers without a shell (such as distroless images), the scripts do not work: show the user the manual steps in docs/en/container.md (`podman cp` / `docker cp`; kubectl cannot copy without `tar` in the container).
-- Files placed in the container are lost when the container is recreated (not when it is restarted); deploy again then.
+- Examples: `podman:web` (a container on the local machine), `hop1,podman:web` (a container on `hop1`). A container element is allowed only as the final element of `ROUTE`.
+- `podman` is verified on a real environment; `docker` is verified via Podman's Docker-compatible CLI; `kubectl` is unverified. Windows containers are not supported.
+- The deployment scripts (`detect.sh`, `deploy.sh`, `probe.sh`) work unchanged. Skip SSH-specific checks (shell startup files and SSH authentication). Default installation paths inside the container are `/tmp/host-shell-<uid>/host-shell`, followed by `.local/bin/host-shell`.
+- The container must provide `sh` and basic utilities (`uname`, `id`, `dirname`, `ls`, `sha256sum`, `mkdir`, `chmod`, `mv`, `cat`, `rm`). For containers without a shell (such as distroless images), the scripts cannot be used; show the user the manual `podman cp` / `docker cp` steps in `docs/en/container.md` (`kubectl cp` requires `tar` inside the container).
+- Files placed inside a container are lost when the container is recreated (though preserved across restarts); rerun deployment after recreation.
 
-Registration commands start `host-shell` directly with `exec -i` (always `-i`, never `-t`: a terminal corrupts the JSON-RPC stream). Include the same extra options as the route:
+Registration commands start `host-shell` directly with `exec -i` (always pass `-i` and never `-t`, as allocating a TTY corrupts the JSON-RPC stream). Include the same extra runtime options used in the route:
 
 ```bash
 claude mcp add host-shell-web -- /path/to/host-shell bridge -- podman exec -i web /tmp/host-shell-0/host-shell --mcp
@@ -211,27 +211,27 @@ claude mcp add host-shell-web -- /path/to/host-shell bridge -- ssh -T -o BatchMo
 
 ## Uninstalling
 
-When asked to remove `host-shell`, delete its installation directory (`/tmp/host-shell-<uid>/`, `%TEMP%/host-shell/`, or the `.local/bin/host-shell` file).  
+When asked to remove `host-shell`, delete its installation directory (`/tmp/host-shell-<uid>/`, `%TEMP%/host-shell/`, or `.local/bin/host-shell`).  
 Ask whether to delete the audit log (`~/.local/state/host-shell/` on Linux, `%LOCALAPPDATA%/host-shell/` on Windows), and show how to unregister the server from the agent (`claude mcp remove <name>` in Claude Code).
 
 ## Report
 
-When finished, report the following items together.
+When finished, report the following items together:
 
 - Route and target environment type
-- Installation path, version, SHA-256, and whether it was newly deployed (`deployed`) or unchanged (`up to date`)
+- Installation path, version, SHA-256, and whether the binary was newly deployed (`deployed`) or already current (`up to date`)
 - `probe.sh` result (version and number of published tools)
 - Registration command (with or without `bridge` and any restriction options) and how to reload the MCP server
 
 ## Optional client HTTP proxy
 
-For proxy-aware target applications requiring the local client network, see docs/en/client-proxy.md. Enable target --client-proxy and bridge --proxy with explicit --proxy-allow-host HOST[:PORT] rules. This shares SSH stdio and requires no SSH port forwarding. Use proxy_status to diagnose denials; do not broaden user-approved rules autonomously. sys_get_info reports the user-only credential URL file path. Do not print or paste its contents. Keep the feature disabled unless requested.
+When proxy-aware programs on the target need outbound HTTP/HTTPS access through the local client network, see `docs/en/client-proxy.md`. Pass `--client-proxy` to the target `host-shell` and `--proxy` with explicit `--proxy-allow-host HOST[:PORT]` rules to `bridge`. Traffic is multiplexed over the existing SSH stdio stream without SSH port forwarding. Use `proxy_status` to diagnose denied requests, and never broaden user-approved host rules autonomously. `sys_get_info` reports the path to the user-only credential URL file (`proxy_url_file`); never print or paste its contents. Leave this feature disabled unless requested by the user.
 
 ## Optional port forwarding
 
-When the user asks for port forwarding where SSH forwarding is unavailable, see docs/en/port-forward.md. Add bridge --forward-local [BIND:]PORT:HOST:HOSTPORT (listen locally, connect from the target), --forward-remote (listen on the target, connect from here), or --forward-socks [BIND:]PORT with --forward-allow-local rules; add --forward-allow-local/--forward-allow-remote HOST[:PORT] only if the user wants the agent to create forwards with forward_open. The target must permit each direction with --allow-forward-local or --allow-forward-remote. Listeners are loopback only and unauthenticated. Use forward_status to diagnose; do not broaden user-approved rules autonomously. Keep forwarding disabled unless requested.
+When the user asks for port forwarding in an environment where SSH port forwarding is unavailable, see `docs/en/port-forward.md`. Pass `--forward-local [BIND:]PORT:HOST:HOSTPORT` (listen locally, connect from the target), `--forward-remote` (listen on the target, connect from the client), or `--forward-socks [BIND:]PORT` (with `--forward-allow-local` rules) to `bridge`. Add `--forward-allow-local` or `--forward-allow-remote HOST[:PORT]` when the agent should be able to open forwards dynamically with `forward_open`. The target must also permit each direction with `--allow-forward-local` or `--allow-forward-remote`. Listeners bind to loopback only and do not authenticate local connections. Use `forward_status` to diagnose issues, and never broaden user-approved rules autonomously. Leave port forwarding disabled unless requested by the user.
 
 ## Optional code-server
 
-When the user wants code-server (VS Code in the browser) on the target, use the host-shell-code-server skill (.agents/skills/host-shell-code-server). It needs target --allow-forward-local and bridge --forward-allow-local '127.0.0.1:80[0-7]?' (code-server listens on the first free port in 8000-8079) in the registration command; see docs/en/code-server.md.
+When the user wants to run code-server (VS Code in the browser) on the target, use the `host-shell-code-server` skill (`.agents/skills/host-shell-code-server`). Its registration command requires `--allow-forward-local` on the target and `--forward-allow-local '127.0.0.1:80[0-7]?'` on `bridge` (code-server binds to the first free port in `8000`–`8079`); see `docs/en/code-server.md`.
 

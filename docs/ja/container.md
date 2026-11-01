@@ -1,50 +1,50 @@
-# コンテナーの中への接続
+# コンテナーへの接続
 
 > [!NOTE]
 > この文書が正本です。英訳は [../en/container.md](../en/container.md) にあります。内容が一致しない場合は日本語版が優先されます。
 
-host-shell は、SSH の接続先だけでなく、稼働中の Linux コンテナー (podman、docker、Kubernetes の pod) の中でも動きます。bridge は `--` の後に書いたコマンドを、標準入出力の通り道として使うだけです。そのため、ssh の代わりに `podman exec -i` などを書けば、コンテナーの中の host-shell に接続できます。
+`host-shell` は SSH の接続先だけでなく、稼働中の Linux コンテナー (Podman、Docker、Kubernetes Pod) の内部でも動作します。`bridge` は `--` 以降に指定されたコマンドの標準入出力を通信路として使用するだけであるため、`ssh` の代わりに `podman exec -i` 等を指定すればコンテナー内の `host-shell` にそのまま接続できます。
 
 ```mermaid
 flowchart LR
     A[エージェント] -->|stdio| B[host-shell bridge]
-    B -->|"podman exec -i (stdio)"| C[コンテナーの中の host-shell]
+    B -->|"podman exec -i (stdio)"| C[コンテナー内の host-shell]
     B -->|"ssh -T hop1 podman exec -i (stdio)"| C
 ```
 
-この文書は、コンテナーに固有の配置、登録、注意点を説明します。SSH の接続先と共通の内容は [利用ガイド](user-guide.md) を参照してください。
+この文書では、コンテナー環境に固有のバイナリ配置、登録手順、および注意点を説明します。SSH 接続先と共通の仕様については [利用ガイド](user-guide.md) を参照してください。
 
 ## 対象と確認状況
 
 | 実行環境 | 確認状況 |
 | --- | --- |
-| podman | 確認済み (podman 4.9.4、rootless) |
-| docker | podman の互換コマンド (`docker`) で確認済み。Docker Engine では未確認 |
-| kubectl (Kubernetes) | 未確認 (組み立てるコマンドだけを確認) |
+| Podman | 動作確認済み (Podman 4.9.4、rootless) |
+| Docker | Podman の Docker 互換コマンド (`docker`) で確認済み (Docker Engine では未確認) |
+| `kubectl` (Kubernetes) | 未確認 (生成されるコマンドの構文のみ確認済み) |
 
 Table: 対象の実行環境
 
-- 対象は Linux のコンテナーです。Windows コンテナーは対象外です。
-- host-shell は静的リンクのため、glibc のイメージでも musl のイメージ (Alpine など) でも動きます。
-- 配置と確認のスクリプト (`.agents/skills/host-shell-connect/scripts/`) は、コンテナーの中に `sh` と、`uname`、`id`、`dirname`、`ls`、`sha256sum`、`mkdir`、`chmod`、`mv`、`cat`、`rm` を必要とします。シェルのないコンテナーは [シェルのないコンテナー](#シェルのないコンテナー) を参照してください。
+- 対象は Linux コンテナーのみです (Windows コンテナーは対象外です)。
+- `host-shell` は静的リンクされた単一バイナリであるため、glibc ベースのイメージでも musl ベースのイメージ (Alpine Linux など) でも動作します。
+- 配置・確認用スクリプト (`.agents/skills/host-shell-connect/scripts/`) を使用する場合は、コンテナー内に `sh` および `uname`、`id`、`dirname`、`ls`、`sha256sum`、`mkdir`、`chmod`、`mv`、`cat`、`rm` が必要です。シェルを含まないコンテナーについては [シェルのないコンテナー](#シェルのないコンテナー) を参照してください。
 
 ## 経路の指定
 
-スキル host-shell-connect のスクリプトは、経路 `ROUTE` (SSH の踏み台と接続先をカンマで並べたもの) の最後に、コンテナーを 1 つ置けます。
+`host-shell-connect` スキルのスクリプト群では、経路引数 `ROUTE` (中継サーバーと接続先をカンマ区切りで並べたもの) の末尾要素としてコンテナーを 1 つ指定できます。
 
-| 最後の要素 | 実行するコマンド | 追加の指定 (環境変数) |
+| 末尾の要素 | 実行されるコマンド | 追加オプション用の環境変数 |
 | --- | --- | --- |
 | `podman:<コンテナー>` | `podman exec -i ... <コンテナー> sh -c <コマンド>` | `HOST_SHELL_PODMAN_OPTS` (例: `--user dev`) |
 | `docker:<コンテナー>` | `docker exec -i ... <コンテナー> sh -c <コマンド>` | `HOST_SHELL_DOCKER_OPTS` (例: `--user dev`) |
 | `kubectl:<pod>` | `kubectl exec -i ... <pod> -- sh -c <コマンド>` | `HOST_SHELL_KUBECTL_OPTS` (例: `-n app -c web --context prod`) |
 
-Table: コンテナーの要素
+Table: コンテナーの経路要素
 
-- `podman:web` は手元のコンテナー、`hop1,podman:web` は hop1 の上のコンテナーです。hop1 までは SSH で接続し、hop1 で `podman exec -i` を実行します。
-- コンテナーの要素は、経路の最後にだけ置けます。
-- 環境変数の値は、`HOST_SHELL_SSH_OPTS` と同じく空白で区切られます。
+- たとえば `podman:web` はローカル マシン上のコンテナー、`hop1,podman:web` は中継サーバー `hop1` 上のコンテナーを指します (後者は `hop1` まで SSH で接続し、`hop1` 上で `podman exec -i` を実行します)。
+- コンテナー要素を指定できるのは経路 (`ROUTE`) の末尾のみです。
+- 各環境変数の値は、`HOST_SHELL_SSH_OPTS` と同様に空白区切りで展開されます。
 
-```sh
+```bash
 scripts/detect.sh podman:web
 scripts/deploy.sh podman:web linux-amd64
 scripts/probe.sh podman:web /tmp/host-shell-0/host-shell
@@ -53,16 +53,16 @@ HOST_SHELL_KUBECTL_OPTS='-n app -c web' scripts/deploy.sh kubectl:web-0 linux-am
 
 ## 配置
 
-`deploy.sh` は、SSH の接続先と同じく、`/tmp/host-shell-<uid>/host-shell`、`.local/bin/host-shell` (ホームからの相対パス) の順に配置を試みます。コンテナーの既定の利用者が root の場合は `/tmp/host-shell-0/host-shell` です。
+`deploy.sh` は SSH 接続先と同様に、コンテナー内の `/tmp/host-shell-<uid>/host-shell`、`.local/bin/host-shell` (ホーム ディレクトリからの相対パス) の順で配置を試みます。コンテナーの既定ユーザーが `root` の場合は `/tmp/host-shell-0/host-shell` に配置されます。
 
-- ルート ファイル システムが読み取り専用の場合や、`/tmp` が `noexec` の場合は、書き込めて実行もできるボリュームのパスを 3 番目の引数で指定します。
-- コンテナーを作り直すと、ボリュームに置いていないファイルは消えます (`podman restart` などの再起動では消えません)。作り直した後は、もう一度配置します。
+- ルート ファイルシステムが読み取り専用の場合や `/tmp` が `noexec` マウントされている場合は、書き込みと実行が可能なボリューム上のパスを第 3 引数に指定してください。
+- コンテナーを再作成すると、ボリューム以外の領域に配置したファイルは消去されます (`podman restart` などの再起動では消去されません)。コンテナーを再作成した際は再度配置してください。
 
 ## 登録コマンド
 
-bridge の `--` の後に、`exec -i` でコンテナーの中の host-shell を直接起動するコマンドを書きます。経路の追加の指定 (利用者、名前空間など) も同じように含めます。
+`bridge` の `--` の後ろに、`exec -i` でコンテナー内の `host-shell` を直接起動するコマンドを指定します。実行ユーザーや名前空間などの追加オプションもあわせて指定してください。
 
-```sh
+```bash
 claude mcp add host-shell-web -- ~/.local/bin/host-shell bridge -- podman exec -i web /tmp/host-shell-0/host-shell --mcp
 claude mcp add host-shell-web -- ~/.local/bin/host-shell bridge -- docker exec -i --user dev web /tmp/host-shell-1000/host-shell --mcp
 claude mcp add host-shell-web -- ~/.local/bin/host-shell bridge -- kubectl exec -i -n app -c web web-0 -- /tmp/host-shell-1000/host-shell --mcp
@@ -70,50 +70,50 @@ claude mcp add host-shell-web -- ~/.local/bin/host-shell bridge -- ssh -T -o Bat
 ```
 
 > [!IMPORTANT]
-> `exec` には `-i` が必須です。`-t` を付けてはいけません。端末を割り当てると、端末の制御で MCP のやり取り (JSON-RPC) が壊れます。
+> `exec` には必ず `-i` を指定し、`-t` は絶対に指定しないでください。疑似端末を割り当てると、端末制御シーケンスによって MCP の JSON-RPC 通信が破損します。
 
-制限のオプション (`--read-only`、`--allow-path` など) は、SSH の接続先と同じく `--mcp` の後に付けます。
+ポリシー制限オプション (`--read-only`、`--allow-path` など) は、SSH 接続先と同様に `--mcp` の後ろに指定します。
 
 ## 注意点
 
-- **実行する利用者**: host-shell は `exec` の既定の利用者 (イメージの `USER`、多くは root) で動きます。権限を下げる場合は `--user` (kubectl はコンテナーの `securityContext`) で指定します。
-- **プロセスの寿命**: MCP セッションが終わると、host-shell と、job_start で起動したプロセスは終わります。コンテナーの中には残りません。
-- **pod のネットワーク**: pod の中のコンテナーはネットワークを共有します。`forward_open` で `127.0.0.1:<port>` へ転送すると、同じ pod の他のコンテナーのサービスにも届きます (podman の pod で確認済み)。PID の名前空間は共有しないため、他のコンテナーのプロセスは `proc_list` に現れません。
-- **操作ログ**: 既定の操作ログはコンテナーの中 (`~/.local/state/host-shell/`) に書かれ、コンテナーを作り直すと消えます。残す場合は `--log-file` でボリュームのパスを指定します。
-- **権限の範囲**: `podman exec` などを実行できる利用者は、もともとコンテナーの中で任意のコマンドを実行できます。host-shell は新たな権限を与えません。
+- **実行ユーザー**: `host-shell` は `exec` の既定ユーザー (イメージの `USER`、多くの場合は `root`) の権限で動作します。権限を絞る場合は `--user` (`kubectl` ではコンテナーの `securityContext`) を指定してください。
+- **プロセスの寿命**: MCP セッションが終了すると、コンテナー内の `host-shell` および `job_start` で起動した子プロセスも終了し、コンテナー内には残りません。
+- **Pod のネットワークと名前空間**: 同一 Pod 内のコンテナーはネットワーク名前空間を共有するため、`forward_open` で `127.0.0.1:<port>` へ転送すると同じ Pod 内の別コンテナーのサービスにも到達できます (Podman の Pod で確認済み)。一方、PID 名前空間は共有されないため、別コンテナーのプロセスは `proc_list` には表示されません。
+- **操作ログ**: 既定の操作ログはコンテナー内 (`~/.local/state/host-shell/`) に出力されるため、コンテナーを再作成すると失われます。永続化する場合は `--log-file` でボリューム上のパスを指定してください。
+- **権限の範囲**: `podman exec` 等を実行できる利用者は、もともとコンテナー内で任意のコマンドを実行できる権限を持っています。`host-shell` によって新たな権限が付与されることはありません。
 
 ## シェルのないコンテナー
 
-distroless のイメージなど、`sh` のないコンテナーでは、配置と確認のスクリプトは使えません。次のように手で配置して登録します。
+distroless イメージなど `sh` を含まないコンテナーでは、配置・確認スクリプト (`deploy.sh` 等) は使用できません。次のように手動でバイナリをコピーして登録してください。
 
-```sh
+```bash
 podman cp .agents/skills/host-shell-connect/bin/host-shell-linux-amd64 web:/tmp/host-shell
 podman exec web /tmp/host-shell --version
 claude mcp add host-shell-web -- ~/.local/bin/host-shell bridge -- podman exec -i web /tmp/host-shell --mcp
 ```
 
-- docker では `docker cp` を使います。`kubectl cp` はコンテナーの中に `tar` を必要とするため、kubectl では配置できません。
-- ファイル操作や検索のツールは使えますが、`exec_run` でシェルのコマンドは使えません。code-server も使えません。
+- Docker の場合は `docker cp` を使用します。なお、`kubectl cp` はコンテナー内に `tar` を必要とするため、最小構成イメージへの配置には使用できません。
+- シェルのないコンテナーでもファイル操作 (`fs_*`) や検索 (`search_*`) などのツールはそのまま利用できますが、`exec_run` でのシェル実行や code-server の導入は行えません。
 
-## code-server を使う
+## code-server の利用
 
-コンテナーの中にも、スキル host-shell-code-server で [code-server を注入](code-server.md) できます。手順は SSH の接続先と同じです。コンテナーに固有の条件は次のとおりです。
+稼働中のコンテナー内にも、`host-shell-code-server` スキルを使って [code-server を導入](code-server.md) できます。手順は SSH 接続先と共通ですが、コンテナー環境では次の条件を満たす必要があります。
 
 | 条件 | 内容 |
 | --- | --- |
-| glibc | code-server の node は glibc を必要とします。Alpine など musl のイメージでは使えません (install が展開の前に止まります) |
-| コマンド | `bash`、`tar`、`gzip`、`sha256sum`、`od` が必要です。Alpine には標準で `bash` もありません |
-| HOME | 設定、ユーザー データ、拡張機能は HOME の下に置きます。HOME が設定され、書き込めるディレクトリーである必要があります |
-| 残す場合 | コンテナーを作り直しても残す場合は、HOME をボリュームにします |
+| glibc | code-server 同梱の Node.js は glibc を必要とするため、Alpine Linux など musl ベースのイメージでは動作しない (`install` が展開前に停止する) |
+| 必要なコマンド | コンテナー内に `bash`、`tar`、`gzip`、`sha256sum`、`od` が必要 (Alpine には標準で `bash` も含まれない) |
+| `HOME` | 設定、ユーザー データ、拡張機能は `HOME` 配下に保存されるため、`HOME` が設定されており書き込み可能なディレクトリである必要がある |
+| データの永続化 | コンテナーの再作成後も設定や拡張機能を維持する場合は、`HOME` にボリュームをマウントする |
 
-Table: コンテナーで code-server を使う条件
+Table: コンテナー内で code-server を使用する条件
 
-| イメージ | 結果 |
+| イメージ | 検証結果 |
 | --- | --- |
-| Oracle Linux 9 | 導入、起動、転送、ログイン、既定の設定と拡張機能の反映を確認 |
-| debian:stable-slim | 必要なコマンドがそろっており、同じく確認 |
-| alpine:3.22 | `bash` がないため install を起動できません。`bash` を入れても glibc がないため、展開の前に止まります |
+| Oracle Linux 9 | 導入、起動、ポート転送、ログイン、および既定設定・拡張機能の反映を確認済み |
+| `debian:stable-slim` | 必要なコマンドが標準でそろっており、同様に動作確認済み |
+| `alpine:3.22` | `bash` がないため `install` を起動できない。`bash` を追加しても glibc がないため展開前に停止する |
 
-Table: 確認したイメージ
+Table: 検証したコンテナー イメージ
 
-code-server は、コンテナーの中の `127.0.0.1` の 8000〜8079 のうち、最初の空きで待ち受けます。コンテナーごとにネットワークが分かれるため、通常は 8000 です。
+code-server はコンテナー内の `127.0.0.1` のポート 8000〜8079 のうち最初に空いているポートで待ち受けます。コンテナーごとにネットワーク名前空間が分離されているため、通常はポート 8000 が使用されます。

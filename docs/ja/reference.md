@@ -426,6 +426,7 @@ Table: 文字コードの変換の対象
 | | [`reg_delete`](#reg_delete) | レジストリ キー・値を削除する (Windows のみ) |
 | 手元との転送 | [`transfer_push`](#transfer_push) | ローカルから接続先へファイルを転送する (`bridge` 経由時のみ) |
 | | [`transfer_pull`](#transfer_pull) | 接続先からローカルへファイルを転送する (`bridge` 経由時のみ) |
+| クライアント経由プロキシ | [`proxy_status`](client-proxy.md#proxy_status-bridge) | クライアント経由 HTTP プロキシの状態と接続履歴を返す (`bridge` で `--proxy` 指定時のみ) |
 | ポート転送 | [`forward_status`](port-forward.md#ツール-bridge) | 転送の一覧と接続結果の履歴を返す (`bridge` で転送の指定がある場合のみ) |
 | | [`forward_open`](port-forward.md#ツール-bridge) | ポート転送を作成する (`bridge` で許可規則がある場合のみ) |
 | | [`forward_close`](port-forward.md#ツール-bridge) | `forward_open` で作成した転送を閉じる (`bridge` で許可規則がある場合のみ) |
@@ -1564,6 +1565,13 @@ Table: transfer_push と transfer_pull の出力
 
 接続先のファイルまたはディレクトリをローカルへ転送します。引数と出力は [`transfer_push`](#transfer_push) と同一です (`local_path` が転送先になります)。接続先の `fs_manifest` で SHA-256 を確認し、未変更ファイルを除いて `fs_read` (`base64`) で 1 MiB 単位に `<ローカル転送先>.host-shell-part` へ読み出し、SHA-256 照合と権限反映の後にリネームします。
 
+### クライアント経由 HTTP プロキシとポート転送
+
+`bridge` と接続先の双方で対応するオプションを有効にした場合、既存の SSH セッションの標準入出力上で HTTP / HTTPS プロキシおよび TCP ポート転送を行います。
+
+- **クライアント経由 HTTP プロキシ**: 起動オプション (`--proxy`、`--proxy-allow-host`、`--client-proxy`)、`proxy_status` ツール、環境変数の優先順位、および上限については [クライアント経由 HTTP プロキシ](client-proxy.md) を参照してください。
+- **ポート転送**: ローカル転送、リモート転送、SOCKS5 の起動オプション、要求と許可の照合、`forward_open`・`forward_close`・`forward_status` ツール、および上限については [SSH stdio 経由のポート転送](port-forward.md) を参照してください。
+
 ## プロセスの起動と終了
 
 ### シェル
@@ -1717,11 +1725,3 @@ Table: 操作ログで置き換える値
 - `net_list_listeners`、`svc_list`、`svc_control`、`log_query`、`disk_list` は Linux と Windows のみ対応です (Linux のサービス・ログ操作は systemd 環境を前提とします)。
 - 起動オプションによる制限 (ポリシー) はツール引数の検査であり、OS の権限境界ではありません ([制限の限界](#制限の限界) を参照)。
 - 対応 OS は Go 1.26 の要件に基づき Windows 10 / Windows Server 2016 以降 (`pty` は Windows 10 1809 / Windows Server 2019 以降)、Linux カーネル 3.2 以降、macOS 12 以降 (`bridge` のみ) です。
-
-## クライアントプロキシ
-
-[クライアント経由 HTTP プロキシ](client-proxy.md) に起動設定、制限、proxy_status、環境変数の優先順位、上限を記載しています。
-
-## ポート転送
-
-[SSH stdio 経由のポート転送](port-forward.md) に、ローカル転送・リモート転送・SOCKS5 の起動設定、要求と許可の照合、forward_open・forward_close・forward_status、上限を記載しています。

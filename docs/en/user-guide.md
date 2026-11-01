@@ -76,7 +76,7 @@ flowchart TB
 ```
 
 `bridge` relays all tools exposed by the target's `host-shell` and adds `transfer_push` (local to target) and `transfer_pull` (target to local).  
-File contents stream directly between `bridge` and the target's `host-shell` without passing through the agent context, supporting large files and directory trees.  
+File contents stream directly between `bridge` and the target's `host-shell` without passing through the agent context, supporting large files and directory trees. When enabled on both ends, `bridge` also provides an [HTTP proxy through the client](client-proxy.md) and [port forwarding](port-forward.md) over the same SSH session.  
 `bridge` is a subcommand of the same `host-shell` binary; use the executable matching the client OS (Linux, Windows, or macOS).
 
 ## Requirements
@@ -246,7 +246,7 @@ C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe --mcp --windows-shel
 
 ## Registering with the agent
 
-For registration commands of host-shell inside a container, see [Connecting into containers](container.md#registration-commands).
+For registration commands targeting `host-shell` inside a container, see [Connecting into containers](container.md#registration-commands).
 
 ### Claude Code
 
@@ -445,6 +445,13 @@ Files accessible via HTTP/HTTPS from the target can be downloaded directly to a 
 
 Without `bridge`, files can be transferred in chunks via `fs_read` and `fs_write` (`base64`, `offset`), though this passes data through the agent context and is practical only up to a few megabytes (`offset` writes are idempotent and can resume from `fs_stat` `size`).
 
+### Port forwarding and HTTP proxy
+
+Even where SSH port forwarding (`-L`, `-R`, `-D`) is unavailable, enabling the corresponding options on both `bridge` and the target provides network relaying over the existing SSH session's standard input and output:
+
+- **[Port forwarding](port-forward.md)**: Supports local forwards (`--forward-local`), remote forwards (`--forward-remote`), SOCKS5 (`--forward-socks`), and dynamic forwards via `forward_open`. You can also use local forwarding to [inject code-server](code-server.md) into a closed-network target and open it in a local browser.
+- **[HTTP proxy through the client](client-proxy.md)**: Routes HTTP and HTTPS requests from proxy-aware target applications through the `bridge` network (`--proxy`, `--proxy-allow-host`, `--client-proxy`).
+
 ### Encodings and line endings
 
 Even on Shift_JIS or EUC-JP targets, `host-shell` converts text to and from UTF-8 on the target so the agent always works in UTF-8.
@@ -484,9 +491,3 @@ Even on Shift_JIS or EUC-JP targets, `host-shell` converts text to and from UTF-
 Table: Troubleshooting
 
 If the issue persists, inspect the failed tool call and error message in the target's audit log ([Audit log in the Reference](reference.md#audit-log)).
-
-## External access through the client
-
-[HTTP proxy through the client](client-proxy.md) describes startup, restrictions, proxy_status, environment precedence, and limits.
-
-To forward ports where SSH port forwarding is unavailable, see [Port forwarding](port-forward.md). It provides local forwards, remote forwards and SOCKS5 over the standard input/output of the same SSH session, without SSH port forwarding (`-L`, `-R`, `-D`).

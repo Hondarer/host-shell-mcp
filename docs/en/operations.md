@@ -81,6 +81,7 @@ Keep the following points in mind when configuring restriction options.
 - `--deny-command` matches command line strings against regular expressions and can be bypassed by rephrasing commands. Use it as a safeguard against accidental commands, not as a security boundary.
 - `--confirm` requires a client that supports MCP elicitation (unsupported clients receive an error on covered tools).
 - `--redact` masks only secrets matching known patterns. Protect sensitive files from being read using OS file permissions.
+- `--read-only` and `--tools` govern published MCP tools only; they do not restrict traffic over the [HTTP proxy through the client](client-proxy.md) or [port forwarding](port-forward.md). When enabling those features, narrow their scope with destination allow rules on `bridge` (`--proxy-allow-host`, `--forward-allow-local`, `--forward-allow-remote`), outbound host rules on the target (`--allow-host`), and remote forward port ranges (`--allow-forward-remote-port`).
 - Pin startup options in the target's `authorized_keys` as shown in [Pinning the command to start](#pinning-the-command-to-start) so users and agents cannot override them.
 
 ## Pinning the command to start
@@ -89,7 +90,7 @@ Setting `command=` in the target's `authorized_keys` restricts the dedicated key
 Even if the key is compromised, interactive shell access and port forwarding are blocked, and all tool calls are recorded in the audit log.
 
 > [!IMPORTANT]
-> host-shell's [HTTP proxy through the client](client-proxy.md) and [port forwarding](port-forward.md) do not use sshd forwarding, so `no-port-forwarding` or `AllowTcpForwarding no` cannot stop them. They are available only when the target is started with `--client-proxy`, `--allow-forward-local`, or `--allow-forward-remote`. To forbid them, leave these options out of `command=`.
+> `host-shell`'s [HTTP proxy through the client](client-proxy.md) and [port forwarding](port-forward.md) do not use `sshd` forwarding, so `no-port-forwarding` and `AllowTcpForwarding no` do not block them. They are available only when the target is started with `--client-proxy`, `--allow-forward-local`, or `--allow-forward-remote`. To prohibit them, omit these options from `command=`.
 
 ```{.text caption="~hsagent/.ssh/authorized_keys (Linux target)"}
 command="/opt/host-shell/host-shell --mcp",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA... host-shell agent
@@ -234,9 +235,3 @@ Written file contents (`content` in `fs_write`) log only character count and SHA
 - [ ] Passed `-T` to every SSH hop and verified that non-interactive shells produce no extra output on standard output
 - [ ] Configured pre-execution approval for mutating tools in the agent
 - [ ] Configured the audit log path and external log forwarding if long-term retention is required
-
-## Restricting client network access
-
-[HTTP proxy through the client](client-proxy.md) describes startup, restrictions, proxy_status, environment precedence, and limits.
-
-[Port forwarding](port-forward.md) describes the per-direction permission options, destination restrictions by the target's `--allow-host`, unauthenticated listeners, and audit records.
