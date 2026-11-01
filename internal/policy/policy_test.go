@@ -143,3 +143,24 @@ func TestEnvAndRedact(t *testing.T) {
 		}
 	}
 }
+
+func TestWithin(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "src")
+	for _, c := range []struct {
+		p    string
+		want bool
+	}{
+		{root, true},
+		{filepath.Join(root, "a", "b"), true},
+		{filepath.Dir(root), false},
+		{root + "x", false},
+		{filepath.Join(root, "..", "other"), false},
+	} {
+		if got := Within(c.p, root); got != c.want {
+			t.Errorf("Within(%q) = %v, want %v", c.p, got, c.want)
+		}
+	}
+	if runtime.GOOS == "windows" && !Within(strings.ToUpper(filepath.Join(root, "a")), root) {
+		t.Error("Windows paths should compare case-insensitively")
+	}
+}

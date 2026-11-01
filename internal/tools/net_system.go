@@ -34,7 +34,7 @@ type NetListListenersOutput struct {
 }
 
 func (d *Deps) netListListeners(ctx context.Context, _ *mcp.CallToolRequest, in NetListListenersInput) (*mcp.CallToolResult, NetListListenersOutput, error) {
-	all, note, err := listeners(ctx)
+	all, note, err := d.listeners(ctx)
 	if err != nil {
 		return nil, NetListListenersOutput{}, err
 	}

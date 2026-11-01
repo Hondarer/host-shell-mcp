@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -20,22 +19,6 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/proc"
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
-
-// runTool runs an administrative command, prefixed with sudo -n when sudo is set.
-func (d *Deps) runTool(ctx context.Context, argv []string, sudo bool) (proc.Result, error) {
-	if sudo && os.Geteuid() != 0 {
-		argv = append([]string{"sudo", "-n", "--"}, argv...)
-	}
-	if _, err := exec.LookPath(argv[0]); err != nil {
-		return proc.Result{}, fmt.Errorf("%s is not available on this host: %w", argv[0], err)
-	}
-	spec := d.procSpec(CommandSpec{Argv: argv})
-	return proc.Run(ctx, spec, proc.Options{
-		Output:    textenc.Choice{Auto: true, Enc: textenc.Console()},
-		Timeout:   d.Cfg.DefaultTimeout,
-		MaxOutput: 32 << 20,
-	})
-}
 
 // ---- proc_kill ----
 

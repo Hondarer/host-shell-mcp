@@ -31,10 +31,11 @@ func connectBridge(t *testing.T, remotePolicy policy.Options, opt Options, copts
 	cfg.LogFile = ""
 	cfg.Policy = remotePolicy
 	al, _ := audit.Open("")
-	s, closeServer, err := server.New(cfg, al)
+	pol, err := server.NewPolicy(cfg, al)
 	if err != nil {
 		t.Fatal(err)
 	}
+	s, closeServer := server.New(cfg, pol, al)
 	rs, rc := mcp.NewInMemoryTransports()
 	ss, err := s.Connect(ctx, rs, nil)
 	if err != nil {

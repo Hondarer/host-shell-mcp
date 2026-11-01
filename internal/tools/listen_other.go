@@ -7,6 +7,6 @@ import (
 	"errors"
 )
 
-func listeners(context.Context) ([]Listener, string, error) {
+func (d *Deps) listeners(context.Context) ([]Listener, string, error) {
 	return nil, "", errors.New("net_list_listeners is supported on Linux and Windows; use exec_run with lsof -iTCP -sTCP:LISTEN -nP or netstat")
 }

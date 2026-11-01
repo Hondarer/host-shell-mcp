@@ -12,7 +12,7 @@ import (
 )
 
 // listeners reads listening sockets from /proc/net/{tcp,tcp6,udp,udp6} and resolves owning processes via /proc/<pid>/fd.
-func listeners(context.Context) ([]Listener, string, error) {
+func (d *Deps) listeners(context.Context) ([]Listener, string, error) {
 	owners := socketOwners()
 	var out []Listener
 	for _, proto := range []string{"tcp", "tcp6", "udp", "udp6"} {

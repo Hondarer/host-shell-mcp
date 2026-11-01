@@ -276,7 +276,7 @@ func (p *Policy) CheckPath(pth string, write bool) error {
 	}
 	real := resolveExisting(abs)
 	for _, r := range roots {
-		if within(real, r) {
+		if Within(real, r) {
 			return nil
 		}
 	}
@@ -316,7 +316,8 @@ func resolveExisting(abs string) string {
 	}
 }
 
-func within(p, root string) bool {
+// Within reports whether p is root or below it; paths compare case-insensitively on Windows.
+func Within(p, root string) bool {
 	if runtime.GOOS == "windows" {
 		p, root = strings.ToLower(p), strings.ToLower(root)
 	}

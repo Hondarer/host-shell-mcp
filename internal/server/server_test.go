@@ -34,10 +34,11 @@ func connectWith(t *testing.T, po policy.Options, copts *mcp.ClientOptions) *mcp
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, closeServer, err := New(cfg, al)
+	pol, err := NewPolicy(cfg, al)
 	if err != nil {
 		t.Fatal(err)
 	}
+	s, closeServer := New(cfg, pol, al)
 	st, ct := mcp.NewInMemoryTransports()
 	ss, err := s.Connect(ctx, st, nil)
 	if err != nil {

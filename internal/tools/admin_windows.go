@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 	"unicode/utf8"
 	"unsafe"
 
@@ -433,11 +434,7 @@ func listDisks(bool) ([]Disk, error) {
 }
 
 func utf16Decode(b []uint16) string {
-	r := make([]rune, len(b))
-	for i, c := range b {
-		r[i] = rune(c)
-	}
-	return string(r)
+	return string(utf16.Decode(b))
 }
 
 func driveType(t uint32) string {

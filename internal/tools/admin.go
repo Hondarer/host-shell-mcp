@@ -4,12 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/hondarer/host-shell-mcp/internal/proc"
+	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
 func registerAdmin(r *Registry, d *Deps) {
@@ -340,4 +345,21 @@ func humanBytes(n uint64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// runTool runs an administrative command, prefixed with sudo -n when sudo is set (Linux only).
+// It goes through procSpec so the policy environment filter and proxy environment apply.
+func (d *Deps) runTool(ctx context.Context, argv []string, sudo bool) (proc.Result, error) {
+	if sudo && os.Geteuid() != 0 {
+		argv = append([]string{"sudo", "-n", "--"}, argv...)
+	}
+	if _, err := exec.LookPath(argv[0]); err != nil {
+		return proc.Result{}, fmt.Errorf("%s is not available on this host: %w", argv[0], err)
+	}
+	spec := d.procSpec(CommandSpec{Argv: argv})
+	return proc.Run(ctx, spec, proc.Options{
+		Output:    textenc.Choice{Auto: true, Enc: textenc.Console()},
+		Timeout:   d.Cfg.DefaultTimeout,
+		MaxOutput: 32 << 20,
+	})
 }

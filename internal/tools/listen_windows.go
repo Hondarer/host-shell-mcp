@@ -5,20 +5,15 @@ import (
 	"net"
 	"strconv"
 	"strings"
-	"time"
-
-	"github.com/hondarer/host-shell-mcp/internal/proc"
-	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
 // listeners parses listening sockets from netstat -ano and resolves process names via tasklist.
-func listeners(ctx context.Context) ([]Listener, string, error) {
-	opt := proc.Options{Output: textenc.Choice{Auto: true, Enc: textenc.Console()}, Timeout: 30 * time.Second, MaxOutput: 16 << 20}
-	res, err := proc.Run(ctx, proc.Spec{Argv: []string{"netstat", "-ano"}}, opt)
+func (d *Deps) listeners(ctx context.Context) ([]Listener, string, error) {
+	res, err := d.runTool(ctx, []string{"netstat", "-ano"}, false)
 	if err != nil {
 		return nil, "", err
 	}
-	names := processNames(ctx)
+	names := d.processNames(ctx)
 	var out []Listener
 	for _, line := range strings.Split(res.Stdout, "\n") {
 		f := strings.Fields(line)
@@ -54,9 +49,8 @@ func listeners(ctx context.Context) ([]Listener, string, error) {
 }
 
 // processNames maps process IDs to names from tasklist.
-func processNames(ctx context.Context) map[int]string {
-	opt := proc.Options{Output: textenc.Choice{Auto: true, Enc: textenc.Console()}, Timeout: 30 * time.Second, MaxOutput: 16 << 20}
-	res, err := proc.Run(ctx, proc.Spec{Argv: []string{"tasklist", "/fo", "csv", "/nh"}}, opt)
+func (d *Deps) processNames(ctx context.Context) map[int]string {
+	res, err := d.runTool(ctx, []string{"tasklist", "/fo", "csv", "/nh"}, false)
 	out := map[int]string{}
 	if err != nil {
 		return out

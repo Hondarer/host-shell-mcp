@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
 // FsMkdirInput is the input of fs_mkdir.
@@ -295,9 +297,7 @@ func copySymlink(src, dst string, overwrite bool, st *copyStats) error {
 
 // isWithin reports whether path is dir or below it.
 func isWithin(path, dir string) bool {
-	p, d := absPath(path), absPath(dir)
-	rel, err := filepath.Rel(d, p)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return policy.Within(absPath(path), absPath(dir))
 }
 
 // protectedPath reports whether path must not be removed (a file system root or the home directory).

@@ -35,10 +35,11 @@ func connectForward(t *testing.T, local, remote bool, opt Options) (*mcp.ClientS
 		t.Cleanup(cfg.Forward.Close)
 		cfg.Forward.Register(&to)
 	}
-	srv, stop, err := server.New(cfg, al)
+	srvPol, err := server.NewPolicy(cfg, al)
 	if err != nil {
 		t.Fatal(err)
 	}
+	srv, stop := server.New(cfg, srvPol, al)
 	t.Cleanup(stop)
 	rs, rc := mcp.NewInMemoryTransports()
 	go srv.Run(ctx, channel.Target(rs, to))
