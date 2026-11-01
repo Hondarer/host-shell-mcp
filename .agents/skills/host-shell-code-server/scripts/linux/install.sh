@@ -5,6 +5,11 @@
 # Usage: install.sh [--extension FILE.vsix|ID]
 
 set -euo pipefail
+# Every location is under HOME; inside containers it may be unset or read-only for the exec user.
+if [[ -z "${HOME:-}" || ! -d "${HOME}" || ! -w "${HOME}" ]]; then
+  echo "error: HOME (${HOME:-not set}) must be a writable directory" >&2
+  exit 1
+fi
 # shellcheck source=../lib/common.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/common.sh"
 
@@ -21,6 +26,10 @@ esac
 # python3, openssl and ss are deliberately not required: minimal closed environments often lack them.
 require_cmd tar gzip sha256sum od uname tr
 type="$(linux_type)" || die "unsupported architecture: $(uname -m) (supported: x86_64, aarch64)"
+# The bundled node is linked against glibc; checking its loader first avoids sending and extracting
+# the archive on musl-based systems, where node would fail with an obscure "not found".
+loader="$(glibc_loader "${type}")"
+[[ -e "${loader}" ]] || die "code-server needs glibc: ${loader} not found (musl-based systems such as Alpine are not supported)"
 
 if code_server_installed; then
   echo "code-server ${CODE_SERVER_VERSION} is already installed: ${HSCS_INSTALL_DIR}"
@@ -54,7 +63,7 @@ else
   (
     umask 077
     printf '%s\n' \
-      "bind-addr: 127.0.0.1:${CODE_SERVER_PORT}" \
+      "bind-addr: 127.0.0.1:${CODE_SERVER_PORT_FIRST}" \
       "auth: password" \
       "password: ${password}" \
       "cert: false" \

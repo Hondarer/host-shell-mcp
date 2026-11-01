@@ -135,6 +135,8 @@ Table: Where to place the binary
 
 `scripts/deploy.sh` in `.agents/skills/host-shell-connect` automates candidate selection, permission checks, SHA-256 verification, and startup testing.
 
+To deploy into a running container, see [Connecting into containers](container.md).
+
 ### Sending over SSH only
 
 When SFTP and port forwarding are unavailable, stream the binary over SSH standard input and verify its SHA-256 hash afterward.
@@ -243,6 +245,8 @@ C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe --mcp --windows-shel
 ```
 
 ## Registering with the agent
+
+For registration commands of host-shell inside a container, see [Connecting into containers](container.md#registration-commands).
 
 ### Claude Code
 

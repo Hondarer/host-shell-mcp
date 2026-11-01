@@ -135,6 +135,8 @@ Table: 配置する場所
 
 `.agents/skills/host-shell-connect` スキルの `scripts/deploy.sh` は、この優先順で配置、権限確認、SHA-256 照合、起動確認を自動実行します。
 
+稼働中のコンテナーの中に配置する場合は、[コンテナーの中への接続](container.md) を参照してください。
+
 ### SSH だけで送る
 
 SFTP やポート転送が使えない環境でも、SSH セッションの標準入力経由でバイナリを転送できます。転送後は必ず SHA-256 ハッシュをローカルと照合してください。
@@ -244,6 +246,8 @@ C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe --mcp --windows-shel
 ```
 
 ## エージェントへの登録
+
+コンテナーの中の host-shell の登録コマンドは、[コンテナーの中への接続](container.md#登録コマンド) を参照してください。
 
 ### Claude Code
 

@@ -64,6 +64,7 @@ Table: Bridge forward options (all repeatable)
 - PORT 0 picks a free port; forward_status reports the actual port.
 - Bracket an IPv6 HOST, as in `[2001:db8::1]`.
 - Rules use the same host name glob and optional port as `--proxy-allow-host` (no CIDR). They constrain requested names, not resolved IP ranges.
+- The port is also matched as a glob. For example, `'127.0.0.1:80[0-7]?'` matches 8000-8079. Quote it so that the shell does not expand it.
 - Persistent local and remote forwards are the user's own permission and are not matched against rules.
 - `--forward-socks` requires at least one `--forward-allow-local`. To allow every destination, state `--forward-allow-local '*'` explicitly.
 - If any persistent forward cannot listen (for example, the port is in use), startup fails, including listeners on the target.

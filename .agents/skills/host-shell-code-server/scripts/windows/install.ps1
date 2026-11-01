@@ -66,7 +66,7 @@ else {
     # The password is never printed: tool output stays in the agent's conversation. The agent copies
     # the configuration to the client with transfer_pull instead.
     $content = @(
-        "bind-addr: 127.0.0.1:$($config.Port)"
+        "bind-addr: 127.0.0.1:$($config.PortFirst)"
         "auth: password"
         "password: $(New-HscsPassword)"
         "cert: false"

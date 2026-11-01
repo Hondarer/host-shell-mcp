@@ -18,14 +18,14 @@ sequenceDiagram
     A->>T: transfer_push (scripts, default settings, archive, extensions)
     A->>T: exec_run: install (the first install also injects settings and extensions)
     A->>A: transfer_pull (copy the configuration file to the client)
-    A->>T: job_start: start (127.0.0.1:8000)
+    A->>T: job_start: start (first free port in 127.0.0.1:8000-8079)
     A->>T: forward_open (local forward)
     A->>U: URL and the path of the configuration file
     U->>T: http://127.0.0.1:<client port>/ (through the forward)
 ```
 
 - The target never connects to the internet. The release archive and extensions are fetched on the client, verified by SHA-256 and then sent. The target verifies the same SHA-256 again.
-- code-server listens only on `127.0.0.1:8000` of the target and is reached from the client through a local forward. The client port is assigned automatically.
+- code-server listens only on the first free port in 8000-8079 on `127.0.0.1` of the target ([Listening port](#listening-port)) and is reached from the client through a local forward. The client port is assigned automatically.
 - code-server and the forward stop when the MCP session ends.
 
 ## Targets
@@ -40,9 +40,11 @@ Table: Supported targets
 
 Windows arm64 is not supported (code-server's official releases have no build for it). The code-server version is 4.144.0 (VS Code 1.144.0).
 
-A Linux target needs `bash`, `tar`, `gzip`, `sha256sum` and `od`; `python3` and `curl` are not needed. A Windows target uses Windows PowerShell 5.1 or later and the OS `tar.exe`.
+A Linux target needs `bash`, `tar`, `gzip`, `sha256sum` and `od`; `python3` and `curl` are not needed. code-server's node needs glibc, so musl-based systems such as Alpine are not supported. install stops before extracting when glibc is missing or HOME is not writable. A Windows target uses Windows PowerShell 5.1 or later and the OS `tar.exe`.
 
 Clients can be Linux, macOS or Windows. Linux and macOS clients use `curl` and `python3`.
+
+code-server can also be injected into a running container (connected with `podman exec -i` and similar). See [Connecting into containers](container.md) for the container-specific conditions.
 
 ## Preparation (registration command)
 
@@ -50,18 +52,28 @@ The local forward requires these options in the MCP server registration command.
 
 | Side | Option | Description |
 | --- | --- | --- |
-| Target | `--allow-forward-local` | Permits local forwards. If the target uses `--allow-host`, also allow `127.0.0.1:8000` |
-| bridge | `--forward-allow-local 127.0.0.1:8000` | Limits what the agent can open with forward_open to code-server on the target |
+| Target | `--allow-forward-local` | Permits local forwards. If the target uses `--allow-host`, also allow `127.0.0.1:80[0-7]?` |
+| bridge | `--forward-allow-local '127.0.0.1:80[0-7]?'` | Limits what the agent can open with forward_open to code-server's ports (8000-8079) on the target |
 
 Table: Required options
 
 ```sh
-host-shell bridge --forward-allow-local 127.0.0.1:8000 \
+host-shell bridge --forward-allow-local '127.0.0.1:80[0-7]?' \
   -- ssh -T target /path/to/host-shell --mcp --allow-forward-local
 ```
 
+- `80[0-7]?` is a port glob in the allow rule that matches 8000-8079. Quote it so that the shell does not expand it.
 - The scripts and archives are sent with the bridge's transfer_push, so targets with `--read-only` and bridges with `--no-transfer` cannot be used.
 - If an option is missing, the agent stops and tells the user which option to add.
+
+## Listening port
+
+start checks ports 8000 to 8079 on the target's `127.0.0.1` in order and starts code-server on the first free one. The agent reads the port from code-server's `HTTP server listening on http://127.0.0.1:<port>/` line and opens the forward to it.
+
+- If all of 8000-8079 are in use, start stops with `no free port in 8000-8079 on 127.0.0.1`.
+- The environment variable `CODE_SERVER_PORT` pins a single port; start stops if it is in use.
+- If another process takes the port between the check and the bind, code-server exits with `EADDRINUSE`. The agent runs start again.
+- With a registration whose bridge rule allows only `127.0.0.1:8000`, the forward is refused when 8000 was in use. The agent stops code-server and asks the user to change the rule to `'127.0.0.1:80[0-7]?'` and reconnect.
 
 ## Password
 
@@ -115,7 +127,19 @@ Settings changed in code-server are not overwritten by running install again, an
 code-server in a closed network cannot reach the extension marketplace (Open VSX) by itself. Use either of these:
 
 - A `.vsix` file: the agent sends a `.vsix` prepared on the client and installs it with `install --extension <file>`.
-- The [HTTP proxy through the client](client-proxy.md): enable `--client-proxy` on the target and `--proxy` on the bridge, with `--proxy-allow-host open-vsx.org:443` and `--proxy-allow-host openvsx.eclipsecontent.org:443`. `--proxy-allow-host` does not accept commas, so give one per destination. code-server connects to the marketplace through HTTPS_PROXY, so `install --extension <ID>` works (verified). Installing from the extensions view in the browser has not been verified.
+- The [HTTP proxy through the client](client-proxy.md): enable `--client-proxy` on the target and `--proxy` on the bridge, with `--proxy-allow-host open-vsx.org:443` and `--proxy-allow-host openvsx.eclipsecontent.org:443`. `--proxy-allow-host` does not accept commas, so give one per destination. code-server connects to the marketplace through HTTPS_PROXY, so both `install --extension <ID>` and the extensions view in the browser work (both verified).
+
+In the extensions view, which side communicates depends on the operation.
+
+| Operation | Communicating side | Required connection |
+| --- | --- | --- |
+| Searching, showing details | The client's browser | The browser connects directly to `open-vsx.org` and `openvsx.eclipsecontent.org` (not through the proxy) |
+| Installing | code-server on the target | The two `--proxy-allow-host` rules above |
+
+Table: Communication of the extensions view
+
+- The first install from a publisher asks whether to trust the publisher.
+- bridge's `proxy_status` may list `mobile.events.data.microsoft.com` (telemetry) as denied; searching and installing do not need it.
 
 ## Stopping and removing
 

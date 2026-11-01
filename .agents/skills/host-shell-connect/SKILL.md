@@ -1,11 +1,11 @@
 ---
 name: host-shell-connect
-description: Deploy, update, or verify host-shell (an MCP server running on the SSH target) over SSH and prepare the agent registration command. Use for requests such as "put host-shell on target", "make target operable over MCP through hop1", or "update host-shell".
+description: Deploy, update, or verify host-shell (an MCP server running on the SSH target or inside a podman, docker or Kubernetes container) over SSH or container exec, and prepare the agent registration command. Use for requests such as "put host-shell on target", "make target operable over MCP through hop1", "put host-shell into the web container", or "update host-shell".
 ---
 
 # Preparing a host-shell connection
 
-Deploy `host-shell` to the target machine, verify that it starts as an MCP server over the SSH route, and prepare the agent registration command.  
+Deploy `host-shell` to the target machine or container, verify that it starts as an MCP server over the SSH route or container exec, and prepare the agent registration command.  
 Do not start the MCP server in this skill; the agent starts it after registration.
 
 Below, `$SKILL` refers to the directory containing `SKILL.md` (`.agents/skills/host-shell-connect` in the repository).
@@ -31,9 +31,9 @@ No script uses SFTP or port forwarding.
 
 | Script | Description |
 |---|---|
-| `remote.sh ROUTE COMMAND` | Runs `COMMAND` on the target over nested `ssh` hops and forwards standard input |
+| `remote.sh ROUTE COMMAND` | Runs `COMMAND` on the target over nested `ssh` hops (and `exec -i` into a container when the route ends with one) and forwards standard input |
 | `detect.sh ROUTE` | Prints the target environment type (`linux-amd64`, `linux-arm64`, `windows-amd64`, `windows-arm64`) |
-| `deploy.sh ROUTE TYPE [REMOTE_PATH]` | Transfers the `TYPE` executable from `bin/` over `ssh` standard input, verifies its SHA-256, and checks startup. Skips transfer if an identical file exists; removes the file if startup fails. Tries default locations in order when `REMOTE_PATH` is omitted |
+| `deploy.sh ROUTE TYPE [REMOTE_PATH]` | Transfers the `TYPE` executable from `bin/` over the route's standard input, verifies its SHA-256, and checks startup. Skips transfer if an identical file exists; removes the file if startup fails. Tries default locations in order when `REMOTE_PATH` is omitted |
 | `probe.sh ROUTE REMOTE_PATH [OPTIONS...]` | Sends MCP `initialize` and `tools/list` requests to `host-shell` on the target and verifies the responses |
 
 Table: Scripts
@@ -41,6 +41,8 @@ Table: Scripts
 Specify `ROUTE` as a comma-separated list of jump hosts and the target from the local side (for example `hop1,target`, or `target` for a direct connection).  
 Host names defined in `~/.ssh/config` are supported. Each hop connects with `-T -o BatchMode=yes` (override with `HOST_SHELL_SSH_OPTS`).  
 Jump host shells must be POSIX `sh` compatible.
+
+The last element of `ROUTE` may be a container instead of an SSH host; see [Containers](#containers).
 
 ## Procedure
 
@@ -180,6 +182,33 @@ Append target restriction options after `--mcp`. To restrict local transfer path
 
 After registration, instruct the user to reload the MCP server in their agent (in Claude Code, run `/mcp` or restart) and verify that `sys_get_info` returns the target's host name and OS.
 
+## Containers
+
+host-shell also runs inside a running Linux container, reached with `exec -i` of its runtime instead of SSH. The user documentation is docs/en/container.md.
+
+| Last `ROUTE` element | Runs | Extra options (environment variable) |
+|---|---|---|
+| `podman:CONTAINER` | `podman exec -i ... CONTAINER sh -c COMMAND` | `HOST_SHELL_PODMAN_OPTS` (e.g. `--user dev`) |
+| `docker:CONTAINER` | `docker exec -i ... CONTAINER sh -c COMMAND` | `HOST_SHELL_DOCKER_OPTS` (e.g. `--user dev`) |
+| `kubectl:POD` | `kubectl exec -i ... POD -- sh -c COMMAND` | `HOST_SHELL_KUBECTL_OPTS` (e.g. `-n app -c web`) |
+
+Table: Container route elements
+
+- Examples: `podman:web` (a container on this machine), `hop1,podman:web` (a container on hop1). A container element is allowed only at the end of the route.
+- podman is verified; docker only through podman's docker-compatible command; kubectl is not verified. Windows containers are not supported.
+- All steps above work unchanged (`detect.sh`, `deploy.sh`, `probe.sh`). Skip the SSH-specific advice (startup files, authentication). The default location inside the container is `/tmp/host-shell-<uid>/host-shell`, then `.local/bin/host-shell`.
+- The container needs `sh` and basic commands (`uname`, `id`, `dirname`, `ls`, `sha256sum`, `mkdir`, `chmod`, `mv`, `cat`, `rm`). For containers without a shell (such as distroless images), the scripts do not work: show the user the manual steps in docs/en/container.md (`podman cp` / `docker cp`; kubectl cannot copy without `tar` in the container).
+- Files placed in the container are lost when the container is recreated (not when it is restarted); deploy again then.
+
+Registration commands start `host-shell` directly with `exec -i` (always `-i`, never `-t`: a terminal corrupts the JSON-RPC stream). Include the same extra options as the route:
+
+```bash
+claude mcp add host-shell-web -- /path/to/host-shell bridge -- podman exec -i web /tmp/host-shell-0/host-shell --mcp
+claude mcp add host-shell-web -- /path/to/host-shell bridge -- docker exec -i --user dev web /tmp/host-shell-1000/host-shell --mcp
+claude mcp add host-shell-web -- /path/to/host-shell bridge -- kubectl exec -i -n app -c web web-0 -- /tmp/host-shell-1000/host-shell --mcp
+claude mcp add host-shell-web -- /path/to/host-shell bridge -- ssh -T -o BatchMode=yes hop1 podman exec -i web /tmp/host-shell-0/host-shell --mcp
+```
+
 ## Uninstalling
 
 When asked to remove `host-shell`, delete its installation directory (`/tmp/host-shell-<uid>/`, `%TEMP%/host-shell/`, or the `.local/bin/host-shell` file).  
@@ -204,5 +233,5 @@ When the user asks for port forwarding where SSH forwarding is unavailable, see 
 
 ## Optional code-server
 
-When the user wants code-server (VS Code in the browser) on the target, use the host-shell-code-server skill (.agents/skills/host-shell-code-server). It needs target --allow-forward-local and bridge --forward-allow-local 127.0.0.1:8000 in the registration command; see docs/en/code-server.md.
+When the user wants code-server (VS Code in the browser) on the target, use the host-shell-code-server skill (.agents/skills/host-shell-code-server). It needs target --allow-forward-local and bridge --forward-allow-local '127.0.0.1:80[0-7]?' (code-server listens on the first free port in 8000-8079) in the registration command; see docs/en/code-server.md.
 

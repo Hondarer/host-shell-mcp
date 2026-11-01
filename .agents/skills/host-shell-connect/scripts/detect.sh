@@ -1,7 +1,7 @@
 #!/bin/sh
 # Detects the target host's OS and architecture and prints the binary platform identifier (e.g. linux-amd64).
 #
-# Usage: detect.sh ROUTE
+# Usage: detect.sh ROUTE   (ROUTE as in remote.sh)
 set -eu
 
 if [ $# -ne 1 ]; then

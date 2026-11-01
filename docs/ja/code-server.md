@@ -15,14 +15,14 @@ sequenceDiagram
     A->>T: transfer_push (スクリプト、既定の設定、アーカイブ、拡張機能)
     A->>T: exec_run: install (初回は設定と拡張機能も注入)
     A->>A: transfer_pull (設定ファイルをクライアントへ)
-    A->>T: job_start: start (127.0.0.1:8000)
+    A->>T: job_start: start (127.0.0.1:8000〜8079 の空き)
     A->>T: forward_open (ローカル転送)
     A->>U: URL と設定ファイルのパス
     U->>T: http://127.0.0.1:<クライアントのポート>/ (転送経由)
 ```
 
 - 接続先はインターネットに接続しません。配布アーカイブと拡張機能はクライアントで取得し、SHA-256 で照合してから送ります。接続先でも同じ SHA-256 で照合します。
-- code-server は接続先の `127.0.0.1:8000` だけで待ち受け、ローカル転送でクライアントから接続します。クライアント側のポートは自動で割り当てます。
+- code-server は接続先の `127.0.0.1` の 8000〜8079 のうち、最初に空いているポートだけで待ち受け、ローカル転送でクライアントから接続します ([待ち受けポート](#待ち受けポート))。クライアント側のポートは自動で割り当てます。
 - code-server と転送は、MCP セッションの終了で止まります。
 
 ## 対象
@@ -37,9 +37,11 @@ Table: 対象の接続先
 
 Windows arm64 は対象外です (code-server の公式リリースに配布物がありません)。code-server は 4.144.0 (VS Code 1.144.0) です。
 
-接続先 (Linux) で必要なコマンドは `bash`、`tar`、`gzip`、`sha256sum`、`od` です。`python3` や `curl` は必要ありません。Windows の接続先は Windows PowerShell 5.1 以降と、OS 標準の `tar.exe` を使います。
+接続先 (Linux) で必要なコマンドは `bash`、`tar`、`gzip`、`sha256sum`、`od` です。`python3` や `curl` は必要ありません。code-server の node は glibc を必要とするため、Alpine など musl の環境では使えません。install は、glibc がない場合と、HOME が書き込めない場合に、展開の前に止まります。Windows の接続先は Windows PowerShell 5.1 以降と、OS 標準の `tar.exe` を使います。
 
 クライアントは Linux、macOS、Windows です。Linux と macOS のクライアントでは `curl` と `python3` を使います。
+
+稼働中のコンテナーの中 (`podman exec -i` などで接続) にも注入できます。コンテナーに固有の条件は [コンテナーの中への接続](container.md) を参照してください。
 
 ## 事前の準備 (登録コマンド)
 
@@ -47,18 +49,28 @@ Windows arm64 は対象外です (code-server の公式リリースに配布物�
 
 | 側 | オプション | 内容 |
 | --- | --- | --- |
-| 接続先 | `--allow-forward-local` | ローカル転送を許可します。`--allow-host` を指定している場合は、`127.0.0.1:8000` も許可してください |
-| bridge | `--forward-allow-local 127.0.0.1:8000` | エージェントが forward_open で開ける宛先を、接続先の code-server に限ります |
+| 接続先 | `--allow-forward-local` | ローカル転送を許可します。`--allow-host` を指定している場合は、`127.0.0.1:80[0-7]?` も許可してください |
+| bridge | `--forward-allow-local '127.0.0.1:80[0-7]?'` | エージェントが forward_open で開ける宛先を、接続先の code-server のポート (8000〜8079) に限ります |
 
 Table: 必要なオプション
 
 ```sh
-host-shell bridge --forward-allow-local 127.0.0.1:8000 \
+host-shell bridge --forward-allow-local '127.0.0.1:80[0-7]?' \
   -- ssh -T target /path/to/host-shell --mcp --allow-forward-local
 ```
 
+- `80[0-7]?` は許可規則のポートの glob で、8000〜8079 に一致します。シェルに展開されないよう、引用符で囲みます。
 - スクリプトと配布物の送付に bridge の transfer_push を使うため、`--read-only` の接続先や、bridge の `--no-transfer` では使えません。
 - オプションが足りない場合、エージェントは手順を止めて、必要なオプションを案内します。
+
+## 待ち受けポート
+
+start は、接続先の `127.0.0.1` の 8000 から 8079 までを順に調べ、最初に空いているポートで code-server を起動します。エージェントは code-server が出力する `HTTP server listening on http://127.0.0.1:<ポート>/` からポートを読み取り、そのポートへ転送を開きます。
+
+- 8000〜8079 がすべて使用中の場合は、`no free port in 8000-8079 on 127.0.0.1` で止まります。
+- 環境変数 `CODE_SERVER_PORT` を指定すると、そのポートだけを使います。使用中なら止まります。
+- 調べてから待ち受けるまでの間に他のプロセスが同じポートを取った場合、code-server は `EADDRINUSE` で終了します。エージェントは start をもう一度実行します。
+- bridge の許可規則が `127.0.0.1:8000` だけの登録で、8000 が使用中だった場合は、転送が拒否されます。エージェントは code-server を止め、許可規則を `'127.0.0.1:80[0-7]?'` に変えて接続し直すよう案内します。
 
 ## パスワード
 
@@ -112,7 +124,19 @@ Table: 同梱している設定
 閉鎖環境の code-server は、そのままでは拡張機能のマーケットプレース (Open VSX) に接続できません。次のどちらかで導入します。
 
 - `.vsix` ファイル: クライアントに用意した `.vsix` をエージェントが送り、`install --extension <ファイル>` で導入します。
-- [クライアント経由 HTTP プロキシ](client-proxy.md): 接続先の `--client-proxy` と、bridge の `--proxy` を有効にし、`--proxy-allow-host open-vsx.org:443` と `--proxy-allow-host openvsx.eclipsecontent.org:443` を指定します。`--proxy-allow-host` はカンマで区切れないため、宛先ごとに指定します。code-server は HTTPS_PROXY を使ってマーケットプレースに接続するため、`install --extension <ID>` で導入できます (確認済み)。画面の拡張機能ビューからの導入は確認していません。
+- [クライアント経由 HTTP プロキシ](client-proxy.md): 接続先の `--client-proxy` と、bridge の `--proxy` を有効にし、`--proxy-allow-host open-vsx.org:443` と `--proxy-allow-host openvsx.eclipsecontent.org:443` を指定します。`--proxy-allow-host` はカンマで区切れないため、宛先ごとに指定します。code-server は HTTPS_PROXY を使ってマーケットプレースに接続するため、`install --extension <ID>` でも、画面の拡張機能ビューからでも導入できます (どちらも確認済み)。
+
+画面の拡張機能ビューでは、通信する側が操作によって異なります。
+
+| 操作 | 通信する側 | 必要な接続 |
+| --- | --- | --- |
+| 検索、詳細の表示 | クライアントのブラウザー | ブラウザーから `open-vsx.org` と `openvsx.eclipsecontent.org` へ直接接続できること (プロキシを通りません) |
+| 導入 | 接続先の code-server | 上記の 2 つの `--proxy-allow-host` |
+
+Table: 拡張機能ビューの通信
+
+- ある発行者の拡張機能を初めて導入するときは、発行者を信頼するかの確認が表示されます。
+- bridge の `proxy_status` には、拒否された接続先として `mobile.events.data.microsoft.com` (テレメトリー) が現れる場合がありますが、検索と導入には必要ありません。
 
 ## 終了と削除
 

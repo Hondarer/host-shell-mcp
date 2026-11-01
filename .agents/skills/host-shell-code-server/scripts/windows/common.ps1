@@ -16,9 +16,10 @@ function Get-HscsConfig {
             $values[$line.Substring(0, $idx)] = $line.Substring($idx + 1)
         }
     }
-    $port = $values["CODE_SERVER_PORT"]
+    # CODE_SERVER_PORT in the environment pins a single port; otherwise start picks a free one in the range.
+    $port = $null
     if ($env:CODE_SERVER_PORT) {
-        $port = $env:CODE_SERVER_PORT
+        $port = [int]$env:CODE_SERVER_PORT
     }
     $version = $values["CODE_SERVER_VERSION"]
     # Locations differ from code-server-launcher's, so the two never share an installation or settings.
@@ -30,7 +31,9 @@ function Get-HscsConfig {
         Root          = $root
         Version       = $version
         VsCodeVersion = $values["CODE_SERVER_VSCODE_VERSION"]
-        Port          = [int]$port
+        Port          = $port
+        PortFirst     = [int]$values["CODE_SERVER_PORT_FIRST"]
+        PortLast      = [int]$values["CODE_SERVER_PORT_LAST"]
         Sha256        = @{
             "linux-amd64"   = $values["CODE_SERVER_LINUX_AMD64_SHA256"]
             "linux-arm64"   = $values["CODE_SERVER_LINUX_ARM64_SHA256"]

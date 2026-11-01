@@ -15,6 +15,7 @@
 | HTTP proxy through the client | [en/client-proxy.md](en/client-proxy.md) | [ja/client-proxy.md](ja/client-proxy.md) | Routing target HTTP/HTTPS through the bridge's network |
 | Port forwarding | [en/port-forward.md](en/port-forward.md) | [ja/port-forward.md](ja/port-forward.md) | Local forwards, remote forwards and SOCKS5 over SSH stdio |
 | Injecting code-server | [en/code-server.md](en/code-server.md) | [ja/code-server.md](ja/code-server.md) | Installing code-server with default settings and extensions on a closed-network target and opening it through a local forward |
+| Connecting into containers | [en/container.md](en/container.md) | [ja/container.md](ja/container.md) | Deploying and registering host-shell inside a running podman, docker or Kubernetes container with `exec -i` |
 
 Table: Documents
 
@@ -33,6 +34,7 @@ When updating documentation, edit the Japanese version first and update the Engl
 | クライアント経由 HTTP プロキシ | [ja/client-proxy.md](ja/client-proxy.md) | [en/client-proxy.md](en/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |
 | ポート転送 | [ja/port-forward.md](ja/port-forward.md) | [en/port-forward.md](en/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
 | code-server の注入 | [ja/code-server.md](ja/code-server.md) | [en/code-server.md](en/code-server.md) | 閉鎖環境の接続先への code-server と既定の設定・拡張機能の導入、ローカル転送での利用 |
+| コンテナーの中への接続 | [ja/container.md](ja/container.md) | [en/container.md](en/container.md) | 稼働中の podman、docker、Kubernetes のコンテナーの中への、`exec -i` による host-shell の配置と登録 |
 
 Table: 文書
 

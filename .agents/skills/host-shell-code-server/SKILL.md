@@ -5,9 +5,9 @@ description: Inject code-server into a host-shell target (including closed netwo
 
 # Injecting code-server into a host-shell target
 
-Install code-server on the target from files fetched on the client, start it on `127.0.0.1` of the target, and forward a client port to it.  
+Install code-server on the target from files fetched on the client, start it on `127.0.0.1` of the target (the first free port in 8000-8079), and forward a client port to it.  
 The target needs no internet access; everything is verified by SHA-256 on the client and again on the target.  
-This skill works through the host-shell MCP tools of a session started with `host-shell bridge`. To deploy host-shell itself, use the host-shell-connect skill.
+This skill works through the host-shell MCP tools of a session started with `host-shell bridge`. To deploy host-shell itself, use the host-shell-connect skill. The target may also be a Linux container reached with `podman exec -i` and similar (docs/en/container.md).
 
 Below, `$SKILL` refers to the directory containing this `SKILL.md` (`.agents/skills/host-shell-code-server` in the repository). The user documentation is docs/en/code-server.md.
 
@@ -15,13 +15,13 @@ Below, `$SKILL` refers to the directory containing this `SKILL.md` (`.agents/ski
 
 | Path | Contents |
 |---|---|
-| `version.env` | code-server version, its VS Code version, the target port (8000), and the SHA-256 of each release archive |
+| `version.env` | code-server version, its VS Code version, the target port range (8000-8079), and the SHA-256 of each release archive |
 | `defaults/User/settings.json`, `defaults/Machine/settings.json` | Settings placed on the first install |
 | `defaults/extensions.txt` | Default extensions (`publisher.name` or `publisher.name@version`, one per line) |
 | `packages/` | Release archives and `extensions/<TYPE>/` (VSIX files and `resolved-extensions.txt`) fetched by `download` (not in Git) |
 | `scripts/linux/download.sh`, `scripts/windows/download.ps1` | Client: fetch and verify the archive and default extensions for each target `TYPE` |
 | `scripts/linux/install.sh`, `scripts/windows/install.ps1` | Target: install offline, create the configuration, inject defaults on the first install |
-| `scripts/linux/start.sh`, `scripts/windows/start.ps1` | Target: run code-server in the foreground on `127.0.0.1:8000` (with `job_start`) |
+| `scripts/linux/start.sh`, `scripts/windows/start.ps1` | Target: run code-server in the foreground on the first free port in `127.0.0.1:8000-8079` (with `job_start`) |
 | `scripts/linux/uninstall.sh`, `scripts/windows/uninstall.ps1` | Target: remove code-server (`--purge` / `-Purge` also removes settings, data, extensions and the kit) |
 
 Table: Folder layout
@@ -39,17 +39,18 @@ Table: Folder layout
 ### 1. Check prerequisites
 
 1. Call `sys_get_info`. Map `os`/`arch` to `TYPE` (`linux`/`amd64` -> `linux-amd64`, `linux`/`arm64` -> `linux-arm64`, `windows`/`amd64` -> `windows-amd64`). Stop and tell the user if there is no match.
-2. Check that `forward_local` is `true` and that the bridge offers `forward_open`. If either is missing, stop and tell the user to add these options to the registration command and reconnect:
-   - target: `--allow-forward-local` (and allow `127.0.0.1:8000` if the target uses `--allow-host`)
-   - bridge: `--forward-allow-local 127.0.0.1:8000`
+2. Check that `forward_local` is `true` and that the bridge offers `forward_open`. If either is missing, stop and tell the user to add these options to the registration command and reconnect (quote the glob so that the shell does not expand it):
+   - target: `--allow-forward-local` (and allow `127.0.0.1:80[0-7]?` if the target uses `--allow-host`)
+   - bridge: `--forward-allow-local '127.0.0.1:80[0-7]?'` (ports 8000-8079)
 
    ```text
-   host-shell bridge --forward-allow-local 127.0.0.1:8000 -- ssh -T target /path/to/host-shell --mcp --allow-forward-local
+   host-shell bridge --forward-allow-local '127.0.0.1:80[0-7]?' -- ssh -T target /path/to/host-shell --mcp --allow-forward-local
    ```
 
 3. The kit is sent with `transfer_push`. If the bridge does not offer it (bridge `--no-transfer`; a bridge refuses to start with a `--read-only` target unless `--no-transfer` is given), stop and tell the user.
 4. If `restrictions` in `sys_get_info` is not empty, explain that code-server's terminal and file access bypass host-shell's restrictions (such as `--read-only`, `--allow-command`, `--allow-path`) and are not recorded in host-shell's audit log. Continue only with the user's explicit approval.
-5. Ask the user which folder code-server should open (default: the home directory, `home` in `sys_get_info`).
+5. On Linux targets, code-server needs glibc and a writable home directory; `install` checks both before extracting. Musl-based systems such as Alpine containers are not supported.
+6. Ask the user which folder code-server should open (default: the home directory, `home` in `sys_get_info`).
 
 ### 2. Fetch on the client
 
@@ -88,7 +89,7 @@ Run with `exec_run` and `timeout_sec: 900`:
 - Linux: `argv: ["bash", "<kit>/scripts/linux/install.sh"]`
 - Windows: `argv: ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "<kit>\\scripts\\windows\\install.ps1"]`
 
-It verifies and extracts the archive, creates the configuration with a new password (never printed), and on the first install places the default settings (only files that do not exist) and installs the default extensions (only while the marker file is absent). Show errors, such as missing commands (`tar`, `gzip`, `sha256sum`, `od`), to the user as they are.
+It verifies and extracts the archive, creates the configuration with a new password (never printed), and on the first install places the default settings (only files that do not exist) and installs the default extensions (only while the marker file is absent). Show errors, such as missing commands (`tar`, `gzip`, `sha256sum`, `od`), missing glibc or an unwritable `HOME`, to the user as they are.
 
 ### 5. Copy the configuration to the client
 
@@ -99,8 +100,11 @@ Use `transfer_pull` from `<home>/.config/host-shell-code-server/config.yaml` (Wi
 1. Start with `job_start`, with `env: {"CODE_SERVER_WORKSPACE": "<folder>"}`:
    - Linux: `argv: ["bash", "<kit>/scripts/linux/start.sh"]`
    - Windows: `argv: ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "<kit>\\scripts\\windows\\start.ps1"]`
-2. Wait with `job_read` (`wait_sec: 60`, `until: "HTTP server listening on"`). If the job ends, show its output to the user.
-3. Call `forward_open` with `direction: "local"`, `host: "127.0.0.1"`, `port: 8000` and no `listen_port`.
+2. Wait with `job_read` (`wait_sec: 60`, `until: "HTTP server listening on"`) and read the target port from that line (`HTTP server listening on http://127.0.0.1:<port>/`). `start` picks the first free port in 8000-8079 (`CODE_SERVER_PORT` in `env` pins one port).
+   - If the job ends first because the port was taken in the meantime (`EADDRINUSE`), run `start` again.
+   - If it ends with `no free port`, or for any other reason, show its output to the user.
+3. Call `forward_open` with `direction: "local"`, `host: "127.0.0.1"`, `port: <port>` and no `listen_port`.
+   - If the bridge refuses the destination (a registration that allows only `127.0.0.1:8000` while 8000 was in use), stop code-server with `job_stop` and tell the user to change the rule to `--forward-allow-local '127.0.0.1:80[0-7]?'` (and the target's `--allow-host`, if used) and reconnect.
 4. Give the user `http://127.0.0.1:<listen_port>/` and the path of the copied configuration (its `password:` line is the login password).
 
 The browser login is kept per port, so the user may need to log in again in a later session.

@@ -36,16 +36,16 @@
     - ✅ 3.2. 最終仕様における受入条件と整合性の確認
     - ✅ 3.3. 対話セッションにおける最終仕様の承認の受付 (第 2 ゲート: 作業着手の合意、Tetsuo Honda が対話「承認」で版 1 を承認、確認日時: 2026-11-01 14:25:54 JST)
 - 🔄 4. 承認された最終仕様に従った作業の実施
-    - 🔄 4.1. 作業ブランチの準備 ([Q-014](#q-014-作業ブランチと-pr-とマージの運用)、[Q-015](#q-015-bl-004-の追記のコミット先)) ← **CURRENT**
-    - ⏸️ 4.2. BL-003: 空きポートの選定 (`.agents/skills/host-shell-code-server/scripts/linux/start.sh`、`scripts/windows/start.ps1`、`SKILL.md`)
-    - ⏸️ 4.3. BL-004: コンテナーへの接続経路 (`.agents/skills/host-shell-connect/scripts/remote.sh` ほか、`SKILL.md`)
-    - ⏸️ 4.4. BL-004: code-server の前提の確認 (glibc) と配置先 (`.agents/skills/host-shell-code-server/scripts/linux/install.sh`、`SKILL.md`)
-    - ⏸️ 4.5. 日英正本文書への反映 (`docs/ja/`、`docs/en/` の code-server.md、port-forward.md、コンテナーへの接続の説明 [Q-020](#q-020-コンテナーへの接続の説明の置き場所))
-    - ⏸️ 4.6. 確認 (BL-002 の拡張機能ビュー、BL-003 の空きポート、BL-004 のコンテナーと pod)
-    - ⏸️ 4.7. 元案件の残課題一覧 (`docs/prompts/past/261101-code-server-backlog.md`) の状態の更新 (BL-001 は容認、BL-002〜BL-004 は対応の結果)
-    - ⏸️ 4.8. make、6 ターゲットのクロスビルド、main 向けドラフト PR の作成と全 OS CI の実行
+    - ✅ 4.1. 作業ブランチの準備 ([Q-014](#q-014-作業ブランチと-pr-とマージの運用)、[Q-015](#q-015-bl-004-の追記のコミット先)、コミット 1fabb57、ドラフト PR #5)
+    - ✅ 4.2. BL-003: 空きポートの選定 (`.agents/skills/host-shell-code-server/scripts/linux/start.sh`、`scripts/windows/start.ps1`、`SKILL.md`)
+    - ✅ 4.3. BL-004: コンテナーへの接続経路 (`.agents/skills/host-shell-connect/scripts/remote.sh` ほか、`SKILL.md`)
+    - ✅ 4.4. BL-004: code-server の前提の確認 (glibc) と配置先 (`.agents/skills/host-shell-code-server/scripts/linux/install.sh`、`SKILL.md`)
+    - ✅ 4.5. 日英正本文書への反映 (`docs/ja/`、`docs/en/` の code-server.md、port-forward.md、コンテナーへの接続の説明 [Q-020](#q-020-コンテナーへの接続の説明の置き場所))
+    - ✅ 4.6. 確認 (BL-002 の拡張機能ビュー、BL-003 の空きポート、BL-004 のコンテナーと pod)
+    - ✅ 4.7. 元案件の残課題一覧 (`docs/prompts/past/261101-code-server-backlog.md`) の状態の更新 (BL-001 は容認、BL-002〜BL-004 は対応の結果)
+    - 🔄 4.8. make、6 ターゲットのクロスビルド、main 向けドラフト PR の作成と全 OS CI の実行 ← **CURRENT**
     - ⏸️ 4.9. 受入条件への適合確認 (全完確認)
-    - ⏸️ 4.10. 残課題一覧 (`261101-code-server-followup-backlog.md`) の再構築と整理
+    - ✅ 4.10. 残課題一覧 (`261101-code-server-followup-backlog.md`) の再構築と整理 (BL-001 HOME のパスが長い場合のセッション用ソケット)
     - ⏸️ 4.11. 検討記録の `docs/prompts/past/` への移動、全 OS の CI の成功の確認とマージ
 - ⏸️ 5. 成果物の承認の受付 (第 3 ゲート)
     - ⏸️ 5.1. 成果物・検証結果・残課題の提示
@@ -1193,4 +1193,31 @@ B を確認しました。新しい文書 `docs/ja/container.md` と `docs/en/co
 
 ## 反映と検証の記録
 
-未着手。
+作業ブランチ claude/code-server-followup (PR #5) で作業しました。
+
+### 実装
+
+- BL-003: `version.env` の `CODE_SERVER_PORT` を `CODE_SERVER_PORT_FIRST=8000`、`CODE_SERVER_PORT_LAST=8079` に置き換え、`start.sh` (bash の `/dev/tcp`) と `start.ps1` (`Get-NetTCPConnection`) が範囲の最初の空きを選ぶようにしました。`CODE_SERVER_PORT` は 1 つのポートの固定です。SKILL.md は、出力からポートを読み取り、拒否時と `EADDRINUSE` 時の手順を加えました。
+- BL-004 (経路): `remote.sh` の `ROUTE` の最後に `podman:`、`docker:`、`kubectl:` の要素を受け付け、`HOST_SHELL_PODMAN_OPTS`、`HOST_SHELL_DOCKER_OPTS`、`HOST_SHELL_KUBECTL_OPTS` を加えました。`detect.sh`、`deploy.sh`、`probe.sh` はコメントだけを改めました。
+- BL-004 (code-server): `install.sh` の最初に HOME の検査を、コマンドの確認の直後に glibc の動的リンカーの検査 (`glibc_loader`) を加えました。arm64 の node の動的リンカーが `/lib/ld-linux-aarch64.so.1` であることは、配布アーカイブから取り出して確認しました。
+- 文書: `docs/*/container.md` を新設し、`docs/*/code-server.md`、`docs/*/port-forward.md`、`docs/*/user-guide.md`、`docs/README.md`、両スキルの SKILL.md を更新しました。
+
+### 確認
+
+作業環境 (WSL、podman 4.9.4 rootless) で確認しました。確認用のスクリプトはスクラッチ領域に置き、リポジトリには含めていません。
+
+| 受入条件 | 結果 |
+| --- | --- |
+| 1. BL-002 | ヘッドレスの Chrome で拡張機能ビューから `rainbow csv` を検索し、発行者の信頼の確認で「Trust Publisher & Install」を押して、約 5 秒で導入されました (`--list-extensions` に `mechatroner.rainbow-csv`)。検索と詳細の表示はブラウザーが `open-vsx.org` と `openvsx.eclipsecontent.org` へ直接接続し、導入時の接続は bridge の `proxy_status` に `open-vsx.org` と `openvsx.eclipsecontent.org` の許可として記録されました。拒否は `mobile.events.data.microsoft.com` だけでした |
+| 2. BL-003 (Linux) | 8000 を占有すると 8001 で起動し、`'127.0.0.1:80[0-7]?'` の bridge で転送してログイン、エディター、テーマを確認しました。8000〜8079 をすべて占有すると `error: no free port in 8000-8079 on 127.0.0.1`、`CODE_SERVER_PORT=8000` では `error: port 8000 on 127.0.0.1 is already in use` で終了しました。調べてから待ち受けるまでの競合を模して、使用中のポートで code-server を直接起動すると `listen EADDRINUSE` で終了しました |
+| 3. BL-003 (Windows) | 2 と同じく、8000 を占有すると 8001 で起動してログインでき、全ポート占有と `CODE_SERVER_PORT=8000` でエラーになりました。GitHub と Open VSX からの取得が極端に遅かったため (毎秒約 11 KB)、配布アーカイブは手元の code-server-launcher の `packages/` から SHA-256 の一致を確かめて写し、既定の拡張機能は目印のファイルを置いて注入を飛ばしました (そのためテーマは既定の明るいテーマ)。Windows の既定の拡張機能の注入は元案件で確認済みです |
+| 4. BL-003 (許可規則) | `127.0.0.1:8000` だけの bridge で 8001 が選ばれると、forward_open が `destination 127.0.0.1:8001 is not allowed by --forward-allow-local (allowed: [127.0.0.1:8000])` で拒否されました。SKILL.md の手順は、この場合に job_stop して規則の変更を案内します |
+| 5. BL-004 (経路) | podman の要素と docker の要素 (podman の互換コマンド) で `detect.sh`、`deploy.sh`、`probe.sh` が成功しました。偽の `kubectl` で `kubectl exec -i -n app -c web hscf-web -- sh -c ...`、偽の `ssh` で `ssh -T -o BatchMode=yes hop1 "podman exec -i --user root 'hscf-web' sh -c '...'"` の組み立てを確認し、どちらも検出・起動確認・配置まで動きました。ssh だけの経路 (1〜3 段、`HOST_SHELL_SSH_OPTS` あり) は、変更前の `remote.sh` と組み立てたコマンドが一致しました。コンテナーの要素の名前が空の場合と、最後以外にある場合は、終了コード 2 で止まりました |
+| 6. BL-004 (code-server) | Oracle Linux 9 のコンテナー (root、HOME `/root`) に `deploy.sh` で配置し、`podman exec -i` の bridge で接続して、送付 19 秒、install 48 秒、8000 で起動、転送してログイン、エディター、テーマ (`cpptools_dark_vs_new`) を確認しました。終了後、コンテナー内に host-shell と code-server のプロセスは残りませんでした |
+| 7. BL-004 (pod) | podman の pod で、HTTP サーバーのコンテナーの `127.0.0.1:9000` へ、別のコンテナーの host-shell から転送して応答を得ました。PID の名前空間は別のため、host-shell のコンテナーからそのプロセスは見えませんでした |
+| 8. BL-004 (glibc と最小イメージ) | alpine:3.22 では、host-shell の配置と起動確認は成功しました。install は `bash` がないため起動できず、`bash` を入れると `error: code-server needs glibc: /lib64/ld-linux-x86-64.so.2 not found (musl-based systems such as Alpine are not supported)` で、展開先を作る前に止まりました。debian:stable-slim では install (181 秒)、起動、ログイン、テーマまで成功しました。追加で、distroless (`gcr.io/distroless/static-debian12:nonroot`) に `podman cp` で置いて `podman exec -i` で接続でき、ファイル操作のツールが動き、`exec_run` の `sh` は使えないことを確かめ、文書の手順に反映しました |
+| 9. 文書とスキル | 日英の文書を同じ構成で更新し、リンクと見出しの参照を検査しました。スクリプトと SKILL.md は ASCII だけです。元案件の残課題一覧を BL-001 容認、BL-002〜BL-004 解消に更新しました |
+| 10. make、クロスビルド、CI | `make` と `make dist` (6 ターゲット) が成功しました。CI は PR #5 で実行します |
+| 11. 作業環境の保全 | 確認用のコンテナー、pod、取得したイメージ (alpine、debian:stable-slim、distroless)、Windows の `%TEMP%\hscf-verify`、一時の HOME を削除しました。利用者の既存のコンテナー (停止中の 2 件) とイメージには触れていません |
+
+Table: 受入条件の照合
