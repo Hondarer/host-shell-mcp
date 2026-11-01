@@ -1,8 +1,9 @@
 package clientproxy
 
 import (
-	"golang.org/x/sys/windows"
 	"testing"
+
+	"golang.org/x/sys/windows"
 )
 
 func TestCredentialDACL(t *testing.T) {

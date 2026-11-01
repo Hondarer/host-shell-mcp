@@ -14,13 +14,19 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hondarer/host-shell-mcp/internal/channel"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
+// Timeouts of proxied connections.
+const (
+	dialTimeout = 30 * time.Second // connecting, reading request headers and awaiting responses
+	idleTimeout = 5 * time.Minute  // a connection without traffic in either direction is closed
+)
+
+// Event is a connection result in proxy_status.
 type Event struct {
 	Seq          uint64 `json:"seq"`
 	Time         string `json:"time"`
@@ -31,10 +37,11 @@ type Event struct {
 	Reason       string `json:"reason"`
 	Count        int    `json:"count,omitempty"`
 }
-type StatusInput struct {
-	AfterSeq uint64 `json:"after_seq,omitempty"`
-	Limit    int    `json:"limit,omitempty"`
-}
+
+// StatusInput is the input of proxy_status.
+type StatusInput = channel.PageInput
+
+// Status is the output of proxy_status.
 type Status struct {
 	Enabled           bool     `json:"enabled"`
 	State             string   `json:"state"`
@@ -49,8 +56,7 @@ type Status struct {
 type Gateway struct {
 	rules     policy.NameRules
 	history   channel.History[Event]
-	mu        sync.Mutex
-	mux       *channel.Conn
+	peer      channel.Peer
 	proxy     func(*http.Request) (*url.URL, error)
 	tlsConfig *tls.Config
 }
@@ -72,7 +78,7 @@ func (g *Gateway) Register(o *channel.Options) {
 	o.Handle(channel.KindHTTP, g.open)
 	o.Handle(channel.KindConnect, g.open)
 	o.OnReport(g.report)
-	o.OnAttach(func(c *channel.Conn) { g.mu.Lock(); g.mux = c; g.mu.Unlock() })
+	o.OnAttach(g.peer.Attach)
 }
 func (g *Gateway) allowed(host string, port int) bool { return g.rules.Allow(host, port) }
 func (g *Gateway) report(kind string, f channel.Frame) {
@@ -107,25 +113,12 @@ func (g *Gateway) Status(in StatusInput) (Status, error) {
 	if e != nil {
 		return Status{}, e
 	}
-	o := Status{Enabled: true, State: "disconnected", AllowHosts: append([]string{}, g.rules...), Events: events, NextSeq: next, Truncated: truncated}
-	g.mu.Lock()
-	mux := g.mux
-	g.mu.Unlock()
-	if mux != nil {
-		select {
-		case <-mux.Done():
-		default:
-			o.State = "ready"
-			o.ActiveConnections = mux.Active()
-		}
-	}
+	o := Status{Enabled: true, AllowHosts: append([]string{}, g.rules...), Events: events, NextSeq: next, Truncated: truncated}
+	o.State, o.ActiveConnections = g.peer.State()
 	return o, nil
 }
-func validDestination(host string, port int) bool {
-	return host != "" && len(host) <= 253 && !strings.ContainsAny(host, "/\\\r\n\t @") && port > 0 && port <= 65535
-}
 func (g *Gateway) open(ctx context.Context, in *channel.Incoming) {
-	if !validDestination(in.Host, in.Port) || !g.allowed(in.Host, in.Port) {
+	if !channel.ValidDestination(in.Host, in.Port) || !g.allowed(in.Host, in.Port) {
 		g.record(in.ID, in.Host, in.Port, "denied", "destination not allowed")
 		in.Reject(channel.CodeNotAllowed)
 		return
@@ -140,7 +133,7 @@ func (g *Gateway) open(ctx context.Context, in *channel.Incoming) {
 		g.serveHTTP(ctx, conn, in)
 		return
 	}
-	dialCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	dialCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 	defer cancel()
 	external, e := g.connect(dialCtx, in.Host, in.Port)
 	if e != nil {
@@ -159,13 +152,13 @@ func (g *Gateway) open(ctx context.Context, in *channel.Incoming) {
 	tunnel(conn, external)
 }
 func (g *Gateway) serveHTTP(ctx context.Context, c net.Conn, f *channel.Incoming) {
-	tr := &http.Transport{Proxy: g.proxy, DisableKeepAlives: true, TLSClientConfig: g.tlsConfig.Clone(), ResponseHeaderTimeout: 30 * time.Second}
+	tr := &http.Transport{Proxy: g.proxy, DisableKeepAlives: true, TLSClientConfig: g.tlsConfig.Clone(), ResponseHeaderTimeout: dialTimeout}
 	defer tr.CloseIdleConnections()
 	headerLimit := &io.LimitedReader{R: c, N: 32*1024 + 1}
 	br := bufio.NewReader(headerLimit)
 	for {
 		headerLimit.N = 32*1024 + 1
-		c.SetReadDeadline(time.Now().Add(30 * time.Second))
+		c.SetReadDeadline(time.Now().Add(dialTimeout))
 		req, e := http.ReadRequest(br)
 		if e != nil || headerLimit.N == 0 {
 			return
@@ -200,7 +193,7 @@ func (g *Gateway) connect(ctx context.Context, host string, port int) (net.Conn,
 	if e != nil {
 		return nil, e
 	}
-	d := &net.Dialer{Timeout: 30 * time.Second}
+	d := &net.Dialer{Timeout: dialTimeout}
 	if pu == nil {
 		return d.DialContext(ctx, "tcp", target)
 	}
@@ -225,7 +218,7 @@ func (g *Gateway) connect(ctx context.Context, host string, port int) (net.Conn,
 			c.Close()
 		}
 	}()
-	c.SetDeadline(time.Now().Add(30 * time.Second))
+	c.SetDeadline(time.Now().Add(dialTimeout))
 	if pu.Scheme == "https" {
 		conf := g.tlsConfig.Clone()
 		conf.ServerName = pu.Hostname()
@@ -263,20 +256,16 @@ type bufferedConn struct {
 
 func (c *bufferedConn) Read(b []byte) (int, error) { return c.r.Read(b) }
 func (c *bufferedConn) CloseWrite() error {
-	if x, ok := c.Conn.(interface{ CloseWrite() error }); ok {
-		return x.CloseWrite()
-	}
+	channel.CloseWrite(c.Conn)
 	return nil
 }
 func tunnel(a, b net.Conn) {
-	touch := func() { deadline := time.Now().Add(5 * time.Minute); a.SetDeadline(deadline); b.SetDeadline(deadline) }
+	touch := func() { deadline := time.Now().Add(idleTimeout); a.SetDeadline(deadline); b.SetDeadline(deadline) }
 	touch()
 	done := make(chan struct{}, 2)
 	copyOne := func(dst, src net.Conn) {
 		io.Copy(&activityWriter{Conn: dst, touch: touch}, &activityReader{Conn: src, touch: touch})
-		if c, ok := dst.(interface{ CloseWrite() error }); ok {
-			c.CloseWrite()
-		}
+		channel.CloseWrite(dst)
 		done <- struct{}{}
 	}
 	go copyOne(a, b)
@@ -294,7 +283,7 @@ func tunnel(a, b net.Conn) {
 type idleWriter struct{ net.Conn }
 
 func (w *idleWriter) Write(b []byte) (int, error) {
-	w.SetWriteDeadline(time.Now().Add(5 * time.Minute))
+	w.SetWriteDeadline(time.Now().Add(idleTimeout))
 	return w.Conn.Write(b)
 }
 
@@ -340,7 +329,7 @@ type idleBody struct {
 }
 
 func (b *idleBody) Read(p []byte) (int, error) {
-	b.c.SetReadDeadline(time.Now().Add(5 * time.Minute))
+	b.c.SetReadDeadline(time.Now().Add(idleTimeout))
 	return b.ReadCloser.Read(p)
 }
 

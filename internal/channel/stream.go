@@ -3,7 +3,6 @@ package channel
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -11,8 +10,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 )
 
 // Incoming is a stream opened by the peer, waiting for Accept or Reject.
@@ -65,8 +62,7 @@ func (c *Conn) Dial(ctx context.Context, kind, host string, port int, forward ui
 		c.openMu.Unlock()
 		return nil, ErrLimit
 	}
-	payload, _ := json.Marshal(Frame{ID: id, Host: host, Port: port, Kind: kind, Forward: forward})
-	e = c.queueContext(ctx, &jsonrpc.Request{Method: Prefix + "open", Params: payload}, false)
+	e = c.queueContext(ctx, notification("open", Frame{ID: id, Host: host, Port: port, Kind: kind, Forward: forward}), false)
 	c.openMu.Unlock()
 	if e != nil {
 		s.stop()

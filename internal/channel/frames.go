@@ -85,9 +85,12 @@ func (p *peeked) Read(ctx context.Context) (jsonrpc.Message, error) {
 }
 
 func writeFrame(ctx context.Context, base mcp.Connection, kind string, f Frame) error {
-	b, e := json.Marshal(f)
-	if e != nil {
-		return e
-	}
-	return base.Write(ctx, &jsonrpc.Request{Method: Prefix + kind, Params: b})
+	return base.Write(ctx, notification(kind, f))
+}
+
+// notification builds the channel notification carrying f. Frame holds only plain fields, so
+// marshaling cannot fail.
+func notification(kind string, f Frame) *jsonrpc.Request {
+	b, _ := json.Marshal(f)
+	return &jsonrpc.Request{Method: Prefix + kind, Params: b}
 }

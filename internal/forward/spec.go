@@ -287,9 +287,7 @@ func pipe(a, b net.Conn) {
 		if _, err := io.Copy(dst, src); err != nil {
 			a.Close()
 			b.Close()
-		} else if cw, ok := dst.(interface{ CloseWrite() error }); ok {
-			cw.CloseWrite()
-		} else {
+		} else if !channel.CloseWrite(dst) {
 			dst.Close()
 		}
 		done <- struct{}{}

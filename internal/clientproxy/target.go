@@ -83,7 +83,7 @@ func (t *Target) Register(o *channel.Options) {
 }
 func (t *Target) attach(c *channel.Conn) {
 	t.mux = c
-	t.server = &http.Server{Handler: t, ReadHeaderTimeout: 30 * time.Second, IdleTimeout: 5 * time.Minute, MaxHeaderBytes: 32 * 1024}
+	t.server = &http.Server{Handler: t, ReadHeaderTimeout: dialTimeout, IdleTimeout: idleTimeout, MaxHeaderBytes: 32 * 1024}
 	go func() { t.server.Serve(t.listener) }()
 	go func() { <-c.Done(); t.Close() }()
 }
@@ -128,7 +128,7 @@ func (t *Target) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid destination", 400)
 		return
 	}
-	if !validDestination(host, port) {
+	if !channel.ValidDestination(host, port) {
 		http.Error(w, "invalid destination", 400)
 		return
 	}
@@ -136,7 +136,7 @@ func (t *Target) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid HTTP proxy destination", 400)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), dialTimeout)
 	kind := channel.KindHTTP
 	if r.Method == "CONNECT" {
 		kind = channel.KindConnect
@@ -187,7 +187,7 @@ func (t *Target) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	stripHop(r.Header)
 	r.RequestURI = ""
 	r.URL = &url.URL{Scheme: "http", Host: net.JoinHostPort(host, strconv.Itoa(port)), Path: r.URL.Path, RawPath: r.URL.RawPath, RawQuery: r.URL.RawQuery}
-	tr := &http.Transport{Proxy: nil, DisableKeepAlives: true, ResponseHeaderTimeout: 30 * time.Second, DialContext: func(context.Context, string, string) (net.Conn, error) { return c, nil }}
+	tr := &http.Transport{Proxy: nil, DisableKeepAlives: true, ResponseHeaderTimeout: dialTimeout, DialContext: func(context.Context, string, string) (net.Conn, error) { return c, nil }}
 	defer tr.CloseIdleConnections()
 	resp, e := tr.RoundTrip(r)
 	if e != nil {
@@ -385,7 +385,7 @@ type requestBody struct {
 }
 
 func (b *requestBody) Read(p []byte) (int, error) {
-	b.rc.SetReadDeadline(time.Now().Add(5 * time.Minute))
+	b.rc.SetReadDeadline(time.Now().Add(idleTimeout))
 	return b.ReadCloser.Read(p)
 }
 
@@ -395,7 +395,7 @@ type responseWriter struct {
 }
 
 func (w *responseWriter) Write(p []byte) (int, error) {
-	w.rc.SetWriteDeadline(time.Now().Add(5 * time.Minute))
+	w.rc.SetWriteDeadline(time.Now().Add(idleTimeout))
 	n, e := w.ResponseWriter.Write(p)
 	if e == nil {
 		e = w.rc.Flush()

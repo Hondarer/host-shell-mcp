@@ -58,10 +58,7 @@ type CloseInput struct {
 }
 
 // StatusInput is the input of forward_status.
-type StatusInput struct {
-	AfterSeq uint64 `json:"after_seq,omitempty"`
-	Limit    int    `json:"limit,omitempty"`
-}
+type StatusInput = channel.PageInput
 
 // Status is the output of forward_status.
 type Status struct {
@@ -134,7 +131,7 @@ type Manager struct {
 	next     uint64
 	pending  int
 	forwards map[uint64]*forward
-	conn     *channel.Conn
+	peer     channel.Peer
 	connSeq  uint64
 	shutdown bool
 }
@@ -198,19 +195,34 @@ func (m *Manager) Bind() error {
 		if f.spec.Direction == Remote {
 			continue
 		}
-		l, err := listen(f.spec)
-		if err != nil {
+		if err := f.listenLocal(); err != nil {
 			m.Close()
 			return fmt.Errorf("--forward-%s on %s: %w", f.spec.Direction, f.spec.Address(), err)
 		}
-		f.listener = l
-		f.spec.Port = l.Addr().(*net.TCPAddr).Port
 	}
 	return nil
 }
 
-func listen(s Spec) (net.Listener, error) {
-	return net.Listen("tcp", s.Address())
+// listenLocal listens a local or SOCKS forward on this machine and records the bound port.
+func (f *forward) listenLocal() error {
+	l, err := net.Listen("tcp", f.spec.Address())
+	if err != nil {
+		return err
+	}
+	f.listener = l
+	f.spec.Port = l.Addr().(*net.TCPAddr).Port
+	return nil
+}
+
+// listenRemote asks the target to listen a remote forward and records the bound port.
+// The error carries only the fixed failure description.
+func (f *forward) listenRemote(ctx context.Context, c *channel.Conn) error {
+	port, err := c.Listen(ctx, f.id, f.spec.Bind, f.spec.Port)
+	if err != nil {
+		return errors.New(listenError(err))
+	}
+	f.spec.Port = port
+	return nil
 }
 
 func (m *Manager) setup(ctx context.Context, c *channel.Conn) error {
@@ -220,19 +232,15 @@ func (m *Manager) setup(ctx context.Context, c *channel.Conn) error {
 		if f.spec.Direction != Remote {
 			continue
 		}
-		port, err := c.Listen(ctx, f.id, f.spec.Bind, f.spec.Port)
-		if err != nil {
-			return fmt.Errorf("--forward-remote on target %s: listen failed: %s", f.spec.Address(), listenError(err))
+		if err := f.listenRemote(ctx, c); err != nil {
+			return fmt.Errorf("--forward-remote on target %s: listen failed: %s", f.spec.Address(), err)
 		}
-		f.spec.Port = port
 	}
 	return nil
 }
 
 func (m *Manager) attach(c *channel.Conn) {
-	m.mu.Lock()
-	m.conn = c
-	m.mu.Unlock()
+	m.peer.Attach(c)
 	for _, f := range m.sorted() {
 		if f.listener != nil {
 			go m.accept(f)
@@ -335,9 +343,7 @@ func (m *Manager) serve(f *forward, c net.Conn) {
 }
 
 func (m *Manager) open(f *forward, kind, host string, port int) (net.Conn, error) {
-	m.mu.Lock()
-	conn := m.conn
-	m.mu.Unlock()
+	conn := m.peer.Conn()
 	if conn == nil {
 		return nil, &channel.Error{Code: channel.CodeClosed}
 	}
@@ -422,9 +428,7 @@ func (m *Manager) Open(ctx context.Context, in OpenInput) (Info, error) {
 		return Info{}, err
 	}
 	defer m.release()
-	m.mu.Lock()
-	conn := m.conn
-	m.mu.Unlock()
+	conn := m.peer.Conn()
 	if conn == nil {
 		return Info{}, errors.New("session is not ready")
 	}
@@ -433,18 +437,13 @@ func (m *Manager) Open(ctx context.Context, in OpenInput) (Info, error) {
 		m.listenMu.Lock()
 		defer m.listenMu.Unlock()
 		f.id = m.allocate()
-		port, err := conn.Listen(ctx, f.id, s.Bind, s.Port)
-		if err != nil {
-			return Info{}, fmt.Errorf("listen on target %s: %s", s.Address(), listenError(err))
+		if err := f.listenRemote(ctx, conn); err != nil {
+			return Info{}, fmt.Errorf("listen on target %s: %s", s.Address(), err)
 		}
-		f.spec.Port = port
 	} else {
-		l, err := listen(s)
-		if err != nil {
+		if err := f.listenLocal(); err != nil {
 			return Info{}, fmt.Errorf("listen on %s: %w", s.Address(), err)
 		}
-		f.listener = l
-		f.spec.Port = l.Addr().(*net.TCPAddr).Port
 		f.id = m.allocate()
 	}
 	m.mu.Lock()
@@ -502,9 +501,9 @@ func (m *Manager) release() {
 
 // CloseForward removes a tool-created forward and ends its connections.
 func (m *Manager) CloseForward(id uint64) error {
+	conn := m.peer.Conn()
 	m.mu.Lock()
 	f := m.forwards[id]
-	conn := m.conn
 	switch {
 	case f == nil:
 		m.mu.Unlock()
@@ -535,21 +534,11 @@ func (m *Manager) Status(in StatusInput) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	o := Status{State: "disconnected", Forwards: []Info{}, AllowLocal: append([]string{}, m.allowLocal...), AllowRemote: append([]string{}, m.allowRemote...), Events: events, NextSeq: next, Truncated: truncated}
+	o := Status{Forwards: []Info{}, AllowLocal: append([]string{}, m.allowLocal...), AllowRemote: append([]string{}, m.allowRemote...), Events: events, NextSeq: next, Truncated: truncated}
 	for _, f := range m.sorted() {
 		o.Forwards = append(o.Forwards, f.info())
 	}
-	m.mu.Lock()
-	conn := m.conn
-	m.mu.Unlock()
-	if conn != nil {
-		select {
-		case <-conn.Done():
-		default:
-			o.State = "ready"
-			o.ActiveConnections = conn.Active()
-		}
-	}
+	o.State, o.ActiveConnections = m.peer.State()
 	return o, nil
 }
 

@@ -97,11 +97,7 @@ func (c *Conn) isReady() bool {
 }
 
 func (c *Conn) send(kind string, f Frame) error {
-	b, e := json.Marshal(f)
-	if e != nil {
-		return e
-	}
-	return c.queue(&jsonrpc.Request{Method: Prefix + kind, Params: b}, kind == "data")
+	return c.queue(notification(kind, f), kind == "data")
 }
 func (c *Conn) queue(msg jsonrpc.Message, data bool) error {
 	return c.queueContext(c.ctx, msg, data)
@@ -223,8 +219,7 @@ func (c *Conn) Close() error {
 
 // emit queues a control notification without waiting, for paths that must not block.
 func (c *Conn) emit(kind string, f Frame) error {
-	b, _ := json.Marshal(f)
-	p := packet{msg: &jsonrpc.Request{Method: Prefix + kind, Params: b}, done: make(chan error, 1)}
+	p := packet{msg: notification(kind, f), done: make(chan error, 1)}
 	select {
 	case c.high <- p:
 		return nil
@@ -298,9 +293,7 @@ func (c *Conn) handle(kind string, f Frame) error {
 		if !c.bridge {
 			return errors.New("unexpected report")
 		}
-		for _, fn := range c.opt.report {
-			fn(kind, f)
-		}
+		c.reportAll(kind, f)
 		return nil
 	}
 	if kind == "open" {
@@ -321,7 +314,8 @@ func (c *Conn) handle(kind string, f Frame) error {
 	return s.handleFrame(kind, f)
 }
 
-func validHost(host string, port int) bool {
+// ValidDestination reports whether host and port form a well-formed stream destination.
+func ValidDestination(host string, port int) bool {
 	return host != "" && len(host) <= 253 && !strings.ContainsAny(host, "/\\\r\n\t @") && port > 0 && port <= 65535
 }
 
@@ -336,7 +330,7 @@ func (c *Conn) acceptable(f Frame) bool {
 		}
 		return false
 	}
-	return (f.Kind == KindForward || f.Kind == KindSOCKS) && c.features[ForwardLocal] && f.Forward != 0 && validHost(f.Host, f.Port)
+	return (f.Kind == KindForward || f.Kind == KindSOCKS) && c.features[ForwardLocal] && f.Forward != 0 && ValidDestination(f.Host, f.Port)
 }
 
 func (c *Conn) handleOpen(f Frame) error {
@@ -362,9 +356,7 @@ func (c *Conn) handleOpen(f Frame) error {
 	s, e := c.newStream(f.ID, true)
 	if e != nil {
 		if c.bridge {
-			for _, fn := range c.opt.report {
-				fn("limit", f)
-			}
+			c.reportAll("limit", f)
 		}
 		return c.emit("open_result", Frame{ID: f.ID, Error: CodeLimit})
 	}
@@ -376,4 +368,11 @@ func (c *Conn) handleOpen(f Frame) error {
 	}
 	go fn(s.networkCtx, in)
 	return nil
+}
+
+// reportAll passes a target report to every handler registered with OnReport.
+func (c *Conn) reportAll(kind string, f Frame) {
+	for _, fn := range c.opt.report {
+		fn(kind, f)
+	}
 }

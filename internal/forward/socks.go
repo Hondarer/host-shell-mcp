@@ -33,9 +33,7 @@ const (
 // input is drained until the client closes, socksLingerTimeout passes or socksLingerLimit bytes
 // are read.
 func lingerClose(c net.Conn) {
-	if cw, ok := c.(interface{ CloseWrite() error }); ok {
-		cw.CloseWrite()
-	}
+	channel.CloseWrite(c)
 	c.SetReadDeadline(time.Now().Add(socksLingerTimeout))
 	io.Copy(io.Discard, io.LimitReader(c, socksLingerLimit))
 	c.Close()

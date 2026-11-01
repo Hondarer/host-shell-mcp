@@ -2,6 +2,7 @@ package channel
 
 import (
 	"errors"
+	"net"
 	"sync"
 )
 
@@ -61,4 +62,52 @@ func (h *History[T]) Page(after uint64, limit int) (events []T, next uint64, tru
 		}
 	}
 	return events, next, truncated, nil
+}
+
+// PageInput is the paging input of the bridge's status tools.
+type PageInput struct {
+	AfterSeq uint64 `json:"after_seq,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
+}
+
+// Peer holds the connection a bridge-side component was attached to, for its status tools.
+type Peer struct {
+	mu sync.Mutex
+	c  *Conn
+}
+
+// Attach records the session connection.
+func (p *Peer) Attach(c *Conn) {
+	p.mu.Lock()
+	p.c = c
+	p.mu.Unlock()
+}
+
+// Conn returns the attached connection, or nil before the session is ready.
+func (p *Peer) Conn() *Conn {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.c
+}
+
+// State reports "ready" and the open stream count while the session is up, else "disconnected".
+func (p *Peer) State() (state string, active int) {
+	if c := p.Conn(); c != nil {
+		select {
+		case <-c.Done():
+		default:
+			return "ready", c.Active()
+		}
+	}
+	return "disconnected", 0
+}
+
+// CloseWrite half-closes c when it supports that (TCP connections and channel streams) and
+// reports whether it did.
+func CloseWrite(c net.Conn) bool {
+	cw, ok := c.(interface{ CloseWrite() error })
+	if ok {
+		cw.CloseWrite()
+	}
+	return ok
 }
