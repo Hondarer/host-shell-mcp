@@ -14,6 +14,7 @@
 | Development Guide | [en/development.md](en/development.md) | [ja/development.md](ja/development.md) | Building, source layout, design rules, adding tools, testing, releases |
 | HTTP proxy through the client | [en/client-proxy.md](en/client-proxy.md) | [ja/client-proxy.md](ja/client-proxy.md) | Routing target HTTP/HTTPS through the bridge's network |
 | Port forwarding | [en/port-forward.md](en/port-forward.md) | [ja/port-forward.md](ja/port-forward.md) | Local forwards, remote forwards and SOCKS5 over SSH stdio |
+| Injecting code-server | [en/code-server.md](en/code-server.md) | [ja/code-server.md](ja/code-server.md) | Installing code-server with default settings and extensions on a closed-network target and opening it through a local forward |
 
 Table: Documents
 
@@ -31,6 +32,7 @@ When updating documentation, edit the Japanese version first and update the Engl
 | 開発ガイド | [ja/development.md](ja/development.md) | [en/development.md](en/development.md) | ビルド、ソース構成、設計規約、ツールの追加手順、テスト、リリース |
 | クライアント経由 HTTP プロキシ | [ja/client-proxy.md](ja/client-proxy.md) | [en/client-proxy.md](en/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |
 | ポート転送 | [ja/port-forward.md](ja/port-forward.md) | [en/port-forward.md](en/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
+| code-server の注入 | [ja/code-server.md](ja/code-server.md) | [en/code-server.md](en/code-server.md) | 閉鎖環境の接続先への code-server と既定の設定・拡張機能の導入、ローカル転送での利用 |
 
 Table: 文書
 

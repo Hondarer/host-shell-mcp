@@ -77,6 +77,8 @@ internal/config/       設定と既定値
 internal/version/      バージョン情報
 .agents/skills/host-shell-connect/
                        接続先へのバイナリ配置・起動確認スキル (bin/ は make dist で生成、Git 管理外)
+.agents/skills/host-shell-code-server/
+                       接続先への code-server の注入スキル (packages/ は download で取得、Git 管理外)
 docs/ja/               文書の日本語版 (正本)
 docs/en/               文書の英語版 (docs/ja/ の英訳)
 ```
@@ -203,3 +205,22 @@ Windows 環境ではウイルス対策ソフトが Go 製バイナリを誤検�
 internal/channel/ は bridge と接続先の Connection ラッパーで `host-shell/channel/*` 通知を処理し、通常 MCP に渡しません。交渉では bridge が要求する機能 (`http_proxy`、`forward_local`、`forward_remote`)、接続先が許可する機能を hello で交換し、リモート転送の常設の待ち受け (listen) を済ませてから ready で MCP の初期化へ進みます。接続先は許可がなくても最初のメッセージを確認し、通常の MCP はそのまま処理します。ストリームはどちらの側からも開け、bridge が奇数、接続先が偶数の接続 ID を使います。接続先は bridge が listen で登録したリモート転送の着信だけを開けます。宛先を指定できないため、bridge に任意の宛先へ接続させることはできません。
 
 internal/clientproxy/ は認証付き HTTP プロキシ、上流接続、診断を、internal/forward/ はポート転送を、それぞれ internal/channel/ の上に実装します。
+
+## code-server の注入スキルの保守
+
+`.agents/skills/host-shell-code-server/` のスクリプトは [code-server-launcher](https://github.com/Hondarer/code-server-launcher) (MIT License) の download、install、start、uninstall と共通処理を複写し、次の点を拡張したものです。利用者向けの説明は [code-server の注入](code-server.md) にあります。
+
+- Linux arm64 への対応と、待ち受けの `127.0.0.1` への固定
+- 接続先 (Linux) で `python3`、`openssl`、`ss`、`curl` を使わないこと (最小構成の閉鎖環境のため)
+- パスワードを表示しないこと (ツールの結果は会話に残るため)
+- 導入先の名前を `host-shell-code-server` とし、launcher と分けること
+- 既定の設定と拡張機能の初回の注入 (`defaults/` の内容は code-server-container の既定値と同じ)
+
+スクリプトのコメントと出力は英語で、内容は ASCII 文字だけとします (Windows PowerShell 5.1 が BOM なしで読めるようにするため)。
+
+code-server の版を更新する手順は次のとおりです。
+
+1. `version.env` の `CODE_SERVER_VERSION`、`CODE_SERVER_VSCODE_VERSION` (リリース ノートの `Code` の版)、3 つの配布アーカイブ (linux-amd64、linux-arm64、windows-amd64) の SHA-256 (GitHub Releases の digest) を更新します。
+2. Linux と Windows の接続先で、取得、送付、導入、起動、転送、ログインを確認します。Windows 版の code-server は上流の CI で自動テストされていないため、版ごとに確認します。
+3. `docs/*/code-server.md` の版の記載を更新します。
+
