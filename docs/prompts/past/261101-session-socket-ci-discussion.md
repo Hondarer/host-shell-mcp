@@ -43,7 +43,7 @@
     - ✅ 4.6. 元案件の残課題一覧 (`docs/prompts/past/261101-code-server-followup-backlog.md`) の状態の更新
     - ✅ 4.7. make、main 向けドラフト PR の作成と全 OS CI の実行 (PR #6、CI run 41313262605 は全 OS 成功)
     - ✅ 4.8. 受入条件への適合確認 (全完確認)
-    - ✅ 4.9. 残課題一覧 (`261101-session-socket-ci-backlog.md`) の再構築と整理 (作業中に記録する事項はなく、元の残課題一覧の 2 件もすべて解消したため、作成していません)
+    - ✅ 4.9. 残課題一覧 (`261101-session-socket-ci-backlog.md`) の再構築と整理 (元の残課題一覧の 2 件はすべて解消。CI で見つかった別問題を BL-001 Windows の SOCKS4 の拒否の応答として記録)
     - 🔄 4.10. 検討記録の `docs/prompts/past/` への移動、全 OS の CI の成功の確認とマージ ← **CURRENT**
 - ⏸️ 5. 成果物の承認の受付 (第 3 ゲート)
     - ⏸️ 5.1. 成果物・検証結果・残課題の提示
@@ -608,7 +608,7 @@ A を確認しました。これまでと同じ運用とし、作業ブランチ
 | 5. 拡張機能ホストのログ | 4 の両方でヘッドレスの Chrome でログインし、画面の表示後のログに `code-server-ipc.sock` のエラーはありませんでした。対照として、7 の状態では `remoteexthost.log` に `connect EINVAL ...code-server-ipc.sock` が記録され、確認の方法がエラーを検出できることを確かめました |
 | 6. 通常の HOME | 既定のパスが 86 バイトになる HOME では、`--session-socket` を付けず、ソケットはユーザー データのフォルダーにできました |
 | 7. 安全でないフォルダー | `/tmp/host-shell-code-server-<uid>/` をグループが書き込める状態にした場合、別の uid の所有にした場合 (`id -u` を置き換えて模擬)、シンボリック リンクにした場合のいずれも、`warning: unsafe directory (...)` を出して既定のパスのまま起動しました |
-| 8. make と CI | `make` (vet、テスト、ビルド) が成功しました。CI run 41313262605 (7089f6b) は全 OS 成功しました |
+| 8. make と CI | `make` (vet、テスト、ビルド) が成功しました。CI run 41313262605 (7089f6b) は全 OS 成功しました。記録の移動のコミット (9d00858) の CI run 41313691879 は、1 回目に windows の `TestSOCKS` (SOCKS4 の拒否の応答の読み取りが接続のリセットで失敗) だけが失敗しました。新しい絞り込みで失敗の理由がログに残りました。本案件の変更と関係のない別問題で、作業環境の Windows で約 1,300 回中 1 回再現したため、残課題 BL-001 (`261101-session-socket-ci-backlog.md`) に記録し、失敗したジョブを再実行しました |
 | 9. 文書 | `development.md` の CI の説明と `code-server.md` の配置の表を、日英で同じ内容に更新しました |
 | 10. 元の残課題一覧 | `261101-code-server-followup-backlog.md` の BL-001 と BL-002 を「解消」にし、経緯と対処を追記しました |
 
