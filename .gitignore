@@ -1,6 +1,8 @@
 # Build outputs
 /dist/
 /.agents/skills/host-shell-connect/bin/
+/.agents/skills/host-shell-code-server/packages/*
+!/.agents/skills/host-shell-code-server/packages/.gitkeep
 *.exe
 
 # Tests and coverage

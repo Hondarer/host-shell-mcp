@@ -15,6 +15,8 @@ Where SSH port forwarding (`-L`, `-R`, `-D`) is unavailable, host-shell forwards
 
 Table: Kinds of forwards
 
+As an example of a local forward, [Injecting code-server](code-server.md) describes installing code-server on a target and opening it in the local browser.
+
 ```mermaid
 flowchart LR
     subgraph client ["Client"]

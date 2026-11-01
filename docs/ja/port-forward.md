@@ -12,6 +12,8 @@ SSH のポート転送 (`-L`、`-R`、`-D`) を使えない環境で、既存 SS
 
 Table: 転送の種類
 
+ローカル転送の利用例として、接続先へ code-server を導入して手元のブラウザーで開く手順を [code-server の注入](code-server.md) にまとめています。
+
 ```mermaid
 flowchart LR
     subgraph client ["クライアント"]

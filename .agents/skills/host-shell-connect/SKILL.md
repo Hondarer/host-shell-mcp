@@ -201,3 +201,8 @@ For proxy-aware target applications requiring the local client network, see docs
 ## Optional port forwarding
 
 When the user asks for port forwarding where SSH forwarding is unavailable, see docs/en/port-forward.md. Add bridge --forward-local [BIND:]PORT:HOST:HOSTPORT (listen locally, connect from the target), --forward-remote (listen on the target, connect from here), or --forward-socks [BIND:]PORT with --forward-allow-local rules; add --forward-allow-local/--forward-allow-remote HOST[:PORT] only if the user wants the agent to create forwards with forward_open. The target must permit each direction with --allow-forward-local or --allow-forward-remote. Listeners are loopback only and unauthenticated. Use forward_status to diagnose; do not broaden user-approved rules autonomously. Keep forwarding disabled unless requested.
+
+## Optional code-server
+
+When the user wants code-server (VS Code in the browser) on the target, use the host-shell-code-server skill (.agents/skills/host-shell-code-server). It needs target --allow-forward-local and bridge --forward-allow-local 127.0.0.1:8000 in the registration command; see docs/en/code-server.md.
+

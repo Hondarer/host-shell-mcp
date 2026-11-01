@@ -1,0 +1,4 @@
+{
+    // Path of the PlantUML JAR used by the PlantUML extension
+    "plantuml.jar": "/usr/local/bin/plantuml.jar",
+}
