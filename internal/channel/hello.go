@@ -25,18 +25,19 @@ func expectHello(msg jsonrpc.Message) (Frame, error) {
 		return f, fmt.Errorf("unsupported channel version %d; update host-shell on both ends", f.Version)
 	}
 	for _, name := range f.Features {
-		if name != HTTPProxy && name != ForwardLocal && name != ForwardRemote {
+		if name != RemoteDNS && name != HTTPProxy && name != ForwardLocal && name != ForwardRemote {
 			return f, fmt.Errorf("unknown channel feature %q; update host-shell on both ends", name)
 		}
 	}
 	return f, nil
 }
 
-// match applies the request/permit rules; the HTTP proxy alone must be enabled on both ends.
+// match applies the request/permit rules; HTTP proxy and remote DNS must be enabled on both ends.
 func match(requested, permitted []string, bridge bool) error {
 	req, perm := set(requested), set(permitted)
 	type rule struct{ feature, bridgeMsg, targetMsg string }
 	for _, r := range []rule{
+		{RemoteDNS, "target does not enable remote DNS; start both ends with --remote-dns", "bridge requested remote DNS, which requires --remote-dns"},
 		{HTTPProxy, "target does not enable the HTTP proxy; start host-shell --mcp with --client-proxy", "bridge requested the HTTP proxy, which requires --client-proxy"},
 		{ForwardLocal, "target does not permit local forwarding; start host-shell --mcp with --allow-forward-local", "bridge requested local forwarding, which requires --allow-forward-local"},
 		{ForwardRemote, "target does not permit remote forwarding; start host-shell --mcp with --allow-forward-remote", "bridge requested remote forwarding, which requires --allow-forward-remote"},
@@ -47,6 +48,9 @@ func match(requested, permitted []string, bridge bool) error {
 			}
 			return errors.New(r.targetMsg)
 		}
+	}
+	if perm[RemoteDNS] && !req[RemoteDNS] {
+		return errors.New("target requires remote DNS; start the bridge with --remote-dns")
 	}
 	if perm[HTTPProxy] && !req[HTTPProxy] {
 		if bridge {

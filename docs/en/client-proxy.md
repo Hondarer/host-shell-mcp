@@ -20,6 +20,8 @@ host-shell bridge --proxy --proxy-allow-host 'packages.example.com:443' -- \
 - `--proxy` requires at least one `--proxy-allow-host` rule.
 - Enabling only one side, running mismatched versions on the two ends, or passing an invalid allow rule causes startup to fail.
 - `--no-transfer` can be used alongside `--proxy`.
+- Repeatable `--proxy-deny-host HOST[:PORT]` supplies explicit deny rules. Deny takes precedence when both lists match.
+- Add `--proxy-allow-rule-updates` to permit session-local changes over MCP. Without it, the update tool is not exposed.
 
 ```mermaid
 flowchart LR
@@ -69,10 +71,33 @@ Use the read-only `proxy_status` tool on `bridge` to inspect the proxy state and
 ```
 
 - **Inputs**: `after_seq` (non-negative integer, default `0`) and `limit` (1–100, default `20`).
-- **Outputs**: `enabled`, `state`, `allow_hosts`, `active_connections`, `events`, `next_seq`, and `truncated`.
+- **Outputs**: `enabled`, `state`, `allow_hosts`, `deny_hosts`, `rules_revision`, `active_connections`, `events`, `next_seq`, and `truncated`.
 - Each entry in `events` contains `seq`, `time`, `connection_id`, `host`, `port`, `result` (`allowed` / `denied` / `failed`), `reason`, and `count` (when consecutive identical events are aggregated). Up to the latest 100 events are kept and returned in ascending `seq` order. Pass `next_seq` as `after_seq` on subsequent calls to read new events. `truncated` indicates that older events were dropped or more events remain after the returned page.
 - The same metadata is written to `bridge` standard error. Request bodies, URL paths and query strings, and credentials are never included in diagnostics.
-- When a destination is denied, inspect `host`, `port`, and `reason`, add only the necessary destination to `--proxy-allow-host`, and restart the session (the agent cannot widen the allow list on its own).
+- When a destination is denied, inspect `host`, `port`, and `reason` and allow only destinations authorized by the user. With the update tool enabled, use the procedure below without reconnecting. Otherwise change startup options and reconnect. The agent must not widen access on its own.
+
+### proxy_rules_update (bridge)
+
+Starting `bridge` with `--proxy --proxy-allow-rule-updates` exposes `proxy_rules_update` to change destination allow and deny rules during the session. No additional target option is needed. This does not enable a proxy that was disabled at startup.
+
+1. Read `allow_hosts`, `deny_hosts`, and `rules_revision` from `proxy_status` (initial revision `1`).
+2. Submit **both complete replacement lists**, including existing rules to retain, with the observed revision. This is not a patch/add API. Only make user-authorized changes.
+
+```json
+{
+  "expected_revision": 1,
+  "allow_hosts": ["api.github.com:443", "hondarer-soft.com:443"],
+  "deny_hosts": []
+}
+```
+
+- Returns the new `allow_hosts`, `deny_hosts`, and `rules_revision`. This example replaces the allowlist with only the API and specified website; derive real updates from the existing rules returned by `proxy_status`.
+- All input rules are validated before atomic replacement. Invalid rules and stale revisions leave state unchanged. On a conflict, read the current state and reconsider the intended change.
+- Deny takes precedence. Empty `allow_hosts` rejects all new destinations.
+- Applies to new relay connections checked after the update. In-flight requests and established CONNECT tunnels are not forcibly disconnected. SSH, code-server, proxy URLs, and browser port forwards remain running.
+- Changes live only in session memory. Registration and configuration files are not modified; subsequent sessions start from their startup rules. The bridge logs the revision and both lists to stderr.
+- A supporting bridge started with mutation enabled is required. Older binaries and sessions started without this option cannot acquire the tool dynamically. After initial deployment/enabling, individual rule changes require no restart.
+- This covers only the client HTTP/HTTPS proxy. It does not change target `--allow-host`, forwarding permissions, or DNS relay settings.
 
 ### Target audit log
 
@@ -87,3 +112,5 @@ The target's audit log records the following entries:
 - **Timeouts**: Upstream connection establishment and HTTP header reads time out after 30 seconds, idle streams time out after 5 minutes, and graceful shutdown waits up to 5 seconds.
 - **HTTP error status codes**: Denied destinations return `403`, authentication failures return `407`, reaching the stream limit returns `503`, upstream connection failures return `502`, and connection timeouts return `504`. Errors after a `CONNECT` tunnel is established close the stream. Disconnecting the MCP session closes the loopback listener and all active relay connections.
 - **Relationship to MCP restriction flags**: `--tools` and `--read-only` on the target govern which MCP tools are published; they do not restrict traffic passing through the HTTP proxy. Control proxy access via explicit enablement on both ends and `--proxy-allow-host` rules on `bridge`.
+
+Optional name resolution relay: [remote-dns](remote-dns.md). See `--remote-dns` on both ends and target `--remote-dns-library PATH` for a prebuilt adapter.

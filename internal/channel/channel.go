@@ -309,6 +309,8 @@ func ValidDestination(host string, port int) bool {
 func (c *Conn) acceptable(f Frame) bool {
 	if c.bridge {
 		switch f.Kind {
+		case KindDNS:
+			return c.features[RemoteDNS] && f.Port == 53 && f.Forward == 0 && ValidDestination(f.Host, f.Port)
 		case KindHTTP, KindConnect:
 			return c.features[HTTPProxy]
 		case KindForward:

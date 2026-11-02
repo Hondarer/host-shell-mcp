@@ -13,12 +13,14 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/jobs"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/proc"
+	"github.com/hondarer/host-shell-mcp/internal/remotedns"
 	"github.com/hondarer/host-shell-mcp/internal/tools"
 	"github.com/hondarer/host-shell-mcp/internal/version"
 )
 
 // Session holds what a server uses besides its configuration.
 type Session struct {
+	DNS     *remotedns.Target
 	Policy  *policy.Policy // see NewPolicy
 	Audit   *audit.Logger
 	Proxy   *clientproxy.Target // nil unless --client-proxy
@@ -53,6 +55,7 @@ func New(cfg config.Config, sess Session) (s *mcp.Server, stop func()) {
 		DefaultShell: shell,
 		Policy:       sess.Policy,
 		Proxy:        sess.Proxy,
+		DNS:          sess.DNS,
 		Forward:      sess.Forward,
 	}
 	impl := &mcp.Implementation{Name: "host-shell", Title: "host-shell", Version: version.Version}

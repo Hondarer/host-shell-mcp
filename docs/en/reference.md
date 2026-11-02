@@ -68,6 +68,8 @@ If none of `--mcp`, `bridge`, or `--version` is specified, `host-shell` prints u
 | `--redact` | None | | Mask secrets matching known patterns in tool output |
 | `--redact-pattern` | Regular expression (repeatable) | None | Additional regular expression patterns to mask |
 | `--client-proxy` | None | | Enables the [HTTP proxy through the client](client-proxy.md) when paired with `--proxy` on `bridge` |
+| `--remote-dns` | None | Disabled | Relay Linux/glibc `getaddrinfo` to the client; enable at both ends ([remote-dns](remote-dns.md)) |
+| `--remote-dns-library` | Path | Build automatically | Prebuilt adapter matching target ABI; requires `--remote-dns` |
 | `--allow-forward-local` | None | | Permits local forwards and SOCKS5 connections originating from the target via `bridge` ([Port forwarding](port-forward.md)) |
 | `--allow-forward-remote` | None | | Permits remote forwards listening on the target's loopback via `bridge` ([Port forwarding](port-forward.md)) |
 | `--allow-forward-remote-port` | `PORT` or `PORT-PORT` (comma-separated, repeatable) | None (unrestricted) | Restricts target listening ports for remote forwards; requires `--allow-forward-remote` ([Port forwarding](port-forward.md)) |
@@ -1191,6 +1193,7 @@ Returns information about the target environment, published tool groups, and act
 | `tool_groups` | string[] | Published tool groups |
 | `restrictions` | string[] | Active policy restrictions (`item: value`; omitted when none are set) |
 | `client_proxy`, `proxy_url_file` | boolean, string | Whether the client HTTP proxy is enabled, and the path to its credential URL file |
+| `remote_dns`, `remote_dns_library`, `remote_dns_socket` | boolean, string, string | DNS relay state and session adapter/socket paths |
 | `forward_local`, `forward_remote` | boolean | Port forwarding directions permitted on the target (`--allow-forward-local`, `--allow-forward-remote`) |
 | `remote_forwards` | object[] | Active remote forwards listening on the target (`forward_id`, `address`; omitted when none are active) |
 
@@ -1517,6 +1520,9 @@ host-shell bridge [options] -- COMMAND [ARGS...]
 | `--allow-local-read-path` | Directory (repeatable) | Local directories that `transfer_push` may read |
 | `--no-transfer` | None | Relay only, without adding the file transfer tools (`transfer_push`, `transfer_pull`) |
 | `--proxy`, `--proxy-allow-host` | None, `HOST[:PORT]` (repeatable) | Enable the [HTTP proxy through the client](client-proxy.md) and allow destinations |
+| `--remote-dns` | None | Resolve target names on the client; target also requires `--remote-dns` ([remote-dns](remote-dns.md)) |
+| `--proxy-deny-host` | `HOST[:PORT]` (repeatable) | Explicit proxy denies; takes precedence over allow |
+| `--proxy-allow-rule-updates` | None | Expose `proxy_rules_update` for replacing session-local rules without restarting ([details](client-proxy.md#proxy_rules_update-bridge)) |
 | `--forward-local`, `--forward-remote` | `[BIND:]PORT:HOST:HOSTPORT` (repeatable) | Persistent local and remote forwards ([Port forwarding](port-forward.md)) |
 | `--forward-socks` | `[BIND:]PORT` (repeatable) | Persistent SOCKS5 proxy (requires `--forward-allow-local`) |
 | `--forward-allow-local`, `--forward-allow-remote` | `HOST[:PORT]` (repeatable) | Destinations allowed for `forward_open` and SOCKS5 |
@@ -1727,3 +1733,5 @@ Because `command` and `argv` are logged verbatim, do not pass secrets such as pa
 - `net_list_listeners`, `svc_list`, `svc_control`, `log_query`, and `disk_list` are supported only on Linux and Windows (service and log tools on Linux require systemd).
 - Startup restriction flags (policy options) validate tool arguments rather than enforcing OS-level sandboxing (see [Limits of the restrictions](#limits-of-the-restrictions)).
 - Following Go 1.26 platform requirements, supported operating systems are Windows 10 / Windows Server 2016 or later (`pty` requires Windows 10 1809 / Windows Server 2019 or later), Linux kernel 3.2 or later, and macOS 12 or later (`bridge` only).
+
+Optional name resolution relay: [remote-dns](remote-dns.md). See `--remote-dns` on both ends and target `--remote-dns-library PATH` for a prebuilt adapter.

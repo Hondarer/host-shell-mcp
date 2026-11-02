@@ -14,7 +14,9 @@ import (
 // Config holds host-shell's runtime settings.
 type Config struct {
 	// ClientProxy routes HTTP/HTTPS through the bridge (--client-proxy).
-	ClientProxy bool
+	ClientProxy      bool
+	RemoteDNS        bool
+	RemoteDNSLibrary string
 	// ForwardLocal and ForwardRemote permit the bridge's port forwards (--allow-forward-local/--allow-forward-remote).
 	ForwardLocal, ForwardRemote bool
 	// ForwardRemotePorts limits the ports remote forwards listen on (--allow-forward-remote-port); nil permits any port.

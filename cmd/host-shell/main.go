@@ -32,6 +32,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/forward"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/proc"
+	"github.com/hondarer/host-shell-mcp/internal/remotedns"
 	"github.com/hondarer/host-shell-mcp/internal/server"
 	"github.com/hondarer/host-shell-mcp/internal/version"
 )
@@ -81,17 +82,19 @@ func parseFlags(fs *flag.FlagSet, args []string) (cfg config.Config, showVersion
 	var (
 		allowPaths, allowReadPaths, allowCommands, denyCommands, allowHosts, unsetEnv, redactPatterns, remotePorts listFlag
 
-		proxyMode = fs.Bool("client-proxy", false, "route HTTP/HTTPS through an explicitly enabled local bridge")
-		fwdLocal  = fs.Bool("allow-forward-local", false, "permit the bridge's local forwards and SOCKS5 to connect from this host (takes no value; destinations follow --allow-host)")
-		fwdRemote = fs.Bool("allow-forward-remote", false, "permit the bridge's remote forwards to listen on this host's loopback (takes no value)")
-		mcpMode   = fs.Bool("mcp", false, "serve MCP over stdin/stdout")
-		showVer   = fs.Bool("version", false, "print version and exit")
-		noLog     = fs.Bool("no-log", false, "disable the audit log")
-		logFile   = fs.String("log-file", cfg.LogFile, "audit log file (JSON Lines)")
-		maxOut    = fs.Int("max-output", cfg.MaxOutputBytes, "maximum bytes per output stream")
-		timeout   = fs.Duration("timeout", cfg.DefaultTimeout, "default command timeout")
-		maxTime   = fs.Duration("max-timeout", cfg.MaxTimeout, "maximum client-requested command timeout")
-		winShell  = fs.String("windows-shell", cfg.WindowsShell, "default Windows shell: cmd, powershell, or pwsh")
+		dnsMode    = fs.Bool("remote-dns", false, "inject Linux/glibc getaddrinfo relay over the bridge; requires cc or --remote-dns-library")
+		dnsLibrary = fs.String("remote-dns-library", "", "prebuilt Linux/glibc DNS adapter (requires --remote-dns)")
+		proxyMode  = fs.Bool("client-proxy", false, "route HTTP/HTTPS through an explicitly enabled local bridge")
+		fwdLocal   = fs.Bool("allow-forward-local", false, "permit the bridge's local forwards and SOCKS5 to connect from this host (takes no value; destinations follow --allow-host)")
+		fwdRemote  = fs.Bool("allow-forward-remote", false, "permit the bridge's remote forwards to listen on this host's loopback (takes no value)")
+		mcpMode    = fs.Bool("mcp", false, "serve MCP over stdin/stdout")
+		showVer    = fs.Bool("version", false, "print version and exit")
+		noLog      = fs.Bool("no-log", false, "disable the audit log")
+		logFile    = fs.String("log-file", cfg.LogFile, "audit log file (JSON Lines)")
+		maxOut     = fs.Int("max-output", cfg.MaxOutputBytes, "maximum bytes per output stream")
+		timeout    = fs.Duration("timeout", cfg.DefaultTimeout, "default command timeout")
+		maxTime    = fs.Duration("max-timeout", cfg.MaxTimeout, "maximum client-requested command timeout")
+		winShell   = fs.String("windows-shell", cfg.WindowsShell, "default Windows shell: cmd, powershell, or pwsh")
 
 		toolSel  = fs.String("tools", "all", "tools to expose: comma-separated groups (files, search, exec, net, admin) or names, applied left to right; -name excludes (e.g. all,-admin,-exec_sudo)")
 		readOnly = fs.Bool("read-only", false, "expose only non-modifying tools (limits net_request_http/net_exchange to read-only use)")
@@ -117,6 +120,10 @@ func parseFlags(fs *flag.FlagSet, args []string) (cfg config.Config, showVersion
 	}
 
 	cfg.ClientProxy = *proxyMode
+	cfg.RemoteDNS, cfg.RemoteDNSLibrary = *dnsMode, *dnsLibrary
+	if *dnsLibrary != "" && !*dnsMode {
+		return cfg, false, errors.New("--remote-dns-library requires --remote-dns")
+	}
 	cfg.ForwardLocal = *fwdLocal
 	cfg.ForwardRemote = *fwdRemote
 	ports, err := policy.ParsePorts(remotePorts)
@@ -165,6 +172,15 @@ func run(cfg config.Config) error {
 	// so a bridge asking for features this host does not permit fails with a precise error.
 	var channelOptions channel.Options
 	sess := server.Session{Audit: al}
+	if cfg.RemoteDNS {
+		target, err := remotedns.NewTarget(ctx, cfg.RemoteDNSLibrary)
+		if err != nil {
+			return err
+		}
+		defer target.Close()
+		sess.DNS = target
+		target.Register(&channelOptions)
+	}
 	if cfg.ClientProxy {
 		target, err := clientproxy.NewTarget()
 		if err != nil {

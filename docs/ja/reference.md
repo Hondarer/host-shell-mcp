@@ -68,6 +68,8 @@ host-shell --version
 | `--redact` | なし | | ツール出力に含まれる既知パターンの機密情報を伏せ字化する |
 | `--redact-pattern` | 正規表現 (複数指定可) | なし | 追加で伏せ字化する正規表現パターン |
 | `--client-proxy` | なし | | bridge の `--proxy` と組み合わせて [クライアント経由 HTTP プロキシ](client-proxy.md) を有効にする |
+| `--remote-dns` | なし | 無効 | Linux/glibc の `getaddrinfo` を接続元へ中継する。両端で指定 ([remote-dns](remote-dns.md)) |
+| `--remote-dns-library` | パス | 自動ビルド | 対象 ABI 用の事前ビルド済みアダプター。`--remote-dns` が必要 |
 | `--allow-forward-local` | なし | | bridge のローカル転送と SOCKS5 による接続先からの発信を許可する ([ポート転送](port-forward.md)) |
 | `--allow-forward-remote` | なし | | bridge のリモート転送による接続先のループバックでの待ち受けを許可する ([ポート転送](port-forward.md)) |
 | `--allow-forward-remote-port` | `PORT` または `PORT-PORT` (カンマ区切り、複数指定可) | なし (制限しない) | リモート転送で待ち受けるポート番号を限る。`--allow-forward-remote` が必要 ([ポート転送](port-forward.md)) |
@@ -1192,6 +1194,7 @@ Table: exec_sudo の引数
 | `tool_groups` | string[] | 公開中のツール グループ一覧 |
 | `restrictions` | string[] | 適用中の制限一覧 (`項目: 値`、制限がない場合は省略) |
 | `client_proxy`、`proxy_url_file` | boolean、string | クライアント経由 HTTP プロキシの有効状態と認証 URL ファイルのパス |
+| `remote_dns`、`remote_dns_library`、`remote_dns_socket` | boolean、string、string | DNS 中継の有効状態とセッション専用アダプター・ソケットのパス |
 | `forward_local`、`forward_remote` | boolean | 接続先で許可されたポート転送の方向 (`--allow-forward-local`、`--allow-forward-remote`) |
 | `remote_forwards` | object[] | 接続先で待ち受け中のリモート転送 (`forward_id`、`address`)。待ち受けがない場合は省略 |
 
@@ -1518,6 +1521,9 @@ host-shell bridge [options] -- COMMAND [ARGS...]
 | `--allow-local-read-path` | ディレクトリ (複数指定可) | `transfer_push` での読み取りのみを許可するローカル ディレクトリ |
 | `--no-transfer` | なし | 転送ツール (`transfer_push`、`transfer_pull`) を追加せず中継のみを行う |
 | `--proxy`、`--proxy-allow-host` | なし、`HOST[:PORT]` (複数指定可) | [クライアント経由 HTTP プロキシ](client-proxy.md) を有効にし、宛先を許可する |
+| `--remote-dns` | なし | 接続先の `--remote-dns` と組み合わせて接続元で名前解決する ([remote-dns](remote-dns.md)) |
+| `--proxy-deny-host` | `HOST[:PORT]` (複数指定可) | プロキシの明示的な拒否宛先。許可より優先 |
+| `--proxy-allow-rule-updates` | なし | セッション内の規則を再起動なしで置き換える `proxy_rules_update` を公開 ([詳細](client-proxy.md#proxy_rules_update-bridge)) |
 | `--forward-local`、`--forward-remote` | `[BIND:]PORT:HOST:HOSTPORT` (複数指定可) | 常設のローカル転送・リモート転送 ([ポート転送](port-forward.md)) |
 | `--forward-socks` | `[BIND:]PORT` (複数指定可) | 常設の SOCKS5 (`--forward-allow-local` が必要) |
 | `--forward-allow-local`、`--forward-allow-remote` | `HOST[:PORT]` (複数指定可) | `forward_open` と SOCKS5 で許可する宛先 |
@@ -1728,3 +1734,5 @@ Table: 操作ログで置き換える値
 - `net_list_listeners`、`svc_list`、`svc_control`、`log_query`、`disk_list` は Linux と Windows のみ対応です (Linux のサービス・ログ操作は systemd 環境を前提とします)。
 - 起動オプションによる制限 (ポリシー) はツール引数の検査であり、OS の権限境界ではありません ([制限の限界](#制限の限界) を参照)。
 - 対応 OS は Go 1.26 の要件に基づき Windows 10 / Windows Server 2016 以降 (`pty` は Windows 10 1809 / Windows Server 2019 以降)、Linux カーネル 3.2 以降、macOS 12 以降 (`bridge` のみ) です。
+
+名前解決を接続元へ中継する任意機能: [remote-dns](remote-dns.md)。両端の `--remote-dns` と、接続先の `--remote-dns-library PATH`（事前ビルド版を使う場合）を参照してください。

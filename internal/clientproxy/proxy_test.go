@@ -29,7 +29,7 @@ func pair(t *testing.T, rules []string) (*Target, *Gateway, *channel.Conn, *chan
 		t.Fatal(err)
 	}
 	t.Cleanup(target.Close)
-	gateway, err := NewGateway(rules)
+	gateway, err := NewGateway(rules, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,11 +185,11 @@ func TestHalfClose(t *testing.T) {
 }
 func TestSettingsAndStatus(t *testing.T) {
 	for _, rules := range [][]string{nil, {"10.0.0.0/8"}, {"unix:/tmp/x"}, {"x\n"}} {
-		if _, err := NewGateway(rules); err == nil {
+		if _, err := NewGateway(rules, nil); err == nil {
 			t.Fatalf("accepted %q", rules)
 		}
 	}
-	g, err := NewGateway([]string{"*.example.com:443"})
+	g, err := NewGateway([]string{"*.example.com:443"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

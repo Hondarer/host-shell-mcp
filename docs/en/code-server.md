@@ -226,7 +226,7 @@ On subsequent runs, unchanged files with matching SHA-256 hashes are skipped.
 
 ## Copying from the terminal
 
-Copying may work in an ordinary terminal while Copilot CLI shows `Copied` without updating the clipboard. In the validation environment, holding Shift while dragging and then pressing Ctrl+C with Shift still held (Ctrl+Shift+C) restored copying with mouse support enabled. `--no-mouse` also works, but impairs wheel scrolling and other interactions. See [Clipboard copying fails only inside Copilot CLI](coding-agents.md#clipboard-copying-fails-only-inside-copilot-cli) for applicability and limitations.
+Copying may work in an ordinary terminal while Copilot CLI shows `Copied` without updating the clipboard. With mouse support enabled, even Shift+drag cannot select text. In the validation environment, running `Terminal: Select All` and then `Terminal: Copy Selection` from the Command Palette copied successfully with mouse support still enabled (the whole terminal is copied). `--no-mouse` also works, but impairs wheel scrolling and other interactions. See [Clipboard copying fails only inside Copilot CLI](coding-agents.md#clipboard-copying-fails-only-inside-copilot-cli) for applicability and limitations.
 
 ## Blue dot or pencil near the cursor in Edge
 

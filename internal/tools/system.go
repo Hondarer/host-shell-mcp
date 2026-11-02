@@ -93,8 +93,11 @@ func (in ExecSudoInput) CommandArgs(string) (programs []string, text string) {
 
 // SysGetInfoOutput is the output of sys_get_info.
 type SysGetInfoOutput struct {
-	ClientProxy  bool   `json:"client_proxy"`
-	ProxyURLFile string `json:"proxy_url_file,omitempty"`
+	RemoteDNS        bool   `json:"remote_dns"`
+	RemoteDNSLibrary string `json:"remote_dns_library,omitempty"`
+	RemoteDNSSocket  string `json:"remote_dns_socket,omitempty"`
+	ClientProxy      bool   `json:"client_proxy"`
+	ProxyURLFile     string `json:"proxy_url_file,omitempty"`
 	// Port forwarding permitted by this host; remote forwards are addresses the bridge listens on here.
 	ForwardLocal   bool                    `json:"forward_local" jsonschema:"the bridge's local forwards and SOCKS5 may connect from this host (--allow-forward-local)"`
 	ForwardRemote  bool                    `json:"forward_remote" jsonschema:"the bridge's remote forwards may listen on this host (--allow-forward-remote)"`
@@ -131,6 +134,11 @@ func (d *Deps) sysGetInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp
 		PID:          os.Getpid(),
 		Version:      version.Version,
 		GoVersion:    runtime.Version(),
+	}
+	if d.DNS != nil {
+		out.RemoteDNS = true
+		out.RemoteDNSLibrary = d.DNS.Library
+		out.RemoteDNSSocket = d.DNS.Socket
 	}
 	if d.Proxy != nil {
 		out.ClientProxy = true

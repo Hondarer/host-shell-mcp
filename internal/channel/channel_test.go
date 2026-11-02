@@ -76,6 +76,9 @@ func TestNegotiationRules(t *testing.T) {
 		bridgeErr          string
 		targetErr          string
 	}{
+		{"DNS on bridge only", []string{RemoteDNS}, []string{ForwardLocal}, "--remote-dns", "--remote-dns"},
+		{"DNS on target only", []string{ForwardLocal}, []string{RemoteDNS, ForwardLocal}, "--remote-dns", "--remote-dns"},
+		{"DNS on both ends", []string{RemoteDNS}, []string{RemoteDNS}, "", ""},
 		{"remote not permitted", []string{ForwardRemote}, nil, "--allow-forward-remote", "--allow-forward-remote"},
 		{"local not permitted", []string{ForwardLocal}, []string{ForwardRemote}, "--allow-forward-local", "--allow-forward-local"},
 		{"proxy on bridge only", []string{HTTPProxy}, []string{ForwardLocal}, "--client-proxy", "--client-proxy"},

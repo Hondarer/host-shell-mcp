@@ -18,10 +18,12 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/forward"
 	"github.com/hondarer/host-shell-mcp/internal/jobs"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
+	"github.com/hondarer/host-shell-mcp/internal/remotedns"
 )
 
 // Deps are the dependencies shared by the tool implementations.
 type Deps struct {
+	DNS          *remotedns.Target
 	Cfg          config.Config
 	Audit        *audit.Logger
 	Jobs         *jobs.Manager

@@ -26,6 +26,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/clientproxy"
 	"github.com/hondarer/host-shell-mcp/internal/forward"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
+	"github.com/hondarer/host-shell-mcp/internal/remotedns"
 	"github.com/hondarer/host-shell-mcp/internal/version"
 	"github.com/hondarer/host-shell-mcp/internal/wire"
 )
@@ -47,8 +48,11 @@ options:
 
 // Options configures the bridge.
 type Options struct {
-	Proxy           bool
-	ProxyAllowHosts []string
+	RemoteDNS             bool
+	Proxy                 bool
+	ProxyAllowHosts       []string
+	ProxyDenyHosts        []string
+	ProxyAllowRuleUpdates bool
 	// Forwards are persistent forwards; ForwardAllowLocal and ForwardAllowRemote bound forward_open and SOCKS.
 	Forwards           []forward.Spec
 	ForwardAllowLocal  []string
@@ -71,8 +75,11 @@ func Main(args []string) error {
 		fs.PrintDefaults()
 	}
 	var opt Options
+	fs.BoolVar(&opt.RemoteDNS, "remote-dns", false, "resolve target getaddrinfo requests on this machine (requires --remote-dns on target)")
 	fs.BoolVar(&opt.Proxy, "proxy", false, "enable target HTTP/HTTPS proxy over this session")
 	fs.Func("proxy-allow-host", "allow proxy destination host glob with optional :port (repeatable; required with --proxy)", func(v string) error { opt.ProxyAllowHosts = append(opt.ProxyAllowHosts, v); return nil })
+	fs.Func("proxy-deny-host", "deny proxy destination host glob with optional :port (repeatable; overrides allow rules)", func(v string) error { opt.ProxyDenyHosts = append(opt.ProxyDenyHosts, v); return nil })
+	fs.BoolVar(&opt.ProxyAllowRuleUpdates, "proxy-allow-rule-updates", false, "expose proxy_rules_update for session-local destination rule changes over MCP")
 	spec := func(direction string) func(string) error {
 		return func(v string) error {
 			s, err := forward.ParseSpec(direction, v)
@@ -122,6 +129,9 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 	defer cancel()
 
 	var channelOptions channel.Options
+	if opt.RemoteDNS {
+		remotedns.RegisterGateway(&channelOptions)
+	}
 	gateway, err := newGateway(opt, &channelOptions)
 	if err != nil {
 		return err
@@ -161,12 +171,8 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 	if err := relayTools(ctx, cs, srv); err != nil {
 		return err
 	}
-	if gateway != nil {
-		mcp.AddTool(srv, &mcp.Tool{Name: "proxy_status", Title: "Client proxy status", Description: "Inspect client proxy state, destination rules and recent connection results. Use after_seq and limit to page through denied or failed destinations. No credentials or HTTP contents are returned.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(ctx context.Context, req *mcp.CallToolRequest, in clientproxy.StatusInput) (*mcp.CallToolResult, clientproxy.Status, error) {
-			out, err := gateway.Status(in)
-			return nil, out, err
-		})
-	}
+	registerProxyTools(srv, gateway, opt.ProxyAllowRuleUpdates)
+
 	if forwards.Enabled() {
 		registerForwardTools(srv, forwards)
 	}
@@ -192,12 +198,12 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 // newGateway creates the client proxy gateway when --proxy is set and registers it on o.
 func newGateway(opt Options, channelOpt *channel.Options) (*clientproxy.Gateway, error) {
 	if !opt.Proxy {
-		if len(opt.ProxyAllowHosts) > 0 {
-			return nil, errors.New("--proxy-allow-host requires --proxy")
+		if len(opt.ProxyAllowHosts) > 0 || len(opt.ProxyDenyHosts) > 0 || opt.ProxyAllowRuleUpdates {
+			return nil, errors.New("proxy rules and --proxy-allow-rule-updates require --proxy")
 		}
 		return nil, nil
 	}
-	gateway, err := clientproxy.NewGateway(opt.ProxyAllowHosts)
+	gateway, err := clientproxy.NewGateway(opt.ProxyAllowHosts, opt.ProxyDenyHosts)
 	if err != nil {
 		return nil, err
 	}
@@ -238,7 +244,10 @@ func bridgeInstructions(init *mcp.InitializeResult, opt Options, proxy bool, for
 		instructions = init.Instructions
 	}
 	if proxy {
-		instructions += "\nClient proxy enabled: use proxy_status to inspect allowed destinations and recent denials."
+		instructions += "\nClient proxy enabled: use proxy_status to inspect destination rules and recent denials."
+		if opt.ProxyAllowRuleUpdates {
+			instructions += " Use proxy_rules_update only for user-authorized rule changes; read rules_revision from proxy_status before replacing both lists. Changes apply to new connections and last only for this session."
+		}
 	}
 	if forwards.Enabled() {
 		instructions += "\n" + forwardInstructions(forwards)

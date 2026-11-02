@@ -70,9 +70,9 @@ func (t *transport) connectBridge(ctx context.Context, base mcp.Connection) (mcp
 
 func (t *transport) connectTarget(ctx context.Context, base mcp.Connection) (mcp.Connection, error) {
 	permitted := set(t.opt.Features)
-	// Only the HTTP proxy obliges the bridge to speak first; other features keep plain MCP usable.
+	// The HTTP proxy and remote DNS require a channel-aware bridge; forwarding alone keeps plain MCP usable.
 	var timer *time.Timer
-	if permitted[HTTPProxy] {
+	if permitted[HTTPProxy] || permitted[RemoteDNS] {
 		timer = time.AfterFunc(negotiationTimeout, func() { base.Close() })
 	}
 	stop := func() {
@@ -87,7 +87,10 @@ func (t *transport) connectTarget(ctx context.Context, base mcp.Connection) (mcp
 	}
 	msg, err := base.Read(ctx)
 	if err != nil {
-		if permitted[HTTPProxy] {
+		if permitted[HTTPProxy] || permitted[RemoteDNS] {
+			if permitted[RemoteDNS] {
+				return fail(errors.New("bridge must enable --remote-dns"))
+			}
 			return fail(errors.New("bridge did not enable the HTTP proxy (--proxy) required by --client-proxy"))
 		}
 		stop()
@@ -124,7 +127,10 @@ func (t *transport) connectTarget(ctx context.Context, base mcp.Connection) (mcp
 		}
 		return c.start(), nil
 	default:
-		if permitted[HTTPProxy] {
+		if permitted[HTTPProxy] || permitted[RemoteDNS] {
+			if permitted[RemoteDNS] {
+				return fail(errors.New("bridge must enable --remote-dns"))
+			}
 			return fail(errors.New("bridge did not enable the HTTP proxy (--proxy) required by --client-proxy"))
 		}
 		stop()

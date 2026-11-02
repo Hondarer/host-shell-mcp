@@ -99,21 +99,19 @@ When the MCP connection ends, code-server, the proxy, and forwards are stopped. 
 
 During validation on 2026-11-02, code-server 4.144.0 in Microsoft Edge could copy from an ordinary terminal, but copying failed inside Copilot CLI 1.0.83's interactive UI. Pressing `Ctrl+C` displayed `Copied` without updating the Windows clipboard. Pasting from the editor into the terminal still worked.
 
-The user confirmed that copying worked while keeping mouse support enabled by using native terminal selection only when copying. To resume the conversation in the same working directory:
+While mouse support is enabled, Copilot receives mouse input, so dragging cannot create a code-server selection. Holding `Shift` while dragging and then pressing `Ctrl+Shift+C` was also tried and did not copy anything while mouse support was enabled.
 
-```bash
-copilot --continue --mouse=on
-```
+The user confirmed that copying works with mouse support still enabled by selecting and copying on the code-server side without the mouse:
 
-1. Hold `Shift` while dragging to select output.
-2. Keep `Shift` held and press `Ctrl+C` (that is, `Ctrl+Shift+C`) to copy.
-3. Verify by pasting into an editor outside the browser.
+1. Press `Ctrl+Shift+P` to open the Command Palette and run `Terminal: Select All`.
+2. Then run `Terminal: Copy Selection`.
+3. Paste into an editor outside the browser and trim it to the part you need.
 
-This preserves Copilot's normal mouse interactions, including wheel scrolling. Try this method first. Check configuration persistence behavior in the CLI version being used.
+The entire terminal content is selected; partial selection is not possible. Whether the selection includes output above the visible area was not individually verified. If you use this often, assign keys to the two commands. This method preserves Copilot's mouse interactions, including wheel scrolling. Try this method first.
 
-As an alternative, `copilot --continue --no-mouse` also restored copying. However, the user reported that wheel scrolling stopped working and other interactions were impaired. Treat disabling mouse support as a fallback with usability limitations.
+As an alternative, resuming with `copilot --continue --no-mouse` restores mouse selection and copying. However, the user reported that wheel scrolling stopped working and other interactions were impaired. Treat disabling mouse support as a fallback with usability limitations.
 
-Assigning a separate key to code-server's `Terminal: Copy Selection`, or exporting with `/share` and copying from the editor, are additional candidates; neither was individually verified in this validation.
+Exporting the conversation to a file with `/share`, opening it in the editor, and copying from there was also confirmed to work. It suits partial selections and long output.
 
 [Copilot CLI Issue #2082](https://github.com/github/copilot-cli/issues/2082) includes the `mouse: false` workaround, reports that it restored copying, and reports of a Copied notification without clipboard updates. [code-server Issue #7938](https://github.com/coder/code-server/issues/7938) also describes TUI mouse handling interfering with selection and copying. The observed improvement is consistent with bypassing Copilot's own clipboard path, but the exact failing internal operation has not been identified. Verify by pasting into an editor outside the browser; a `Copied` notification alone is insufficient.
 
@@ -149,7 +147,7 @@ On 2026-11-02, code-server 4.144.0 and Copilot CLI 1.0.83 were deployed to a Pod
 
 Direct name resolution inside the container fails. The HTTP proxy does not relay DNS queries: it receives hostnames and resolves them on the client side, or through the configured upstream proxy route. Allowed hosts worked, while unlisted hosts returned HTTP 403. HTTPS reports `CONNECT tunnel failed, response 403`. The additional artifact destination `release-assets.githubusercontent.com:443` was also recorded as denied; required destinations still need to be checked for each feature. The user screenshot showed Copilot's built-in Web Fetch failing with `WebFetchBlockedUrlError: failed to lookup address information: Name or service not known`, followed by a `curl` request receiving proxy HTTP 403. This suggests the built-in Web Fetch performs target-side name resolution separately from connecting through the proxy; its internal implementation has not been inspected. Adding an allowed destination alone must not be treated as sufficient to enable this tool.
 
-Distinguish proxy-compatible commands from built-in tools that require a preliminary DNS lookup. For general website fetching, an alternative is a proxy-compatible command such as `curl`, after the user explicitly authorizes the required host and port. This validation did not deploy DNS relaying to support built-in Web Fetch while retaining blocked direct egress.
+Distinguish proxy-compatible commands from built-in tools that require a preliminary DNS lookup. The latter can use the optional [remote-dns feature](remote-dns.md). Independent resolver-hook testing showed Copilot CLI Web Fetch failing on DNS without the hook and succeeding with it for the same URL. See that document for scope and diagnostics, including environment sanitization in the bundled VS Code SDK. A proxy-compatible command such as `curl` remains an alternative after explicit authorization of the required host and port.
 
 The following statuses apply only to Copilot CLI. Other CLIs have only the local startup checks above.
 
@@ -158,7 +156,7 @@ The following statuses apply only to Copilot CLI. Other CLIs have only the local
 | Deployment | Transfer, hash verification, and dependency checks on the target | Passed (Copilot) |
 | Startup | Target `--version` and `--help` succeed | Passed (Copilot) |
 | Terminal | Rendering, input, Ctrl-C, and resizing work inside code-server | Passed; user confirmed all items worked on 2026-11-02 |
-| Clipboard | Copy terminal text outside the browser | Passed with mouse enabled using Shift+drag and Ctrl+Shift+C; `--no-mouse` also works but impairs wheel scrolling |
+| Clipboard | Copy terminal text outside the browser | Passed with mouse enabled using `Terminal: Select All` and `Terminal: Copy Selection` (Shift+drag fails); `--no-mouse` also works but impairs wheel scrolling |
 | Authentication | Login succeeds using the selected method | Passed; user entered the displayed code in a separate browser |
 | Inference | Obtain a response through bridge while direct target egress is blocked | Conversational responses observed in user screenshot; built-in Web Fetch fails on DNS |
 | Operations | Edit a test file and execute a small command | Not tested |
@@ -168,3 +166,5 @@ The following statuses apply only to Copilot CLI. Other CLIs have only the local
 Table: Target validation stages
 
 Record OS, CPU, libc, CLI/code-server/host-shell versions, distribution sources and hashes, authentication method without secrets, allowed destinations, completed stages, and failure reasons.
+
+Optional name resolution relay: [remote-dns](remote-dns.md). See `--remote-dns` on both ends and target `--remote-dns-library PATH` for a prebuilt adapter.

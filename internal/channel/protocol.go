@@ -26,6 +26,7 @@ const MaxForwards = 16
 
 // Features negotiated in hello.
 const (
+	RemoteDNS     = "remote_dns"
 	HTTPProxy     = "http_proxy"
 	ForwardLocal  = "forward_local"
 	ForwardRemote = "forward_remote"
@@ -33,6 +34,7 @@ const (
 
 // Stream kinds carried by open.
 const (
+	KindDNS     = "dns"     // target to bridge: name resolution only
 	KindHTTP    = "http"    // target to bridge: HTTP proxy request
 	KindConnect = "connect" // target to bridge: HTTP proxy CONNECT
 	KindForward = "forward" // bridge to target: local forward; target to bridge: remote forward

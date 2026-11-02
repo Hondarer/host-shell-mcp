@@ -14,10 +14,10 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/hondarer/host-shell-mcp/internal/channel"
-	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
 // Timeouts of proxied connections.
@@ -42,30 +42,34 @@ type StatusInput = channel.PageInput
 
 // Status is the output of proxy_status.
 type Status struct {
-	Enabled    bool     `json:"enabled"`
-	State      string   `json:"state"`
-	AllowHosts []string `json:"allow_hosts"`
+	Enabled bool   `json:"enabled"`
+	State   string `json:"state"`
+	Rules
 	channel.Recent[Event]
 }
 
 // Gateway is the bridge side of the HTTP proxy: it checks destinations and connects on the client network.
 type Gateway struct {
-	rules     policy.NameRules
+	rules     atomic.Pointer[ruleSet]
 	history   channel.History[Event]
 	peer      channel.Peer
 	proxy     func(*http.Request) (*url.URL, error)
 	tlsConfig *tls.Config
 }
 
-func NewGateway(rules []string) (*Gateway, error) {
-	if len(rules) == 0 {
+// NewGateway initializes proxy destination rules; runtime changes are session-local.
+func NewGateway(allow, deny []string) (*Gateway, error) {
+	if len(allow) == 0 {
 		return nil, errors.New("--proxy requires --proxy-allow-host")
 	}
-	parsed, err := policy.ParseNameRules("--proxy-allow-host", rules)
+	parsed, err := parseRules(allow, deny)
 	if err != nil {
 		return nil, err
 	}
-	return &Gateway{rules: parsed, proxy: snapshotProxy(), tlsConfig: &tls.Config{MinVersion: tls.VersionTLS12}}, nil
+	parsed.revision = 1
+	gateway := &Gateway{proxy: snapshotProxy(), tlsConfig: &tls.Config{MinVersion: tls.VersionTLS12}}
+	gateway.rules.Store(parsed)
+	return gateway, nil
 }
 
 // Register enables the HTTP proxy on the bridge's channel options.
@@ -76,7 +80,10 @@ func (g *Gateway) Register(opt *channel.Options) {
 	opt.OnReport(g.report)
 	opt.OnAttach(g.peer.Attach)
 }
-func (g *Gateway) allowed(host string, port int) bool { return g.rules.Allow(host, port) }
+func (g *Gateway) allowed(host string, port int) bool {
+	rules := g.rules.Load()
+	return !rules.deny.Allow(host, port) && rules.allow.Allow(host, port)
+}
 func (g *Gateway) report(kind string, f channel.Frame) {
 	if f.Forward != 0 {
 		return
@@ -111,7 +118,7 @@ func (g *Gateway) Status(in StatusInput) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	return Status{Enabled: true, State: state, AllowHosts: append([]string{}, g.rules...), Recent: recent}, nil
+	return Status{Enabled: true, State: state, Rules: g.rules.Load().snapshot(), Recent: recent}, nil
 }
 func (g *Gateway) open(ctx context.Context, in *channel.Incoming) {
 	if !channel.ValidDestination(in.Host, in.Port) || !g.allowed(in.Host, in.Port) {

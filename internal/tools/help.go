@@ -129,6 +129,9 @@ func Instructions(d *Deps) string {
 	fmt.Fprintf(&sb, "Defaults: exec_run shell %q; console encoding %s; file encoding %s; output limit %s per call; command timeout %s (max %s).\n",
 		d.DefaultShell, textenc.Console().Name, textenc.File().Name,
 		exactSize(d.Cfg.MaxOutputBytes), d.Cfg.DefaultTimeout, d.Cfg.MaxTimeout)
+	if d.DNS != nil {
+		sb.WriteString("\nRemote DNS enabled: exec_run/job_start inject a Linux/glibc getaddrinfo adapter using LD_PRELOAD. Some VS Code child hosts remove it; custom DNS APIs are not covered. HTTP proxy destination rules still apply separately.\n")
+	}
 	if d.Proxy != nil {
 		fmt.Fprintf(&sb, "\nClient proxy enabled; credential URL file: %s. Use proxy_status on the bridge to diagnose denied destinations.\n", d.Proxy.File)
 	}

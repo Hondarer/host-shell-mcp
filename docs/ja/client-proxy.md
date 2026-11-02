@@ -20,6 +20,8 @@ host-shell bridge --proxy --proxy-allow-host 'packages.example.com:443' -- \
 - `--proxy` を指定する場合は、`--proxy-allow-host` が 1 件以上必要です。
 - 片側のみの有効化、両端のバージョン不一致、または不正な許可規則がある場合は起動エラーになります。
 - `--no-transfer` とも併用できます。
+- `--proxy-deny-host HOST[:PORT]` (複数指定可) で明示的な拒否規則を指定できます。許可と拒否の両方に一致する宛先は拒否します。
+- MCP でのセッション中の変更を許す場合は `--proxy-allow-rule-updates` を追加します。指定しなければ更新ツールは公開されません。
 
 ```mermaid
 flowchart LR
@@ -69,10 +71,33 @@ flowchart LR
 ```
 
 - **入力**: `after_seq` (0 以上の整数、既定 `0`)、`limit` (1〜100、既定 `20`)。
-- **出力**: `enabled`、`state`、`allow_hosts`、`active_connections`、`events`、`next_seq`、`truncated`。
+- **出力**: `enabled`、`state`、`allow_hosts`、`deny_hosts`、`rules_revision`、`active_connections`、`events`、`next_seq`、`truncated`。
 - `events` の各要素は `seq`、`time`、`connection_id`、`host`、`port`、`result` (`allowed` / `denied` / `failed`)、`reason`、および集約時の `count` を持ちます。直近 100 件を保持し、`seq` の昇順で返します。継続取得時は前回の `next_seq` を `after_seq` に渡します。`truncated` は履歴の脱落または未返却のイベントがあることを示します。
 - 同じメタ情報は `bridge` の標準エラーにも出力されます。リクエスト本文、URL のパスやクエリ、資格情報は診断情報に含まれません。
-- 通信が拒否された場合は `host`、`port`、`reason` を確認し、利用者が判断したうえで必要な宛先のみを `--proxy-allow-host` に追加して再起動してください (エージェントが独断で許可範囲を広げることはできません)。
+- 通信が拒否された場合は `host`、`port`、`reason` を確認し、利用者が判断した必要な宛先のみを許可します。更新ツールが有効なら、後述の手順で再起動せずに反映できます。無効なら起動オプションの変更と再接続が必要です。エージェントが独断で許可範囲を広げることはできません。
+
+### proxy_rules_update (bridge)
+
+`bridge` を `--proxy --proxy-allow-rule-updates` 付きで起動すると、セッション内の宛先許可・拒否規則を変更する `proxy_rules_update` を公開します。接続先の追加オプションは不要です。プロキシを無効にした状態で後から有効化する機能ではありません。
+
+1. `proxy_status` で現在の `allow_hosts`、`deny_hosts`、`rules_revision` を取得します (初期世代は `1`)。
+2. 利用者が承認した変更を加えた **両リスト全体** を、取得した世代番号とともに渡します。差分追加の API ではないため、維持する既存宛先も含めます。
+
+```json
+{
+  "expected_revision": 1,
+  "allow_hosts": ["api.github.com:443", "hondarer-soft.com:443"],
+  "deny_hosts": []
+}
+```
+
+- 戻り値は更新後の `allow_hosts`、`deny_hosts`、`rules_revision` です。例では API と指定サイトのみの許可へ置き換わります。実際には `proxy_status` で取得した既存規則を基にしてください。
+- 入力の規則をすべて検証してから一括で交換します。不正な規則や世代番号の不一致では変更しません。競合時は現在の状態を読み直し、変更内容を再確認してください。
+- 拒否が許可より優先します。空の `allow_hosts` は新規接続をすべて拒否します。
+- 更新後に許可判定する新しい中継接続から適用します。処理中の要求や既存の CONNECT トンネルは強制切断しません。SSH、code-server、プロキシ URL、ブラウザー向けポート転送は維持されます。
+- 変更はセッション内のメモリーのみです。登録コマンドや設定ファイルへは保存せず、次の接続では起動時の規則に戻ります。bridge の標準エラーに世代番号と両リストを記録します。
+- 新機能に対応し、起動時に更新を許可した bridge が必要です。旧バイナリーや更新を許可せず開始したセッションへ、ツールを後から追加することはできません。初回の導入・有効化後は、規則変更ごとの再起動は不要です。
+- 本機能の対象はクライアント経由 HTTP/HTTPS プロキシです。`--allow-host`、ポート転送の許可規則、DNS 中継の設定は変更しません。
 
 ### 接続先の操作ログ
 
@@ -87,3 +112,5 @@ flowchart LR
 - **タイムアウト**: 上流接続および HTTP ヘッダー待ちは 30 秒、無通信タイムアウトは 5 分、終了時の待機は最大 5 秒です。
 - **HTTP エラー応答**: 宛先拒否は `403`、プロキシ認証失敗は `407`、同時接続上限到達は `503`、上流接続失敗は `502`、接続確立タイムアウトは `504` を返します。`CONNECT` 確立後の通信障害はストリームのクローズで通知します。セッション切断時には待ち受けと全中継接続を閉じます。
 - **MCP 制限オプションとの関係**: 接続先の `--tools` や `--read-only` は MCP ツールの公開範囲を制御するものであり、プロキシ経由の通信自体は制限しません。プロキシ通信の可否は両端の明示的な有効化と `bridge` の `--proxy-allow-host` で管理してください。
+
+名前解決を接続元へ中継する任意機能: [remote-dns](remote-dns.md)。両端の `--remote-dns` と、接続先の `--remote-dns-library PATH`（事前ビルド版を使う場合）を参照してください。
