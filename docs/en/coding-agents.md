@@ -149,6 +149,20 @@ Direct name resolution inside the container fails. The HTTP proxy does not relay
 
 Distinguish proxy-compatible commands from built-in tools that require a preliminary DNS lookup. The latter can use the optional [remote-dns feature](remote-dns.md). Independent resolver-hook testing showed Copilot CLI Web Fetch failing on DNS without the hook and succeeding with it for the same URL. See that document for scope and diagnostics, including environment sanitization in the bundled VS Code SDK. A proxy-compatible command such as `curl` remains an alternative after explicit authorization of the required host and port.
 
+### Required destination for Copilot Chat's BYOK model catalog
+
+code-server's Copilot Chat retrieves its known-model catalog for BYOK (external models using the user's own API keys or similar credentials) from `https://main.vscode-cdn.net/extensions/copilotChat.json`. GitHub and Copilot API allow rules do not cover this destination: **this feature requires additionally allowing `main.vscode-cdn.net:443`**. The [retrieval implementation](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts) confirms the URL.
+
+Add the following to existing startup allow rules:
+
+```text
+--proxy-allow-host main.vscode-cdn.net:443
+```
+
+When `proxy_rules_update` is available, read the current `rules_revision` and both complete rule lists, then add this single destination to the allowlist. Runtime updates need no restart but end with the session; also include the destination in the next startup configuration.
+
+On 2026-11-03, CONNECT to the same URL returned 403 before authorization. After the update, a version-1 catalog containing five providers (19,535 bytes) was retrieved as valid JSON. This direct retrieval does not establish that the extension itself has retried successfully. Check normal Copilot API destinations and the BYOK catalog destination separately for their respective features.
+
 The following statuses apply only to Copilot CLI. Other CLIs have only the local startup checks above.
 
 | Stage | Pass criteria | Status |

@@ -149,6 +149,20 @@ Codex は読み取り専用ファイルシステムで PATH 用エイリアス�
 
 この構成では、プロキシ経由で通信できるコマンドと、事前の DNS 問い合わせを必要とする内蔵ツールを区別します。後者には任意機能の [remote-dns](remote-dns.md) を使用できます。名前解決フック単体の検証では、同一 URL の Copilot CLI Web Fetch がフックなしでは DNS エラー、フックありでは成功しました。VS Code 同梱 SDK の環境変数除去などの適用範囲は、同文書の診断節を参照してください。代替としてプロキシ対応の `curl` などを使う場合も、必要なホスト・ポートへの明示的な許可が必要です。
 
+### Copilot Chat の BYOK モデル一覧に必要な許可先
+
+code-server の Copilot Chat は、BYOK（利用者自身の API キーなどを使う外部モデル）の既知モデル一覧を `https://main.vscode-cdn.net/extensions/copilotChat.json` から取得します。GitHub・Copilot API の許可だけではこの宛先を含まないため、この機能には **`main.vscode-cdn.net:443` の追加許可が必要**です。[取得処理の実装](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts) でも取得先を確認できます。
+
+起動オプションでは既存の許可先に次を追加します。
+
+```text
+--proxy-allow-host main.vscode-cdn.net:443
+```
+
+`proxy_rules_update` が利用できる場合は、現在の `rules_revision` と許可・拒否の全リストを読み、上記1件を許可先に加えて更新します。実行中セッションの更新は再起動不要ですが、セッション終了後は保持されないため、次回の起動オプションにも追加してください。
+
+2026-11-03 の検証では、未許可時は同じ URL への CONNECT が 403、許可後は形式バージョン1・5プロバイダー分の JSON（19,535バイト）を取得できました。Copilot 拡張自身の再取得成功は、この直接取得の確認と区別します。通常の Copilot 応答に必要な API と BYOK のカタログ取得先は、機能ごとに確認してください。
+
 以下の状態は Copilot CLI に限ります。他の CLI は上記のローカル起動確認のみです。
 
 | 段階 | 合格条件 | 状態 |

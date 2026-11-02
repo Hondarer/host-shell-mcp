@@ -158,3 +158,7 @@ VS Code 同梱 SDK の実行体は `lib/vscode/node_modules/@github/copilot-sdk-
 起動時には Copilot の未サインイン・トークンソース未準備、BYOK モデル一覧更新の `fetch failed`、custom agents 取得の `Canceled` が記録されています。調査したログでは DNS 再注入の検査エラーや `ENOTFOUND`・`EAI_AGAIN` は見つかっていません。`mobile.events.data.microsoft.com`、`default.exp-tas.com`、Application Insights の宛先、`169.254.169.254:80` は宛先ルールで拒否されており、許可先は追加していません。プロキシ履歴は直近100件までのため、全期間の無障害を示す結果ではありません。
 
 このブラウザー接続は従来の SSH セッションを使用しています。接続元ループバックの新しい TCP 入口を使う別 SSH セッションでも MCP 初期化・DNS 中継・HTTPS を確認しましたが、このブラウザーインスタンスをその新セッションへ切り替えた検証ではありません。
+
+### BYOK カタログの許可追加
+
+上記のモデル一覧更新について、取得先 `https://main.vscode-cdn.net/extensions/copilotChat.json` を接続先から直接確認すると、未許可時は CONNECT 403 でした。2026-11-03 に利用者の指示で `main.vscode-cdn.net:443` をブラウザー用・追加 TCP SSH 用の両プロキシセッションへ `proxy_rules_update` で追加し、カタログ JSON（形式バージョン1、5プロバイダー分、19,535バイト）の取得成功を確認しました。既存の許可・拒否ルールは保持しています。Copilot 拡張自身が再試行して警告が解消したことまでは、この確認に含めません。次回接続時にも必要な許可先として、[Copilot の導入ガイド](coding-agents.md) に起動オプションを記載しています。
