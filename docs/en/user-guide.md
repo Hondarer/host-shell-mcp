@@ -160,7 +160,7 @@ Table: Where to place the binary
 - Avoid spaces in the installation path because command lines are re-parsed at each SSH hop.
 - On Linux, `.local/bin/host-shell` works as a relative path because `sshd` starts commands in the user's home directory (do not use `~`, which is expanded by the local shell).
 
-`scripts/deploy.sh` in `.agents/skills/host-shell-connect` automates candidate selection, permission checks, SHA-256 verification, and startup testing.
+`scripts/deploy.sh` in `.agents/skills/host-shell-connect` automates candidate selection, permission checks, SHA-256 verification, and startup testing. On glibc Linux targets, it also places the adapter for [remote DNS](remote-dns.md) in the same directory.
 
 To deploy into a running container, see [Connecting into containers](container.md).
 

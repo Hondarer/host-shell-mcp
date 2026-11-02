@@ -36,6 +36,8 @@ host-shell bridge --remote-dns -- \
 
 ソースからビルドする場合は、接続先の CPU 向けに、接続先以前の glibc を持つ環境で `make dns-lib` を実行します。
 
+スキル host-shell-connect の `deploy.sh` は、glibc の Linux 接続先に本体を配置するとき、対応するアダプターを同じディレクトリーに `libhostshell_dns.so` として配置します。接続先で実際に `LD_PRELOAD` で読み込めるかも確認し、絶対パスを `dns adapter deployed: <パス>` として表示します。利用者がアダプターを用意する必要はありません。スキルは、このパスを `--remote-dns-library` に指定した登録コマンドを示します。
+
 `exec_run` / `job_start` に `LD_PRELOAD`、`HOST_SHELL_DNS_LIBRARY`、`HOST_SHELL_DNS_SOCKET` が自動設定されます。既存の `LD_PRELOAD` は保持します。ポリシーの `--unset-env` と、呼び出しの `env` による明示設定はその後に適用されます。`sys_get_info` の `remote_dns`、`remote_dns_library`、`remote_dns_socket` で設定を確認できます。ライブラリーとソケットはセッションごとの非公開一時ディレクトリーに置き、切断時に削除します。事前に転送した原本は削除しません。
 
 ## HTTP プロキシとの併用

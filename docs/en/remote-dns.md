@@ -36,6 +36,8 @@ host-shell bridge --remote-dns -- \
 
 To build from source, run `make dns-lib` for the target CPU on a system whose glibc is no newer than the target's.
 
+When the host-shell-connect skill's `deploy.sh` places the binary on a glibc Linux target, it also places the matching adapter beside it as `libhostshell_dns.so`. It checks that the target can actually `LD_PRELOAD` it and prints the absolute path as `dns adapter deployed: <path>`. Users do not need to prepare the adapter; the skill presents a registration command with that path as `--remote-dns-library`.
+
 `exec_run` and `job_start` receive `LD_PRELOAD`, `HOST_SHELL_DNS_LIBRARY`, and `HOST_SHELL_DNS_SOCKET` automatically. Existing preload libraries are preserved. Policy `--unset-env` filtering and explicit call `env` overrides apply afterwards. Inspect `remote_dns`, `remote_dns_library`, and `remote_dns_socket` in `sys_get_info`. The adapter and owner-only socket live in a private per-session temporary directory removed on disconnect. A supplied original library is retained.
 
 ## Combine with the HTTP proxy

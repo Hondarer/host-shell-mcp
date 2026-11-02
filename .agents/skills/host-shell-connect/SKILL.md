@@ -18,7 +18,7 @@ Below, `$SKILL` refers to the directory containing `SKILL.md` (`.agents/skills/h
 | `bin/host-shell-linux-amd64`, `bin/host-shell-linux-arm64` | Linux executables |
 | `bin/host-shell-windows-amd64.exe`, `bin/host-shell-windows-arm64.exe` | Windows executables |
 | `bin/host-shell-darwin-amd64`, `bin/host-shell-darwin-arm64` | macOS executables (used locally for `host-shell bridge`) |
-| `bin/libhostshell_dns-linux-amd64.so`, `bin/libhostshell_dns-linux-arm64.so` | Prebuilt remote DNS adapters for Linux targets without a C compiler (`--remote-dns-library`; release archives only, or `make dns-lib`) |
+| `bin/libhostshell_dns-linux-amd64.so`, `bin/libhostshell_dns-linux-arm64.so` | Remote DNS adapters built and tested by CI (release archives; `make dns-lib` builds the host architecture). `deploy.sh` places the matching one beside the Linux binary for [remote DNS](#optional-remote-dns) |
 | `bin/VERSION` | Executable version |
 
 Table: Folder layout
@@ -34,7 +34,7 @@ No script uses SFTP or port forwarding.
 |---|---|
 | `remote.sh ROUTE COMMAND` | Runs `COMMAND` on the target over nested `ssh` hops (and `exec -i` into a container when the route ends with one) and forwards standard input |
 | `detect.sh ROUTE` | Prints the target environment type (`linux-amd64`, `linux-arm64`, `windows-amd64`, `windows-arm64`) |
-| `deploy.sh ROUTE TYPE [REMOTE_PATH]` | Transfers the `TYPE` executable from `bin/` over the route's standard input, verifies its SHA-256, and checks startup. Skips transfer if an identical file exists; removes the file if startup fails. Tries default locations in order when `REMOTE_PATH` is omitted |
+| `deploy.sh ROUTE TYPE [REMOTE_PATH]` | Transfers the `TYPE` executable from `bin/` over the route's standard input, verifies its SHA-256, and checks startup. Skips transfer if an identical file exists; removes the file if startup fails. Tries default locations in order when `REMOTE_PATH` is omitted. On glibc Linux targets, also places the remote DNS adapter beside it as `libhostshell_dns.so` and checks that the target can preload it |
 | `probe.sh ROUTE REMOTE_PATH [OPTIONS...]` | Sends MCP `initialize` and `tools/list` requests to `host-shell` on the target and verifies the responses |
 
 Table: Scripts
@@ -132,6 +132,13 @@ To specify a path explicitly, pass it as the third argument.
 - `no default location worked`: Ask the user for a writable user-owned path and rerun with it as the third argument.
 - On Windows, a running `host-shell.exe` cannot be overwritten. Disconnect the active agent session and rerun.
 
+On Linux, a line about the remote DNS adapter precedes the final line. Keep it for [remote DNS](#optional-remote-dns); it never makes the deployment fail.
+
+- `dns adapter deployed: <path>` / `dns adapter up to date: <path>`: The adapter is beside the binary and loads on the target. `<path>` is absolute; use it as `--remote-dns-library`.
+- `dns adapter unavailable: no libhostshell_dns-<TYPE>.so in bin/`: `bin/` came from `make dist` alone. Use a release archive or run `make dns-lib` on a matching Linux machine, then rerun `deploy.sh`. Otherwise `--remote-dns` compiles the adapter on the target, which needs `cc` and glibc headers.
+- `dns adapter unavailable: the target has no glibc`: Remote DNS is not supported on this target (for example Alpine/musl).
+- `dns adapter unavailable: the target cannot preload it (...)`: The adapter was removed again. Report the loader message to the user; `--remote-dns` would need `cc` on the target.
+
 ### Checking startup
 
 ```bash
@@ -212,7 +219,7 @@ claude mcp add host-shell-web -- /path/to/host-shell bridge -- ssh -T -o BatchMo
 
 ## Uninstalling
 
-When asked to remove `host-shell`, delete its installation directory (`/tmp/host-shell-<uid>/`, `%TEMP%/host-shell/`, or `.local/bin/host-shell`).  
+When asked to remove `host-shell`, delete its installation directory (`/tmp/host-shell-<uid>/`, `%TEMP%/host-shell/`, or `.local/bin/host-shell` together with `.local/bin/libhostshell_dns.so`).  
 Ask whether to delete the audit log (`~/.local/state/host-shell/` on Linux, `%LOCALAPPDATA%/host-shell/` on Windows), and show how to unregister the server from the agent (`claude mcp remove <name>` in Claude Code).
 
 ## Report
@@ -221,12 +228,29 @@ When finished, report the following items together:
 
 - Route and target environment type
 - Installation path, version, SHA-256, and whether the binary was newly deployed (`deployed`) or already current (`up to date`)
+- On Linux, the `dns adapter` result (path, or why it is unavailable)
 - `probe.sh` result (version and number of published tools)
 - Registration command (with or without `bridge` and any restriction options) and how to reload the MCP server
 
 ## Optional client HTTP proxy
 
 When proxy-aware programs on the target need outbound HTTP/HTTPS access through the local client network, see `docs/en/client-proxy.md`. Pass `--client-proxy` to the target `host-shell` and `--proxy` with explicit `--proxy-allow-host HOST[:PORT]` rules to `bridge`. Traffic is multiplexed over the existing SSH stdio stream without SSH port forwarding. Use `proxy_status` to diagnose denied requests, and never broaden user-approved host rules autonomously. `sys_get_info` reports the path to the user-only credential URL file (`proxy_url_file`); never print or paste its contents. Leave this feature disabled unless requested by the user.
+
+## Optional remote DNS
+
+When the user asks for client-side name resolution on a Linux target (for example a CLI that fails with `failed to lookup address information` on a target without DNS), see `docs/en/remote-dns.md`. The user does not need to build or transfer anything: use the adapter that `deploy.sh` placed and reported (`dns adapter deployed: <path>` or `up to date`).
+
+- Add `--remote-dns` to `bridge` (before `--`).
+- Add `--remote-dns --remote-dns-library <path>` after `--mcp`, with `<path>` copied from the `dns adapter` line.
+- If the adapter is unavailable because `bin/` lacks it, the target may still compile one: add only `--remote-dns` on both ends if the target has `cc` (check with `remote.sh ROUTE 'command -v cc'`). Otherwise explain the reason from the `dns adapter` line and leave remote DNS disabled.
+- `bridge` is required. Do not pass `--remote-dns` options to `probe.sh` (without a bridge, startup stops with `bridge must enable --remote-dns`); probe without them.
+- Redeploying with `deploy.sh` updates the adapter at the same path, so registration does not change.
+
+```bash
+claude mcp add host-shell-target -- /path/to/host-shell bridge --remote-dns -- ssh -T -o BatchMode=yes target /tmp/host-shell-1000/host-shell --mcp --remote-dns --remote-dns-library /tmp/host-shell-1000/libhostshell_dns.so
+```
+
+After reloading, verify that `sys_get_info` reports `remote_dns: true`. Remote DNS permits arbitrary client-side lookups independently of HTTP proxy rules. Leave it disabled unless requested by the user.
 
 ## Optional port forwarding
 

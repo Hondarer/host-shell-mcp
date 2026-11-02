@@ -10,7 +10,10 @@
 #                Defaults to user-owned paths tried in order:
 #                  Linux:   /tmp/host-shell-<uid>/host-shell, then .local/bin/host-shell (relative to $HOME)
 #                  Windows: %TEMP%/host-shell/host-shell.exe, then %LOCALAPPDATA%/Programs/host-shell/host-shell.exe
-# Prints the deployed target path on the final line for use with probe.sh and MCP registration.
+# On Linux, also places the prebuilt remote DNS adapter from ../bin/ beside the binary as libhostshell_dns.so
+# (used with --remote-dns --remote-dns-library) and checks that the target's dynamic loader can preload it.
+# Prints a "dns adapter ..." line, then the deployed target path on the final line for use with probe.sh
+# and MCP registration.
 set -eu
 
 if [ $# -lt 2 ] || [ $# -gt 3 ]; then
@@ -33,14 +36,14 @@ if [ ! -f "$file" ]; then
 fi
 version=$(cat "$bin/VERSION" 2>/dev/null || echo unknown)
 
-if command -v sha256sum >/dev/null 2>&1; then
-	local_sum=$(sha256sum "$file" | cut -d' ' -f1)
-else
-	local_sum=$(shasum -a 256 "$file" | cut -d' ' -f1)
-fi
-
-size=$(wc -c <"$file" | tr -d ' ')
-size_kib=$(((size + 1023) / 1024))
+sum_of() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$1" | cut -d' ' -f1
+	else
+		shasum -a 256 "$1" | cut -d' ' -f1
+	fi
+}
+local_sum=$(sum_of "$file")
 
 remote() { "$dir/remote.sh" "$route" "$1"; }
 hash_of() { tr -d '\r' | tr 'A-F' 'a-f' | grep -oE '[0-9a-f]{64}' | head -n 1; }
@@ -60,14 +63,16 @@ query_cmd() {
 	windows) printf '%s "$p=%s; if (Test-Path -PathType Container (Split-Path $p)) { %s }; if (Test-Path $p) { (Get-FileHash $p).Hash }"' "$ps" "'$1'" "'dir-exists'" ;;
 	esac
 }
-# Fails before writing when the target file system has less free space than the binary needs,
+# Fails before writing when the target file system has less free space than the file ($size bytes) needs,
 # so the next default path (for example outside a small /tmp) is tried instead.
-space_check='a=$(df -Pk "$d" 2>/dev/null | tail -n 1 | tr -s " " | cut -d" " -f4)
+space_check() {
+	printf '%s' 'a=$(df -Pk "$d" 2>/dev/null | tail -n 1 | tr -s " " | cut -d" " -f4)
 case $a in "" | *[!0-9]*) ;; *) if [ "$a" -lt '"$size_kib"' ]; then echo "not enough disk space in $d: '"$size_kib"' KiB needed, $a KiB available" >&2; exit 1; fi ;; esac'
+}
 # Writes to a temporary .new file and renames it into place so an active Linux binary can be replaced atomically.
 upload_cmd() {
 	case $os in
-	linux) printf 'd=$(dirname %s); [ -d "$d" ] || mkdir -p -m 700 "$d" || exit 1\n%s\n%s\necho writing; cat > %s.new && chmod 755 %s.new && mv -f %s.new %s && sha256sum %s' "$1" "$safe_dir" "$space_check" "$1" "$1" "$1" "$1" "$1" ;;
+	linux) printf 'd=$(dirname %s); [ -d "$d" ] || mkdir -p -m 700 "$d" || exit 1\n%s\n%s\necho writing; cat > %s.new && chmod 755 %s.new && mv -f %s.new %s && sha256sum %s' "$1" "$safe_dir" "$(space_check)" "$1" "$1" "$1" "$1" "$1" ;;
 	windows) printf '%s "$p=%s; New-Item -ItemType Directory -Force (Split-Path $p) | Out-Null; $f=$null; try { $f=(New-Object IO.DriveInfo ([IO.Path]::GetPathRoot($p))).AvailableFreeSpace } catch {}; if ($f -ne $null -and $f -lt %s) { [Console]::Error.WriteLine(%s + [int64]($f / 1KB) + %s); exit 1 }; %s; $i=[Console]::OpenStandardInput(); $o=[IO.File]::Create($p + %s); $i.CopyTo($o); $o.Close(); Move-Item -Force ($p + %s) $p; (Get-FileHash $p).Hash"' "$ps" "'$1'" "$size" "'not enough disk space: $size_kib KiB needed, '" "' KiB available'" "'writing'" "'.new'" "'.new'" ;;
 	esac
 }
@@ -79,30 +84,74 @@ remove_cmd() {
 	esac
 }
 
+# put_file uploads local file $1 to remote path $2 unless an identical file is already there ($3 names it in
+# messages). Sets status ("up to date" or "deployed") and dir_existed for remove_cmd.
+put_file() {
+	src_sum=$(sum_of "$1")
+	size=$(wc -c <"$1" | tr -d ' ')
+	size_kib=$(((size + 1023) / 1024))
+	out=$(remote "$(query_cmd "$2")" </dev/null 2>&1 || true)
+	dir_existed=no
+	case $out in *dir-exists*) dir_existed=yes ;; esac
+	remote_sum=$(printf '%s\n' "$out" | hash_of || true)
+	if [ "$remote_sum" = "$src_sum" ]; then
+		status="up to date"
+		return 0
+	fi
+	echo "sending $3 to $2 ..." >&2
+	out=$(remote "$(upload_cmd "$2")" <"$1" || true)
+	remote_sum=$(printf '%s\n' "$out" | hash_of || true)
+	if [ "$remote_sum" != "$src_sum" ]; then
+		echo "could not install at $2 (SHA-256 local $src_sum, remote ${remote_sum:-unknown})" >&2
+		# Remove partial artifacts only if upload started (never touch a directory rejected by safe_dir).
+		case $out in *writing*) remote "$(remove_cmd "$2" "$dir_existed")" </dev/null >/dev/null 2>&1 || true ;; esac
+		return 1
+	fi
+	status=deployed
+}
+
+# deploy_adapter places the prebuilt remote DNS adapter beside the Linux binary at $1. It never fails the
+# deployment: without a usable adapter, --remote-dns falls back to compiling one on the target (needs cc).
+deploy_adapter() {
+	[ "$os" = linux ] || return 0
+	lib=$bin/libhostshell_dns-$type.so
+	if [ ! -f "$lib" ]; then
+		echo "dns adapter unavailable: no $(basename "$lib") in bin/ (build it with 'make dns-lib' or use a release archive)"
+		return 0
+	fi
+	# The adapter targets glibc only; musl's loader would load it without complaint, so check for glibc's loader.
+	case $type in
+	linux-amd64) loader=/lib64/ld-linux-x86-64.so.2 ;;
+	linux-arm64) loader=/lib/ld-linux-aarch64.so.1 ;;
+	esac
+	if ! remote "test -e $loader" </dev/null >/dev/null 2>&1; then
+		echo "dns adapter unavailable: the target has no glibc ($loader); --remote-dns is not supported there"
+		return 0
+	fi
+	adir=$(dirname "$1")
+	if ! put_file "$lib" "$adir/libhostshell_dns.so" "remote DNS adapter ($type)"; then
+		echo "dns adapter unavailable: transfer failed"
+		return 0
+	fi
+	# Absolute path for --remote-dns-library; a relative binary path resolves from the same login directory.
+	apath=$(remote "cd $adir && pwd" </dev/null | tr -d '\r' | tail -n 1)/libhostshell_dns.so
+	# The dynamic loader reports (on stderr) a preload library it cannot load, e.g. on musl or an older glibc.
+	err=$(remote "LD_PRELOAD=$apath uname 2>&1 >/dev/null" </dev/null 2>&1 || true)
+	if [ -n "$err" ]; then
+		echo "dns adapter unavailable: the target cannot preload it ($(printf '%s' "$err" | head -n 1))"
+		remote "rm -f $apath" </dev/null >/dev/null 2>&1 || true
+		return 0
+	fi
+	echo "dns adapter $status: $apath"
+}
+
 # try_path uploads the binary to $1 (if needed) and verifies execution.
 try_path() {
 	path=$1
 	case $path in
 	*[[:space:]\'\"]*) echo "skipped $path: the path must not contain spaces or quotes" >&2; return 1 ;;
 	esac
-	out=$(remote "$(query_cmd "$path")" </dev/null 2>&1 || true)
-	dir_existed=no
-	case $out in *dir-exists*) dir_existed=yes ;; esac
-	remote_sum=$(printf '%s\n' "$out" | hash_of || true)
-	if [ "$remote_sum" = "$local_sum" ]; then
-		status="up to date"
-	else
-		echo "sending host-shell $version ($type) to $path ..." >&2
-		out=$(remote "$(upload_cmd "$path")" <"$file" || true)
-		remote_sum=$(printf '%s\n' "$out" | hash_of || true)
-		if [ "$remote_sum" != "$local_sum" ]; then
-			echo "could not install at $path (SHA-256 local $local_sum, remote ${remote_sum:-unknown})" >&2
-			# Remove partial artifacts only if upload started (never touch a directory rejected by safe_dir).
-			case $out in *writing*) remote "$(remove_cmd "$path" "$dir_existed")" </dev/null >/dev/null 2>&1 || true ;; esac
-			return 1
-		fi
-		status=deployed
-	fi
+	put_file "$file" "$path" "host-shell $version ($type)" || return 1
 	if ! remote "$path --version" </dev/null 2>&1 | grep -q '^host-shell '; then
 		echo "cannot run $path on the target (e.g. a noexec mount or an execution policy)" >&2
 		if [ "$status" = deployed ]; then
@@ -111,7 +160,9 @@ try_path() {
 		fi
 		return 1
 	fi
-	echo "$status: $path (version $version, sha256 $local_sum)"
+	result="$status: $path (version $version, sha256 $local_sum)"
+	deploy_adapter "$path"
+	echo "$result"
 }
 
 if [ $# -eq 3 ]; then

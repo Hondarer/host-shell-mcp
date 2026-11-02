@@ -160,7 +160,7 @@ Table: 配置する場所
 - SSH の各段でコマンド ラインが再解釈されるため、空白を含まないパスに配置してください。
 - Linux の `.local/bin/host-shell` は、sshd がホーム ディレクトリを作業ディレクトリとしてコマンドを起動するため相対パスのまま使用できます (`~` はローカル シェルに展開されるため使用しません)。
 
-`.agents/skills/host-shell-connect` スキルの `scripts/deploy.sh` は、この優先順で配置、権限確認、SHA-256 照合、起動確認を自動実行します。
+`.agents/skills/host-shell-connect` スキルの `scripts/deploy.sh` は、この優先順で配置、権限確認、SHA-256 照合、起動確認を自動実行します。glibc の Linux 接続先では、[接続元を使う名前解決](remote-dns.md) 用のアダプターも同じディレクトリーに配置します。
 
 稼働中のコンテナー内に配置する場合は、[コンテナーへの接続](container.md) を参照してください。
 
