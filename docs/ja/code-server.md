@@ -245,3 +245,5 @@ Microsoft Edge の「文書作成支援」が、code-server のターミナル�
 ## 保守
 
 スキルのスクリプト群は [code-server-launcher](https://github.com/Hondarer/code-server-launcher) の `download`、`install`、`start`、`uninstall` をベースに `host-shell` 向けの拡張を加えたものです。既定の設定と拡張機能リストは `code-server-container` の既定値と共通です。バージョンの更新手順は [開発ガイド](development.md#code-server-導入スキルの保守) を参照してください。
+
+拡張ホスト・エージェントホストでも接続元の名前解決を使う場合は、[remote-dns の明示選択モード](remote-dns.md) を参照してください。対応する配布物の専用コピーへ限定パッチを適用し、通常起動には元の配布物を使用します。

@@ -245,3 +245,5 @@ The parent **Use writing assistance** toggle can remain enabled while cursor hin
 ## Maintenance
 
 The skill scripts are adapted from `download`, `install`, `start`, and `uninstall` in [code-server-launcher](https://github.com/Hondarer/code-server-launcher), and the default settings and extension list match `code-server-container`. For instructions on updating the bundled code-server version, see the [Development Guide](development.md#maintaining-the-code-server-injection-skill).
+
+To use client-side name resolution in extension and agent hosts, see the [explicit remote-dns mode](remote-dns.md). It applies a scoped patch to an independent copy of a supported distribution; normal startup uses the original installation.

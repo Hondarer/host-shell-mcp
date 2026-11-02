@@ -21,6 +21,17 @@ workspace="${CODE_SERVER_WORKSPACE:-${HOME}}"
 code_server_installed || die "code-server is not installed; run install.sh first"
 [[ -f "${HSCS_CONFIG_FILE}" ]] || die "configuration not found: ${HSCS_CONFIG_FILE}; run install.sh first"
 [[ -d "${workspace}" ]] || die "workspace folder not found: ${workspace}"
+# Explicit selection only. The normal installation and its running sessions are untouched.
+case "${HOST_SHELL_CODE_SERVER_REMOTE_DNS:-0}" in
+  0) ;;
+  1)
+    "${HSCS_INSTALL_DIR}/lib/node" "${HSCS_ROOT}/scripts/linux/remote-dns/session.mjs"
+    bash "${HSCS_ROOT}/scripts/linux/prepare-remote-dns.sh"
+    HSCS_BIN="${HSCS_INSTALL_DIR}-remote-dns-v1/bin/code-server"
+    ;;
+  *) die "HOST_SHELL_CODE_SERVER_REMOTE_DNS must be 0 or 1" ;;
+esac
+
 # A port counts as in use when a connection to it succeeds. python3 and ss are not required on the target.
 port_in_use() { (: <>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 if [[ -n "${CODE_SERVER_PORT:-}" ]]; then

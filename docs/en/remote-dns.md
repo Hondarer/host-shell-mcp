@@ -35,7 +35,7 @@ host-shell bridge --remote-dns -- \
     --remote-dns-library /absolute/path/libhostshell_dns.so
 ```
 
-`exec_run` and `job_start` receive `LD_PRELOAD` and `HOST_SHELL_DNS_SOCKET` automatically. Existing preload libraries are preserved. Policy `--unset-env` filtering and explicit call `env` overrides apply afterwards. Inspect `remote_dns`, `remote_dns_library`, and `remote_dns_socket` in `sys_get_info`. The adapter and owner-only socket live in a private per-session temporary directory removed on disconnect. A supplied original library is retained.
+`exec_run` and `job_start` receive `LD_PRELOAD`, `HOST_SHELL_DNS_LIBRARY`, and `HOST_SHELL_DNS_SOCKET` automatically. Existing preload libraries are preserved. Policy `--unset-env` filtering and explicit call `env` overrides apply afterwards. Inspect `remote_dns`, `remote_dns_library`, and `remote_dns_socket` in `sys_get_info`. The adapter and owner-only socket live in a private per-session temporary directory removed on disconnect. A supplied original library is retained.
 
 ## Combine with the HTTP proxy
 
@@ -51,10 +51,63 @@ Start code-server through this session's `job_start`; existing processes do not 
 
 HTTP proxy allow/deny rules do not restrict DNS queries. Enabling `--remote-dns` permits resolving arbitrary names from the connecting machine. HTTP/HTTPS destinations remain subject to proxy rules: successful resolution does not prevent a 403 for an unauthorized destination.
 
+## Apply to code-server extension and agent hosts
+
+The Linux code-server skill's `start.sh` supports an explicitly selected patched-copy mode. Normal startup uses the original distribution.
+
+1. Start updated host-shell versions at both ends with `--remote-dns`. Web access also needs the HTTP proxy and authorized destinations.
+2. Transfer the updated skill's `scripts/linux` into the target kit. The existing verified code-server distribution can be reused.
+3. Start through `job_start` with the following arguments, replacing `<kit>` with its absolute path:
+
+   ```json
+   {
+     "argv": ["bash", "<kit>/scripts/linux/start.sh"],
+     "env": {
+       "HOST_SHELL_CODE_SERVER_REMOTE_DNS": "1",
+       "CODE_SERVER_WORKSPACE": "/absolute/path/to/workspace"
+     }
+   }
+   ```
+
+`start.sh` uses the normal user data directory. For validation alongside an existing instance, launch the dedicated copy's `bin/code-server` directly with a separate port, `--user-data-dir`, and `--session-socket`, passing the same enabling environment variable. Do not share an active user data directory.
+
+On first use, an independent sibling copy named `code-server-4.144.0-remote-dns-v1` is created. Allow about 750 MiB of free space. Preparation checks available space and JavaScript syntax before publishing the directory. It does not rewrite the original installation or running sessions. Subsequent starts verify the manifest and patched hashes rather than copying again. Modified output is rejected, not overwritten or repaired.
+
+Supported distributions are official code-server 4.144.0 / VS Code 1.144.0 for Linux amd64 and arm64. The SHA-256 hashes of three target files and all four replacement anchors must match values pinned from verified release archives. Unknown versions, modified inputs, and double application are rejected. arm64 archive contents were checked; runtime operation on arm64 remains unverified.
+
+```mermaid
+flowchart LR
+    Env["Build child environment"] --> Sanitize["Existing VS Code sanitization"]
+    Sanitize --> Restore["Explicit mode only<br/>Restore session DNS adapter"]
+    Restore --> Fork["Start extension host / IPC child"]
+    Fork --> Load["Dynamic loader loads adapter"]
+```
+
+The changes run immediately before child creation in `out/server-main.js`, `out/vs/workbench/api/node/extensionHostProcess.js`, and `out/vs/platform/agentHost/node/agentHostMain.js`. Removal of `NODE_OPTIONS` and other variables stays intact. The original `LD_PRELOAD` list is not restored. Parent-inherited `HOST_SHELL_DNS_LIBRARY` and `HOST_SHELL_DNS_SOCKET` identify the only adapter to inject. Mismatched sessions, unsafe ownership or permissions, symbolic links, and unavailable sockets are rejected.
+
+Browser Web extensions, custom DNS APIs, and separate sanitization implemented by extensions remain outside this mechanism. Distinguish actual Copilot SDK launch and Web Fetch verification from the automated checks below.
+
+### Validation and user testing
+
+Automated tests cover preservation of original files, rejection of modified output, cleanup after syntax errors, disabled behavior, two-session separation, and rejection of unsafe permissions, links, and expired sockets. A test using the real native adapter also confirms that a Node child, after environment sanitization and reinjection, loads the library and resolves names over the MCP channel.
+
+The isolated container has passed patched-copy preparation, reuse verification, and HTTP server startup. The user confirmed successful Web Fetch from Copilot CLI launched in the test code-server terminal; proxy history also showed `api.github.com:443` permitted. Inspection of the running extension host and VS Code bundled `copilot-runtime` confirmed inherited `LD_PRELOAD` and the mapped shared library. The user confirmed successful login to the in-editor Copilot Chat and also requested retrieval, which reported that no Web Fetch tool was available and used curl instead. Built-in Web Fetch was not exercised. HTTP-proxied curl can resolve the destination on the client side, so running curl alone does not validate the SDK's own DNS hook. Environment propagation and library loading were independently confirmed by the process inspection above.
+
+The user subsequently used Copilot Chat's terminal execution tool to run `dns.lookup("api.github.com", {all: true}, ...)` with Node.js from the dedicated copy, obtaining IPv4 `20.27.177.116`. This successful `getaddrinfo` call does not use the HTTP proxy and confirms name resolution in the Node child launched by Chat. It does not establish a direct DNS API call inside the extension host or SDK itself. Use the same authorized URL, such as `https://api.github.com/zen`, and distinguish HTTP 403 from resolution failures. Optional startup `HOST_SHELL_DNS_TRACE=1`, process environment checks, and `/proc/<pid>/maps` help confirm adapter loading.
+
+Stop the relevant job with `job_stop` and its forward with `forward_close`. To return to the normal distribution, omit `HOST_SHELL_CODE_SERVER_REMOTE_DNS` or set it to `0` on the next `start.sh` invocation. Existing processes do not change. The patched copy survives session shutdown and is removed with the normal code-server uninstall procedure.
+
+Development checks (Linux with Node.js):
+
+```bash
+node --test .agents/skills/host-shell-code-server/tests/remote-dns.test.mjs
+go test ./internal/remotedns
+```
+
 ## Scope and limitations
 
 - Targets require Linux/glibc; the bridge supports host-shell's supported operating systems. Static binaries, privileged execution ignoring `LD_PRELOAD`, custom DNS implementations, Node.js `dns.resolve*`, reverse lookups, and `gethostbyname` are outside the adapter's scope.
-- VS Code removes `LD_PRELOAD` when starting some extension/agent hosts. Setting it on code-server does not cover every child, including the bundled Copilot SDK. This feature does not disable that sanitization.
+- VS Code removes `LD_PRELOAD` when starting some extension/agent hosts. Setting it on code-server does not cover every child, including the bundled Copilot SDK. Normal startup preserves sanitization. The explicit mode below can restore only the DNS adapter.
 - Numeric addresses, `localhost`, and `AI_NUMERICHOST` use target libc. Other target-specific hosts entries are replaced by resolution on the connecting machine.
 - The bridge uses Go's standard resolver, rather than reproducing every platform's libc/NSS behavior. IPv4/IPv6, canonical names, and service names are supported; this is not a complete libc replacement.
 - Requests have an approximately three-second processing limit. An unavailable relay fails without falling back to target DNS. No cache is maintained. Other processes running as the same user can use the socket.

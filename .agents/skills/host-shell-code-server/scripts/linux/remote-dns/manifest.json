@@ -1,0 +1,79 @@
+{
+  "revision": 1,
+  "codeServerVersion": "4.144.0",
+  "vscodeVersion": "1.144.0",
+  "platforms": {
+    "linux-amd64": {
+      "archiveSha256": "710f749c40a0f3d0ab3be09c0de65314e5c2907cc50646f5fbc0f24c0e8fba2d",
+      "files": {
+        "lib/vscode/out/server-main.js": {
+          "sha256": "b968d3486452f23a4d46307d3efee63423b7abe32901bd496759f41f1fb00733",
+          "replacements": [
+            {
+              "before": "vu(o);let i;if(this._canSendSocket)",
+              "after": "vu(o);__hostShellRemoteDNS(o);let i;if(this._canSendSocket)"
+            },
+            {
+              "before": "vu(e.env),this.child=cj(this.modulePath,t,e)",
+              "after": "vu(e.env),__hostShellRemoteDNS(e.env),this.child=cj(this.modulePath,t,e)"
+            }
+          ]
+        },
+        "lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js": {
+          "sha256": "29cdd49cb752924f9dd2bb3f707226c0fbcf4688efc5c67dc6ecc3ac974dc4da",
+          "replacements": [
+            {
+              "before": "L8(e.env),this.child=Dse(this.modulePath,t,e)",
+              "after": "L8(e.env),__hostShellRemoteDNS(e.env),this.child=Dse(this.modulePath,t,e)"
+            }
+          ]
+        },
+        "lib/vscode/out/vs/platform/agentHost/node/agentHostMain.js": {
+          "sha256": "c1778c8d0a6087bdb065b821cb036d44aee38fb3589e0ec83b5b6e4968e00f44",
+          "replacements": [
+            {
+              "before": "gse(e.env),this.child=j1e(this.modulePath,i,e)",
+              "after": "gse(e.env),__hostShellRemoteDNS(e.env),this.child=j1e(this.modulePath,i,e)"
+            }
+          ]
+        }
+      }
+    },
+    "linux-arm64": {
+      "archiveSha256": "4404c784f541bd56a2a8d6e2a9474ed0b4e37bc8502aa3a247898ca933434482",
+      "files": {
+        "lib/vscode/out/server-main.js": {
+          "sha256": "b968d3486452f23a4d46307d3efee63423b7abe32901bd496759f41f1fb00733",
+          "replacements": [
+            {
+              "before": "vu(o);let i;if(this._canSendSocket)",
+              "after": "vu(o);__hostShellRemoteDNS(o);let i;if(this._canSendSocket)"
+            },
+            {
+              "before": "vu(e.env),this.child=cj(this.modulePath,t,e)",
+              "after": "vu(e.env),__hostShellRemoteDNS(e.env),this.child=cj(this.modulePath,t,e)"
+            }
+          ]
+        },
+        "lib/vscode/out/vs/workbench/api/node/extensionHostProcess.js": {
+          "sha256": "29cdd49cb752924f9dd2bb3f707226c0fbcf4688efc5c67dc6ecc3ac974dc4da",
+          "replacements": [
+            {
+              "before": "L8(e.env),this.child=Dse(this.modulePath,t,e)",
+              "after": "L8(e.env),__hostShellRemoteDNS(e.env),this.child=Dse(this.modulePath,t,e)"
+            }
+          ]
+        },
+        "lib/vscode/out/vs/platform/agentHost/node/agentHostMain.js": {
+          "sha256": "c1778c8d0a6087bdb065b821cb036d44aee38fb3589e0ec83b5b6e4968e00f44",
+          "replacements": [
+            {
+              "before": "gse(e.env),this.child=j1e(this.modulePath,i,e)",
+              "after": "gse(e.env),__hostShellRemoteDNS(e.env),this.child=j1e(this.modulePath,i,e)"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

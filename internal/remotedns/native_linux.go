@@ -51,7 +51,7 @@ func prepare(ctx context.Context, dir, library string) (string, error) {
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return "", fmt.Errorf("remote DNS adapter: %w (%s); install cc and glibc headers or use --remote-dns-library", err, strings.TrimSpace(string(b)))
 	}
-	return dest, nil
+	return dest, os.Chmod(dest, 0700)
 }
 
 // Reject incompatible adapter versions and architectures before injection.

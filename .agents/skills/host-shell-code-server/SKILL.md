@@ -15,7 +15,7 @@ Below, `$SKILL` refers to the directory containing this `SKILL.md` (`.agents/ski
 
 For deploying Copilot, agy, Claude Code, Codex, or Grok into the terminal, use the sibling `host-shell-coding-agents` skill scaffold and see `docs/en/coding-agents.md`. That workflow is under validation and does not bundle verified CLI installers. Keep code-server setup in this skill and CLI deployment in the dedicated skill.
 
-When a CLI needs the client HTTP proxy, enable `--client-proxy` on the target and `--proxy` with the required `--proxy-allow-host` rules on the bridge before starting code-server. Terminal children normally inherit the proxy environment. For Linux/glibc programs requiring client-side name resolution, see [remote-dns](../../../docs/en/remote-dns.md): enable `--remote-dns` on both ends before startup, with target `cc`/glibc headers or `--remote-dns-library`. Executed commands receive the adapter automatically. Some VS Code extension/agent hosts remove `LD_PRELOAD`, so this does not cover every child; do not disable that sanitization automatically. Do not print credential-bearing proxy URLs. Show missing registration options rather than modifying registration or reconnecting automatically.
+When a CLI needs the client HTTP proxy, enable `--client-proxy` on the target and `--proxy` with the required `--proxy-allow-host` rules on the bridge before starting code-server. Terminal children normally inherit the proxy environment. For Linux/glibc programs requiring client-side name resolution, see [remote-dns](../../../docs/en/remote-dns.md): enable `--remote-dns` on both ends before startup, with target `cc`/glibc headers or `--remote-dns-library`. Executed commands receive the adapter automatically. Some VS Code extension/agent hosts remove `LD_PRELOAD`. For a user-requested extension/agent-host DNS integration on supported Linux distributions, use the explicit patched-copy mode below; normal startup preserves sanitization. Do not remove the sanitizer or restore arbitrary preload libraries. Do not print credential-bearing proxy URLs. Show missing registration options rather than modifying registration or reconnecting automatically.
 
 ## Folder layout
 
@@ -28,6 +28,7 @@ When a CLI needs the client HTTP proxy, enable `--client-proxy` on the target an
 | `scripts/linux/download.sh`, `scripts/windows/download.ps1` | Client: fetch and verify the release archive and default extensions for target `TYPE` |
 | `scripts/linux/install.sh`, `scripts/windows/install.ps1` | Target: perform offline installation, generate the configuration, and apply defaults on first install |
 | `scripts/linux/start.sh`, `scripts/windows/start.ps1` | Target: run code-server in the foreground on the first free port in `127.0.0.1:8000-8079` (via `job_start`) |
+| `scripts/linux/prepare-remote-dns.sh`, `scripts/linux/remote-dns/` | Optional pinned DNS integration: build/verify an independent patched copy, retaining the original installation |
 | `scripts/linux/uninstall.sh`, `scripts/windows/uninstall.ps1` | Target: remove code-server (`--purge` / `-Purge` also removes settings, data, extensions, and the kit) |
 
 Table: Folder layout
@@ -115,6 +116,16 @@ Use `transfer_pull` to copy `<home>/.config/host-shell-code-server/config.yaml` 
 4. Report the local URL `http://127.0.0.1:<listen_port>/` and the local path of the copied `config.yaml` (its `password:` line contains the login password).
 
 Browser login sessions are scoped to the local port, so the user may need to log in again in a later session.
+
+### Optional: remote DNS in extension and agent hosts (Linux)
+
+Use only when the user requests this integration. See [remote-dns](../../../docs/en/remote-dns.md) for the exact scope and validation status. Both ends must run an updated host-shell with `--remote-dns`; `sys_get_info.remote_dns` must be true. Let host-shell supply `HOST_SHELL_DNS_LIBRARY` and `HOST_SHELL_DNS_SOCKET`; do not invent paths or reuse another session's metadata.
+
+Transfer the complete updated `scripts/linux` directory. Add `HOST_SHELL_CODE_SERVER_REMOTE_DNS: "1"` to the `job_start` environment for `start.sh`. The script validates the live DNS session and prepares/verifies the sibling `code-server-4.144.0-remote-dns-v1` copy. Reserve about 750 MiB of additional free space. It supports pinned official Linux amd64/arm64 4.144.0 archives; arm64 runtime remains unverified. Unknown versions, modified files, unsafe session metadata, or a changed patched copy must fail rather than be overwritten or bypassed.
+
+The patch restores only the session DNS adapter after sanitization at four child-start boundaries; other dangerous variables stay removed. It cannot cover browser Web extensions or every extension-specific child-launch mechanism. Running extension-host and bundled Copilot-runtime processes have been inspected with LD_PRELOAD present and the adapter mapped. The user confirmed terminal Copilot CLI Web Fetch success. In-editor Copilot Chat reported no Web Fetch tool and used curl instead; do not count this as built-in SDK Web Fetch or SDK DNS-hook validation. The user subsequently confirmed `dns.lookup("api.github.com")` returning `20.27.177.116` in the dedicated Node runtime launched by Chat's terminal tool. This confirms child-process name resolution without the HTTP proxy, not a direct lookup inside the extension host or SDK. HTTP startup, native unit tests, library mapping, and actual DNS calls establish different facts.
+
+Existing code-server processes do not acquire this mode. For a separate validation instance, use separate ports, user data, and session sockets; do not restart unrelated sessions or share a running user-data directory. Stop its job/forward after testing. Omit the flag or set it to `0` on a later normal start to select the original distribution. The dedicated copy stays on disk until normal uninstall; do not delete it while another session uses it.
 
 ### 7. Extensions
 

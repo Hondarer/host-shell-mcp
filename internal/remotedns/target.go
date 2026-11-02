@@ -139,12 +139,12 @@ func (t *Target) Close() {
 
 // Environment adds the adapter while preserving other preload libraries.
 func (t *Target) Environment(base []string) []string {
-	out := make([]string, 0, len(base)+2)
+	out := make([]string, 0, len(base)+3)
 	preload := t.Library
 	for _, kv := range base {
 		key, value, _ := strings.Cut(kv, "=")
 		switch key {
-		case "HOST_SHELL_DNS_SOCKET":
+		case "HOST_SHELL_DNS_SOCKET", "HOST_SHELL_DNS_LIBRARY":
 			continue
 		case "LD_PRELOAD":
 			if value != "" {
@@ -154,5 +154,5 @@ func (t *Target) Environment(base []string) []string {
 			out = append(out, kv)
 		}
 	}
-	return append(out, "LD_PRELOAD="+preload, "HOST_SHELL_DNS_SOCKET="+t.Socket)
+	return append(out, "LD_PRELOAD="+preload, "HOST_SHELL_DNS_SOCKET="+t.Socket, "HOST_SHELL_DNS_LIBRARY="+t.Library)
 }

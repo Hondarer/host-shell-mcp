@@ -68,6 +68,9 @@ func TestHookThroughChannelAndCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer target.Close()
+	if st, err := os.Stat(target.Library); err != nil || st.Mode().Perm()&077 != 0 {
+		t.Fatalf("adapter permissions: %v %v", st, err)
+	}
 	copyTarget, err := NewTarget(ctx, target.Library)
 	if err != nil {
 		t.Fatalf("prebuilt adapter: %v", err)
@@ -136,6 +139,36 @@ print('native adapter, concurrency, child inheritance, and errors passed')`
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("hook: %v\n%s", err, out)
 	}
+	// Exercise the actual native adapter after a Node child environment is sanitized.
+	if node, err := exec.LookPath("node"); err == nil {
+		helper, err := filepath.Abs("../../.agents/skills/host-shell-code-server/scripts/linux/remote-dns/session.mjs")
+		if err != nil {
+			t.Fatal(err)
+		}
+		script := `
+import {pathToFileURL} from 'node:url';
+import {spawnSync} from 'node:child_process';
+import assert from 'node:assert/strict';
+const {applyHostShellRemoteDNS}=await import(pathToFileURL(process.argv[1]));
+const env={...process.env};
+delete env.LD_PRELOAD; delete env.NODE_OPTIONS;
+applyHostShellRemoteDNS(env);
+const childScript = [
+ "import dns from 'node:dns/promises';",
+ "import assert from 'node:assert/strict';",
+ "assert.equal((await dns.lookup('example.invalid')).address,'192.0.2.1');",
+ "assert.ok(process.report.getReport().sharedObjects.includes(process.env.HOST_SHELL_DNS_LIBRARY));",
+ "console.log('sanitized Node child loaded adapter and resolved through channel');"
+].join('\n');
+const child=spawnSync(process.execPath,['--input-type=module','-e',childScript],{env,encoding:'utf8'});
+assert.equal(child.status,0,child.stderr);
+console.log(child.stdout);`
+		cmd := exec.CommandContext(ctx, node, "--input-type=module", "-e", script, helper)
+		cmd.Env = append(target.Environment(os.Environ()), "HOST_SHELL_CODE_SERVER_REMOTE_DNS=1")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("Node reinjection: %v\n%s", err, out)
+		}
+	}
 	dir := filepath.Dir(target.Socket)
 	bridge.Close()
 	target.Close()
@@ -146,8 +179,8 @@ print('native adapter, concurrency, child inheritance, and errors passed')`
 
 func TestEnvironment(t *testing.T) {
 	target := Target{Library: "/private/adapter.so", Socket: "/private/dns.sock"}
-	got := strings.Join(target.Environment([]string{"X=1", "LD_PRELOAD=/existing.so", "HOST_SHELL_DNS_SOCKET=old"}), "\n")
-	if got != "X=1\nLD_PRELOAD=/private/adapter.so /existing.so\nHOST_SHELL_DNS_SOCKET=/private/dns.sock" {
+	got := strings.Join(target.Environment([]string{"X=1", "LD_PRELOAD=/existing.so", "HOST_SHELL_DNS_SOCKET=old", "HOST_SHELL_DNS_LIBRARY=old"}), "\n")
+	if got != "X=1\nLD_PRELOAD=/private/adapter.so /existing.so\nHOST_SHELL_DNS_SOCKET=/private/dns.sock\nHOST_SHELL_DNS_LIBRARY=/private/adapter.so" {
 		t.Fatal(got)
 	}
 }
