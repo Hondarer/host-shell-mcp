@@ -74,6 +74,16 @@ The `start` script checks ports 8000 through 8079 on the target's `127.0.0.1` in
 - If another process binds the chosen port between the availability check and startup, code-server exits with `EADDRINUSE` and the agent runs `start` again.
 - If `bridge` was registered with an allow rule for `127.0.0.1:8000` only and port 8000 is already in use, forwarding to the fallback port is rejected. In that case, the agent stops code-server and asks you to update the rule to `'127.0.0.1:80[0-7]?'` and reconnect.
 
+## Multiple MCP connections using the same target user
+
+When multiple clients connect as the same target user, they can share the installed code-server binary and launch a separate code-server process with `job_start` from each MCP connection. No changes to the target's service configuration are required.
+
+- Each process listens on a different free port in 8000–8079, and each client accesses it in a browser through its own port forward. For example, client A uses target port 8000 and client B uses port 8001. If both pin the same port with `CODE_SERVER_PORT`, the later launch fails.
+- When an MCP connection ends, the code-server process and port forward started by that connection stop. Processes started by other MCP connections continue running.
+- The code-server configuration file (including the login password), user data, and extensions directory are shared. All processes run with the same target user's permissions, so changes to settings, extensions, or the same files affect other connections too. Separate browser access does not provide an isolated environment for each user.
+
+Install once before starting this workflow, then start code-server and open a port forward from subsequent connections. Stop code-server in all connections before updating or removing shared binaries or data.
+
 ## Password
 
 code-server runs with password authentication enabled. A random 48-digit hexadecimal password is generated on the target during the first installation and saved in `config.yaml`.
