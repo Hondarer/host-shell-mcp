@@ -11,6 +11,12 @@ This skill operates through the `host-shell` MCP tools of a session started with
 
 Below, `$SKILL` refers to the directory containing this `SKILL.md` (`.agents/skills/host-shell-code-server` in the repository). The user documentation is in `docs/en/code-server.md`.
 
+## CLI coding agents
+
+For deploying Copilot, agy, Claude Code, Codex, or Grok into the terminal, use the sibling `host-shell-coding-agents` skill scaffold and see `docs/en/coding-agents.md`. That workflow is under validation and does not bundle verified CLI installers. Keep code-server setup in this skill and CLI deployment in the dedicated skill.
+
+When a CLI needs the client HTTP proxy, enable `--client-proxy` on the target and `--proxy` with the required `--proxy-allow-host` rules on the bridge before starting code-server. Terminal children normally inherit the proxy environment. Do not print credential-bearing proxy URLs. Show missing registration options rather than modifying registration or reconnecting automatically.
+
 ## Folder layout
 
 | Path | Contents |

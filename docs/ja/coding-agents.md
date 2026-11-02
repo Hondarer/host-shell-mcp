@@ -1,9 +1,11 @@
-# 隔離環境の code-server から AI CLI を利用する
+# 隔離環境への CLI 型 AI コーディングエージェントの導入
 
 > [!NOTE]
-> この文書が正本です。英訳は [../en/ai-cli.md](../en/ai-cli.md) にあります。内容が一致しない場合は日本語版が優先されます。
+> この文書が正本です。英訳は [../en/coding-agents.md](../en/coding-agents.md) にあります。内容が一致しない場合は日本語版が優先されます。
 
-Copilot、agy、Claude Code、Codex、Grok の CLI を接続先のユーザー領域へ配置し、[code-server](code-server.md) のターミナルから利用する構成と検証手順を説明します。現時点では検証中のユースケースです。code-server 用スキルは AI CLI の導入・認証を自動実行しません。
+Copilot、agy、Claude Code、Codex、Grok の CLI を接続先のユーザー領域へ配置し、[code-server](code-server.md) のターミナルから利用する構成と検証手順を説明します。現時点では検証中のユースケースです。code-server 用スキルは CLI 型 AI コーディングエージェントの導入・認証を自動実行しません。
+
+エージェント向けの手順のひな型は [host-shell-coding-agents スキル](../../.agents/skills/host-shell-coding-agents/SKILL.md) にあります。CLI ごとの実証済みインストーラーはまだ含まれていません。
 
 ## 接続の構成
 
@@ -12,7 +14,7 @@ Copilot、agy、Claude Code、Codex、Grok の CLI を接続先のユーザー�
 ```mermaid
 flowchart LR
     Browser[手元のブラウザー] -->|ローカル転送| Editor[接続先の code-server]
-    Editor --> Terminal[ターミナル内の AI CLI]
+    Editor --> Terminal[ターミナル内のコーディングエージェント]
     Terminal --> Proxy[接続先の HTTP プロキシ]
     Proxy -->|SSH stdio| Bridge[手元の host-shell bridge]
     Bridge --> API[認証サービス・AI API]
@@ -41,7 +43,7 @@ host-shell bridge --proxy \
 
 1. 接続先の OS・CPU・libc と空き容量を確認します。Linux x86_64 での起動確認を、Windows や arm64 の確認として扱わないでください。
 2. 手元で対象環境用の配布物を取得し、バージョン、配布元、SHA-256 を記録します。公式の署名・ハッシュが提供される場合は照合します。
-3. `transfer_push` で専用ディレクトリ (例: `~/.local/share/host-shell-ai-cli/<CLI>/<version>/`) へ転送し、接続先でも SHA-256 を照合します。実行権限とランタイム・共有ライブラリーを確認します。
+3. `transfer_push` で専用ディレクトリ (例: `~/.local/share/host-shell-coding-agents/<CLI>/<version>/`) へ転送し、接続先でも SHA-256 を照合します。実行権限とランタイム・共有ライブラリーを確認します。
 4. 最初は絶対パスで `--version` と `--help` を実行します。利用者の PATH やシェル起動ファイルを変更せずに確認できます。
 5. code-server のターミナルから対話起動し、認証後に小さな検証用ディレクトリで推論・編集・コマンド実行を確認します。
 
@@ -58,6 +60,26 @@ host-shell bridge --proxy \
 | Grok | 同名 CLI があるため配布元とバージョンを固定。対象版のログイン、API 接続、プロキシ対応、補助プロセスを確認する |
 
 Table: CLI ごとの確認点
+
+デバイスコード認証に対応した CLI での通信例です。bridge は TLS を復号せず、中継のみを行います。
+
+```mermaid
+sequenceDiagram
+    participant CLI as 接続先の CLI
+    participant Bridge as 手元の bridge
+    participant Auth as 認証サービス
+    participant User as 利用者のブラウザー
+    CLI->>Bridge: プロキシ経由でデバイス認証を開始
+    Bridge->>Auth: 認証要求
+    Auth-->>Bridge: 認証 URL と一時コード
+    Bridge-->>CLI: 認証情報を中継
+    CLI-->>User: URL と一時コードを案内
+    User->>Auth: ログイン・承認
+    CLI->>Bridge: 認証完了を確認
+    Bridge->>Auth: トークン取得要求
+    Auth-->>Bridge: トークン
+    Bridge-->>CLI: TLS 通信を中継して受け取る
+```
 
 デバイスコード認証では手元のブラウザーを利用できますが、接続先の CLI 自身も認証サーバーへ通信できる必要があります。ブラウザー認証が `localhost` へ戻る方式では、手元のブラウザーの localhost と接続先の localhost は別です。対応するデバイス認証を使うか、コールバックのポートを別途ローカル転送します。
 
@@ -89,7 +111,7 @@ Table: 初期確認
 
 Codex は読み取り専用ファイルシステムで PATH 用エイリアスを作成できない警告を出しましたが、バージョン表示は成功しました。この環境固有の警告は、通常操作の成功を示すものではありません。
 
-`internal/clientproxy`、`internal/jobs`、`internal/bridge` の既存テストも成功しています。これは中継・ジョブ管理の基盤の確認であり、各 AI CLI の API 互換性の確認ではありません。
+`internal/clientproxy`、`internal/jobs`、`internal/bridge` の既存テストも成功しています。これは中継・ジョブ管理の基盤の確認であり、各 CLI 型 AI コーディングエージェントの API 互換性の確認ではありません。
 
 実機では次の段階を順に記録します。
 

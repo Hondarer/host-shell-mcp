@@ -213,6 +213,24 @@ Windows 環境ではウイルス対策ソフトが Go 製バイナリを誤検�
 
 利用者向けの仕様は [クライアント経由 HTTP プロキシ](client-proxy.md) および [SSH stdio 経由のポート転送](port-forward.md) を参照してください。
 
+矢印は主な依存方向を示します。`bridge` と接続先の `tools` は互いを参照せず、チャネル上の共通部品を使用します。
+
+```mermaid
+flowchart TB
+    Bridge["internal/bridge"] --> Proxy["internal/clientproxy"]
+    Bridge --> Forward["internal/forward"]
+    Server["internal/server"] --> Tools["internal/tools"]
+    Server --> Proxy
+    Server --> Forward
+    Tools --> Proxy
+    Tools --> Forward
+    Tools --> Jobs["internal/jobs"]
+    Tools --> Proc["internal/proc"]
+    Jobs --> Proc
+    Proxy --> Channel["internal/channel"]
+    Forward --> Channel
+```
+
 - **`internal/channel/`**: `bridge` と接続先の `mcp.Connection` ラッパーとして `host-shell/channel/*` 通知を処理し、通常の MCP 層へは渡しません。接続開始時のネゴシエーションでは、`bridge` が要求する機能 (`http_proxy`、`forward_local`、`forward_remote`) と接続先が許可する機能を `hello` フレームで交換し、常設リモート転送の待ち受け (`listen`) を完了させてから `ready` フレームで MCP の初期化へ進みます。接続先は許可オプションが指定されていない場合でも最初のメッセージを確認し、通常の MCP メッセージであればそのまま処理します。データ ストリームは両端のどちらからでも開始でき、接続 ID は `bridge` 起点が奇数、接続先起点が偶数を使用します。なお、接続先側から開けるストリームは `bridge` が `listen` で登録したリモート転送への着信のみであり、接続先から任意の宛先を指定して `bridge` に発信させることはできません。
 - **共有部品**: `internal/channel/` は、その上の機能が共通に使う部品も提供します。着信ストリームへの応答 (発信、失敗時の拒否、受け付け) は `Incoming.Answer`、双方向の中継 (半クローズの伝達、アイドル タイムアウト、残存時間) は `Relay`、失敗コードから結果 (`allowed`、`denied`、`failed`) と固定の理由文字列への対応は `Describe` が担います。状態ツールの出力は `EventHead`、`Outcome`、`Recent` を埋め込んで構成し、`Snapshot` で履歴とセッション状態から生成します。理由は固定文字列とし、認証情報を含みうるネットワーク エラーの文字列は記録しません。
 - **`internal/clientproxy/`**: `internal/channel/` の上に、認証付きローカル HTTP プロキシ、上流接続、および診断機能 (`proxy_status`) を実装します。

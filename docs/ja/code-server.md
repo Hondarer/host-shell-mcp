@@ -7,7 +7,7 @@
 
 一連の手順は `host-shell-code-server` スキル (`.agents/skills/host-shell-code-server/`) にまとめられており、エージェントが MCP ツールを使って自動実行します。この文書では、事前の準備、導入される内容、および運用上の注意点を説明します。
 
-AI CLI を接続先へ配置してターミナルから利用する構成と検証状況は、[隔離環境の code-server から AI CLI を利用する](ai-cli.md) を参照してください。
+CLI 型 AI コーディングエージェントを接続先へ配置してターミナルから利用する構成と検証状況は、[隔離環境への CLI 型 AI コーディングエージェントの導入](coding-agents.md) を参照してください。
 
 ## 概要
 
@@ -79,6 +79,22 @@ host-shell bridge --forward-allow-local '127.0.0.1:80[0-7]?' \
 ## 同じ接続先ユーザーへの複数の MCP 接続
 
 複数の接続元から同じ接続先ユーザーで接続する場合、導入済みの code-server バイナリを共有し、各 MCP 接続から `job_start` で別々の code-server プロセスを起動できます。接続先のサービス設定を変更する必要はありません。
+
+```mermaid
+flowchart TB
+    A["接続元 A / MCP 接続 A"] -->|"ポート転送"| PA["code-server プロセス A<br/>127.0.0.1:8000"]
+    B["接続元 B / MCP 接続 B"] -->|"ポート転送"| PB["code-server プロセス B<br/>127.0.0.1:8001"]
+    subgraph User["接続先の同じ OS ユーザー"]
+        PA
+        PB
+        Binary["共有バイナリ"]
+        Data["共有設定・パスワード<br/>ユーザーデータ・拡張機能"]
+        PA -.-> Binary
+        PB -.-> Binary
+        PA <--> Data
+        PB <--> Data
+    end
+```
 
 - 各プロセスは 8000〜8079 の別々の空きポートで待ち受け、各接続元は自分のポート転送経由でブラウザーから利用します。たとえば、接続元 A は接続先のポート 8000、接続元 B はポート 8001 を使用します。`CODE_SERVER_PORT` で同じポートを指定すると、後から起動する側はエラーになります。
 - MCP 接続が終了すると、その接続で起動した code-server とポート転送が停止します。他の MCP 接続で起動した code-server は引き続き動作します。

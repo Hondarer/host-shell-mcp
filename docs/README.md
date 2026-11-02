@@ -14,6 +14,7 @@
 | Development Guide | [en/development.md](en/development.md) | [ja/development.md](ja/development.md) | Building, source layout, design rules, adding tools, testing, releases |
 | HTTP proxy through the client | [en/client-proxy.md](en/client-proxy.md) | [ja/client-proxy.md](ja/client-proxy.md) | Routing target HTTP/HTTPS traffic through the bridge's network |
 | Port forwarding | [en/port-forward.md](en/port-forward.md) | [ja/port-forward.md](ja/port-forward.md) | Local forwards, remote forwards, and SOCKS5 over SSH stdio |
+| CLI coding agents | [en/coding-agents.md](en/coding-agents.md) | [ja/coding-agents.md](ja/coding-agents.md) | Deploying CLI coding agents and validating authentication and API access through the client proxy |
 | Injecting code-server | [en/code-server.md](en/code-server.md) | [ja/code-server.md](ja/code-server.md) | Installing code-server with default settings and extensions on a closed-network target and opening it via a local forward |
 | Connecting into containers | [en/container.md](en/container.md) | [ja/container.md](ja/container.md) | Deploying and registering `host-shell` inside a running Podman, Docker, or Kubernetes container via `exec -i` |
 
@@ -33,6 +34,7 @@ When updating documentation, edit the Japanese version first and update the Engl
 | 開発ガイド | [ja/development.md](ja/development.md) | [en/development.md](en/development.md) | ビルド、ソース構成、設計規約、ツールの追加手順、テスト、リリース |
 | クライアント経由 HTTP プロキシ | [ja/client-proxy.md](ja/client-proxy.md) | [en/client-proxy.md](en/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |
 | ポート転送 | [ja/port-forward.md](ja/port-forward.md) | [en/port-forward.md](en/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
+| CLI 型 AI コーディングエージェントの導入 | [ja/coding-agents.md](ja/coding-agents.md) | [en/coding-agents.md](en/coding-agents.md) | CLI 型 AI コーディングエージェントの配置と認証・API 通信の検証 |
 | code-server の導入 | [ja/code-server.md](ja/code-server.md) | [en/code-server.md](en/code-server.md) | 閉鎖環境の接続先への code-server・既定設定・拡張機能の導入とローカル転送での利用 |
 | コンテナーへの接続 | [ja/container.md](ja/container.md) | [en/container.md](en/container.md) | 稼働中の Podman、Docker、Kubernetes コンテナー内への `exec -i` による `host-shell` の配置と登録 |
 

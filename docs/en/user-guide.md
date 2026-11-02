@@ -84,6 +84,15 @@ File contents stream directly between `bridge` and the target's `host-shell` wit
 `host-shell` runs on the target only while the MCP session (the SSH connection) lasts. When the connection ends, it terminates the processes it started and closes the listeners it opened, as far as possible, before exiting.  
 Because it leaves no resident process or listening port behind, `host-shell` holds target resources (processes, memory, ports) only while you use it, and no path to operate the target through `host-shell` remains while it is not in use.
 
+```mermaid
+flowchart TD
+    Start["MCP connection starts"] --> Active["Connected: run commands and jobs<br/>Use permitted forwards and proxy"]
+    Active --> Detect["Disconnect detected / server exits"]
+    Detect --> Cleanup["Terminate started processes where possible<br/>Close listeners and relayed connections<br/>Remove proxy URL file"]
+    Cleanup --> Exit["host-shell exits"]
+    Exit --> Remain["Installed executables, audit logs,<br/>and created or modified files remain"]
+```
+
 | Cleaned up on disconnect | Details |
 |---|---|
 | Commands and jobs | Terminates processes started by `exec_run`, `exec_sudo`, and `job_start`, including their descendants |

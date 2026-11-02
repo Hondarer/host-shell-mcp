@@ -7,7 +7,7 @@ This guide explains how to install and start [code-server](https://github.com/co
 
 The workflow is packaged in the `host-shell-code-server` skill (`.agents/skills/host-shell-code-server/`), which the agent executes automatically using MCP tools. This document covers the required preparation, what gets installed, and operational caveats.
 
-For deploying AI CLIs and running them in the terminal, see [Using AI CLIs from code-server in an isolated environment](ai-cli.md) for the architecture and validation status.
+For deploying CLI coding agents and running them in the terminal, see [Deploying CLI coding agents in an isolated environment](coding-agents.md) for the architecture and validation status.
 
 ## Overview
 
@@ -79,6 +79,22 @@ The `start` script checks ports 8000 through 8079 on the target's `127.0.0.1` in
 ## Multiple MCP connections using the same target user
 
 When multiple clients connect as the same target user, they can share the installed code-server binary and launch a separate code-server process with `job_start` from each MCP connection. No changes to the target's service configuration are required.
+
+```mermaid
+flowchart TB
+    A["Client A / MCP connection A"] -->|"Port forward"| PA["code-server process A<br/>127.0.0.1:8000"]
+    B["Client B / MCP connection B"] -->|"Port forward"| PB["code-server process B<br/>127.0.0.1:8001"]
+    subgraph User["Same target OS user"]
+        PA
+        PB
+        Binary["Shared binary"]
+        Data["Shared settings and password<br/>User data and extensions"]
+        PA -.-> Binary
+        PB -.-> Binary
+        PA <--> Data
+        PB <--> Data
+    end
+```
 
 - Each process listens on a different free port in 8000–8079, and each client accesses it in a browser through its own port forward. For example, client A uses target port 8000 and client B uses port 8001. If both pin the same port with `CODE_SERVER_PORT`, the later launch fails.
 - When an MCP connection ends, the code-server process and port forward started by that connection stop. Processes started by other MCP connections continue running.

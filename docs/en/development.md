@@ -213,6 +213,24 @@ On Windows, antivirus software may falsely flag unsigned Go binaries; consider c
 
 For user-facing specifications, see [HTTP proxy through the client](client-proxy.md) and [Port forwarding over SSH stdio](port-forward.md).
 
+Arrows show the main dependency directions. The bridge and target tools do not depend on each other; both use shared components built on the channel.
+
+```mermaid
+flowchart TB
+    Bridge["internal/bridge"] --> Proxy["internal/clientproxy"]
+    Bridge --> Forward["internal/forward"]
+    Server["internal/server"] --> Tools["internal/tools"]
+    Server --> Proxy
+    Server --> Forward
+    Tools --> Proxy
+    Tools --> Forward
+    Tools --> Jobs["internal/jobs"]
+    Tools --> Proc["internal/proc"]
+    Jobs --> Proc
+    Proxy --> Channel["internal/channel"]
+    Forward --> Channel
+```
+
 - **`internal/channel/`**: Wraps `mcp.Connection` on both `bridge` and the target to intercept `host-shell/channel/*` notifications before they reach the MCP layer. During startup negotiation, `hello` frames exchange the features requested by `bridge` (`http_proxy`, `forward_local`, `forward_remote`) and permitted by the target; persistent remote forward listeners are registered via `listen` frames before `ready` proceeds to standard MCP initialization. Even when no permission flags are set on the target, it inspects the first incoming message and passes standard MCP traffic through unchanged. Either peer can open data streams (`bridge` uses odd connection IDs and the target uses even IDs), but the target can only open incoming connections for remote forwards registered by `bridge` via `listen`—it cannot specify arbitrary destinations or cause `bridge` to dial out to unapproved hosts.
 - **Shared parts**: `internal/channel/` also provides parts the features on top of it share. `Incoming.Answer` answers an incoming stream (dial, reject on failure, accept), `Relay` relays both directions (passing half-closes on, idle timeout, linger), and `Describe` maps failure codes to results (`allowed`, `denied`, `failed`) and fixed reason strings. Status tool outputs embed `EventHead`, `Outcome` and `Recent`, and `Snapshot` builds them from the history and the session state. Reasons are fixed strings; network error text, which can contain credentials, is never recorded.
 - **`internal/clientproxy/`**: Implements the authenticated local HTTP proxy, upstream dialing, and diagnostics (`proxy_status`) on top of `internal/channel/`.

@@ -21,9 +21,19 @@ host-shell bridge --proxy --proxy-allow-host 'packages.example.com:443' -- \
 - 片側のみの有効化、両端のバージョン不一致、または不正な許可規則がある場合は起動エラーになります。
 - `--no-transfer` とも併用できます。
 
-```text
-接続先アプリ → 接続先 127.0.0.1 の HTTP プロキシ
-  → SSH stdio (JSON / Base64) → bridge → 外部サーバー
+```mermaid
+flowchart LR
+    subgraph Target["接続先"]
+        App["アプリケーション"] --> Proxy["127.0.0.1<br/>認証付き HTTP プロキシ"]
+    end
+    subgraph Client["手元のクライアント"]
+        Bridge["bridge<br/>宛先許可規則"]
+        Upstream["上流プロキシがある場合"]
+    end
+    Proxy <-->|"SSH stdio / JSON / Base64"| Bridge
+    Bridge <--> External["外部サーバー"]
+    Bridge <--> Upstream
+    Upstream <--> External
 ```
 
 通常の HTTP プロキシ要求と `CONNECT` メソッドに対応します。TLS の復号や証明書の差し替えは行いません。接続先は Linux / Windows、`bridge` は Linux / Windows / macOS に対応します。

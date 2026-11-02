@@ -33,6 +33,20 @@
 
 Table: 安全性の層
 
+MCP ツールの検査と OS の権限境界の関係は次のとおりです。ターミナル内の CLI の操作は MCP ツールを経由しません。
+
+```mermaid
+flowchart TB
+    Agent["手元のエージェント"] --> MCP["MCP ツール呼び出し"]
+    subgraph Target["接続先 OS ユーザーの権限 / コンテナーの境界"]
+        MCP --> Policy["host-shell の制限・確認"]
+        Policy --> Tool["許可されたツール処理"]
+        Tool --> Resources["ファイル・プロセス・ネットワーク"]
+        Tool -.-> Audit["操作ログ"]
+        Terminal["code-server ターミナル内の CLI"] --> Resources
+    end
+```
+
 `host-shell` は接続している間だけ動作し、切断時には起動したプロセスや待ち受けを片付けて終了します ([接続中だけ動作する](user-guide.md#接続中だけ動作する))。`host-shell` 自体は待ち受けポートを持たず常駐もしないため、利用していない間に接続先へ到達できる経路やリソースを占有するプロセスを残しません。
 
 ## 専用のユーザーと鍵

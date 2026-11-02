@@ -33,6 +33,20 @@ In production, combine the following four layers.
 
 Table: Security layers
 
+MCP tool checks operate within the OS permission boundary. Actions performed by a CLI in the terminal do not pass through MCP tools.
+
+```mermaid
+flowchart TB
+    Agent["Local agent"] --> MCP["MCP tool call"]
+    subgraph Target["Target OS user permissions / container boundary"]
+        MCP --> Policy["host-shell restrictions and confirmation"]
+        Policy --> Tool["Permitted tool handler"]
+        Tool --> Resources["Files, processes, and network"]
+        Tool -.-> Audit["Audit log"]
+        Terminal["CLI in code-server terminal"] --> Resources
+    end
+```
+
 `host-shell` runs only while connected and cleans up the processes and listeners it started when the connection ends ([Runs only while connected](user-guide.md#runs-only-while-connected)). `host-shell` itself neither listens on a port nor stays resident, so it leaves no path to reach the target and no resource-holding process behind while it is not in use.
 
 ## Dedicated user and key

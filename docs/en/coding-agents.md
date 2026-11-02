@@ -1,9 +1,11 @@
-# Using AI CLIs from code-server in an isolated environment
+# Deploying CLI coding agents in an isolated environment
 
 > [!NOTE]
-> This is an English translation. The Japanese version ([../ja/ai-cli.md](../ja/ai-cli.md)) is the single source of truth (SSOT) and takes precedence if they differ.
+> This is an English translation. The Japanese version ([../ja/coding-agents.md](../ja/coding-agents.md)) is the single source of truth (SSOT) and takes precedence if they differ.
 
-This guide describes deploying Copilot, agy, Claude Code, Codex, and Grok CLIs into a target user's directories and running them from the [code-server](code-server.md) terminal. This use case is under validation. The code-server skill does not automatically install or authenticate AI CLIs.
+This guide describes deploying Copilot, agy, Claude Code, Codex, and Grok CLIs into a target user's directories and running them from the [code-server](code-server.md) terminal. This use case is under validation. The code-server skill does not automatically install or authenticate CLI coding agents.
+
+An agent workflow scaffold is available in the [host-shell-coding-agents skill](../../.agents/skills/host-shell-coding-agents/SKILL.md). It does not yet include verified installers for individual CLIs.
 
 ## Connection architecture
 
@@ -12,7 +14,7 @@ The target must be reachable over SSH stdio, and the local client must be able t
 ```mermaid
 flowchart LR
     Browser[Local browser] -->|Local forward| Editor[Target code-server]
-    Editor --> Terminal[AI CLI in terminal]
+    Editor --> Terminal[CLI coding agent in terminal]
     Terminal --> Proxy[Target HTTP proxy]
     Proxy -->|SSH stdio| Bridge[Local host-shell bridge]
     Bridge --> API[Authentication services and AI APIs]
@@ -41,7 +43,7 @@ code-server launched through `job_start` receives `HTTP_PROXY`, `HTTPS_PROXY`, a
 
 1. Check the target OS, CPU, libc, and free space. A Linux x86_64 startup check does not validate Windows or arm64.
 2. Fetch target-compatible distributions on the client and record versions, sources, and SHA-256 hashes. Verify official signatures or hashes when available.
-3. Use `transfer_push` to place files in a dedicated directory, such as `~/.local/share/host-shell-ai-cli/<CLI>/<version>/`, and verify SHA-256 again on the target. Check executable permissions, runtimes, and shared libraries.
+3. Use `transfer_push` to place files in a dedicated directory, such as `~/.local/share/host-shell-coding-agents/<CLI>/<version>/`, and verify SHA-256 again on the target. Check executable permissions, runtimes, and shared libraries.
 4. Run `--version` and `--help` using absolute paths first, without changing the user's PATH or shell startup files.
 5. Launch interactively in the code-server terminal. After authentication, verify inference, editing, and command execution in a small test directory.
 
@@ -58,6 +60,26 @@ If a local command is a symbolic link, transfer its actual executable and requir
 | Grok | Pin the distributor and version because multiple CLIs use this name. Verify login, API access, proxy support, and helper processes in the selected version |
 
 Table: CLI-specific checks
+
+This example applies to CLIs supporting device code authentication. The bridge relays TLS traffic without decrypting it.
+
+```mermaid
+sequenceDiagram
+    participant CLI as Target CLI
+    participant Bridge as Local bridge
+    participant Auth as Authentication service
+    participant User as User browser
+    CLI->>Bridge: Start device authorization through proxy
+    Bridge->>Auth: Authorization request
+    Auth-->>Bridge: Verification URL and temporary code
+    Bridge-->>CLI: Relay authorization details
+    CLI-->>User: Show URL and temporary code
+    User->>Auth: Sign in and approve
+    CLI->>Bridge: Check authorization completion
+    Bridge->>Auth: Request token
+    Auth-->>Bridge: Token
+    Bridge-->>CLI: Relay TLS traffic to the CLI
+```
 
 Device code authentication can use the local browser, but the remote CLI must also reach the authentication server. With browser login returning to `localhost`, the browser's localhost and the target's localhost are different machines. Use a supported device flow or a separate local forward for the callback port.
 
@@ -89,7 +111,7 @@ Table: Initial checks
 
 Codex printed a warning that it could not create PATH aliases on a read-only file system; version reporting still succeeded. This environment-specific warning is not evidence that normal CLI operations work.
 
-Existing tests for `internal/clientproxy`, `internal/jobs`, and `internal/bridge` also passed. They validate the relay and job management foundation, not each AI CLI's API compatibility.
+Existing tests for `internal/clientproxy`, `internal/jobs`, and `internal/bridge` also passed. They validate the relay and job management foundation, not each coding agent's API compatibility.
 
 Record these stages in target validation:
 

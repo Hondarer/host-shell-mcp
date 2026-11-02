@@ -21,9 +21,19 @@ host-shell bridge --proxy --proxy-allow-host 'packages.example.com:443' -- \
 - Enabling only one side, running mismatched versions on the two ends, or passing an invalid allow rule causes startup to fail.
 - `--no-transfer` can be used alongside `--proxy`.
 
-```text
-Target application → target 127.0.0.1 HTTP proxy
-  → SSH stdio (JSON / Base64) → bridge → external server
+```mermaid
+flowchart LR
+    subgraph Target["Target"]
+        App["Application"] --> Proxy["127.0.0.1<br/>Authenticated HTTP proxy"]
+    end
+    subgraph Client["Local client"]
+        Bridge["bridge<br/>Destination allow rules"]
+        Upstream["When an upstream proxy is configured"]
+    end
+    Proxy <-->|"SSH stdio / JSON / Base64"| Bridge
+    Bridge <--> External["External server"]
+    Bridge <--> Upstream
+    Upstream <--> External
 ```
 
 Both standard HTTP proxy requests and `CONNECT` tunnels are supported. TLS traffic is neither decrypted nor re-signed. Targets are supported on Linux and Windows; `bridge` is supported on Linux, Windows, and macOS.
