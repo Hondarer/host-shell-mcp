@@ -15,8 +15,8 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
-// establishTimeout bounds connecting a forwarded connection.
-const establishTimeout = 30 * time.Second
+// dialTimeout bounds connecting a forwarded connection.
+const dialTimeout = 30 * time.Second
 
 // Event is a connection result in forward_status.
 type Event struct {
@@ -142,7 +142,7 @@ func NewManager(specs []Spec, allowLocal, allowRemote []string) (*Manager, error
 	if len(specs) > channel.MaxForwards {
 		return nil, fmt.Errorf("at most %d forwards per session", channel.MaxForwards)
 	}
-	m := &Manager{allowLocal: local, allowRemote: remote, forwards: map[uint64]*forward{}, dial: (&net.Dialer{}).DialContext, timeout: establishTimeout}
+	m := &Manager{allowLocal: local, allowRemote: remote, forwards: map[uint64]*forward{}, dial: (&net.Dialer{}).DialContext, timeout: dialTimeout}
 	for _, s := range specs {
 		if s.Direction == SOCKS && len(local) == 0 {
 			return nil, errors.New("--forward-socks requires --forward-allow-local (use '*' to allow every destination)")
@@ -169,17 +169,17 @@ func (m *Manager) wants(directions ...string) bool {
 }
 
 // Register requests the forwarding directions on the bridge's channel options.
-func (m *Manager) Register(o *channel.Options) {
+func (m *Manager) Register(opt *channel.Options) {
 	if len(m.allowLocal) > 0 || m.wants(Local, SOCKS) {
-		o.Enable(channel.ForwardLocal)
+		opt.Enable(channel.ForwardLocal)
 	}
 	if len(m.allowRemote) > 0 || m.wants(Remote) {
-		o.Enable(channel.ForwardRemote)
-		o.Handle(channel.KindForward, m.openRemote)
+		opt.Enable(channel.ForwardRemote)
+		opt.Handle(channel.KindForward, m.openRemote)
 	}
-	o.OnReport(m.report)
-	o.Setup = m.setup
-	o.OnAttach(m.attach)
+	opt.OnReport(m.report)
+	opt.Setup = m.setup
+	opt.OnAttach(m.attach)
 }
 
 // Bind listens persistent local and SOCKS forwards; call it before starting the target.
@@ -267,16 +267,16 @@ func (m *Manager) sorted() []*forward {
 	return fs
 }
 
-func (m *Manager) record(f *forward, conn uint64, host string, port int, status, reason string) {
+func (m *Manager) record(f *forward, connID uint64, host string, port int, status, reason string) {
 	// Reasons are fixed strings; forwarded data is never recorded.
 	m.history.Add(func(seq uint64) Event {
-		return Event{EventHead: channel.NewEventHead(seq), ForwardID: f.id, ConnectionID: conn, Direction: f.spec.Direction,
+		return Event{EventHead: channel.NewEventHead(seq), ForwardID: f.id, ConnectionID: connID, Direction: f.spec.Direction,
 			Outcome: channel.Outcome{Host: host, Port: port, Status: status, Reason: reason}}
 	})
-	log.Printf("forward: id=%d connection=%d direction=%s host=%q port=%d status=%s reason=%s", f.id, conn, f.spec.Direction, host, port, status, reason)
+	log.Printf("forward: id=%d connection=%d direction=%s host=%q port=%d status=%s reason=%s", f.id, connID, f.spec.Direction, host, port, status, reason)
 }
 
-func (m *Manager) connection() uint64 {
+func (m *Manager) nextConnID() uint64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.connSeq++
@@ -317,7 +317,7 @@ func (m *Manager) serve(f *forward, c net.Conn) {
 	defer f.untrack(c)
 	f.count(1)
 	defer f.count(-1)
-	id := m.connection()
+	id := m.nextConnID()
 	if f.spec.Direction == SOCKS {
 		m.socks(f, id, c)
 		return
@@ -354,7 +354,7 @@ func (m *Manager) openRemote(ctx context.Context, in *channel.Incoming) {
 		in.Reject(channel.CodeClosed)
 		return
 	}
-	id := m.connection()
+	id := m.nextConnID()
 	in.Answer(ctx, channel.Answer{
 		Timeout: m.timeout,
 		Dial: func(ctx context.Context) (net.Conn, error) {

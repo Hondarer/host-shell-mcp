@@ -275,11 +275,11 @@ func trimLines(s string) []string {
 	return lines
 }
 
-// occurrenceLines returns up to max line numbers where old occurs.
-func occurrenceLines(text, old string, max int) []int {
+// occurrenceLines returns up to maxLines line numbers where old occurs.
+func occurrenceLines(text, old string, maxLines int) []int {
 	var lines []int
 	pos := 0
-	for len(lines) < max {
+	for len(lines) < maxLines {
 		i := strings.Index(text[pos:], old)
 		if i < 0 {
 			break
@@ -340,10 +340,10 @@ func lineAt(text string, pos int) int {
 	return strings.Count(text[:min(pos, len(text))], "\n") + 1
 }
 
-func spanLines(text string, spans []span, max int) []int {
+func spanLines(text string, spans []span, maxLines int) []int {
 	lines := []int{}
 	for _, s := range spans {
-		if len(lines) >= max {
+		if len(lines) >= maxLines {
 			break
 		}
 		lines = append(lines, lineAt(text, s.start))

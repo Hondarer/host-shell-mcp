@@ -62,11 +62,11 @@ func (e Encoding) DecodeUnlessUTF8(b []byte) (s string, decoded bool) {
 	return e.Decode(b), true
 }
 
-// DecodePrefix decodes the longest prefix of src that fits within max UTF-8 bytes,
+// DecodePrefix decodes the longest prefix of src that fits within maxBytes UTF-8 bytes,
 // leaving any trailing incomplete rune unconverted when atEOF is false.
-// full reports whether conversion stopped because dst reached max bytes.
-func (e Encoding) DecodePrefix(src []byte, max int, atEOF bool) (s string, consumed int, full bool) {
-	dst := make([]byte, max)
+// full reports whether conversion stopped because dst reached maxBytes bytes.
+func (e Encoding) DecodePrefix(src []byte, maxBytes int, atEOF bool) (s string, consumed int, full bool) {
+	dst := make([]byte, maxBytes)
 	nDst, nSrc, err := e.enc.NewDecoder().Transform(dst, src, atEOF)
 	return string(dst[:nDst]), nSrc, err == transform.ErrShortDst
 }
@@ -101,8 +101,8 @@ func (e Encoding) BOM() []byte {
 	return nil
 }
 
-// DetectBOM checks for a UTF-8 or UTF-16 BOM at the start of b and returns the encoding and BOM length.
-func DetectBOM(b []byte) (Encoding, int, bool) {
+// detectBOM checks for a UTF-8 or UTF-16 BOM at the start of b and returns the encoding and BOM length.
+func detectBOM(b []byte) (Encoding, int, bool) {
 	for _, e := range []Encoding{UTF8, utf16le, utf16be} {
 		if bom := e.BOM(); bytes.HasPrefix(b, bom) {
 			return e, len(bom), true
@@ -111,17 +111,17 @@ func DetectBOM(b []byte) (Encoding, int, bool) {
 	return Encoding{}, 0, false
 }
 
-// detectUTF16Bytes is the maximum prefix length inspected by DetectUTF16.
+// detectUTF16Bytes is the maximum prefix length inspected by detectUTF16.
 const detectUTF16Bytes = 4096
 
-// DetectUTF16 reports whether BOM-less data b appears to be UTF-16 text and returns its byte order.
+// detectUTF16 reports whether BOM-less data b appears to be UTF-16 text and returns its byte order.
 //
 // UTF-16 text has a zero byte in one half of every ASCII code unit (including line breaks) and
 // rarely contains U+0000, whereas binary data has either many all-zero units or few zero bytes
-// on either side. DetectUTF16
+// on either side. detectUTF16
 // requires <=1% U+0000 units, >=5% zero bytes on one side, <=2% (+1 unit for short text) on the
 // other, and valid surrogate pairing.
-func DetectUTF16(b []byte) (Encoding, bool) {
+func detectUTF16(b []byte) (Encoding, bool) {
 	if len(b) > detectUTF16Bytes {
 		b = b[:detectUTF16Bytes]
 	}
@@ -183,10 +183,10 @@ func validUTF16(b []byte, little bool) bool {
 
 // DetectUnicode detects a BOM or BOM-less UTF-16 at the start of b, returning the encoding and BOM length.
 func DetectUnicode(b []byte) (Encoding, int, bool) {
-	if e, n, ok := DetectBOM(b); ok {
+	if e, n, ok := detectBOM(b); ok {
 		return e, n, true
 	}
-	if e, ok := DetectUTF16(b); ok {
+	if e, ok := detectUTF16(b); ok {
 		return e, 0, true
 	}
 	return Encoding{}, 0, false
@@ -243,8 +243,8 @@ var codePages = map[int]encoding.Encoding{
 	54936: simplifiedchinese.GB18030,
 }
 
-// FromCodePage returns the encoding for a Windows code page number.
-func FromCodePage(cp int) (Encoding, bool) {
+// fromCodePage returns the encoding for a Windows code page number.
+func fromCodePage(cp int) (Encoding, bool) {
 	switch cp {
 	case 65001:
 		return UTF8, true
@@ -275,7 +275,7 @@ func Lookup(name string) (Encoding, error) {
 		n = a
 	}
 	if cp, err := strconv.Atoi(strings.TrimPrefix(n, "cp")); err == nil {
-		if e, ok := FromCodePage(cp); ok {
+		if e, ok := fromCodePage(cp); ok {
 			return e, nil
 		}
 	}
@@ -304,11 +304,11 @@ type Choice struct {
 // or names that same encoding, and the BOM length is returned so callers can skip it; automatic
 // detection also recognizes BOM-less UTF-16. Otherwise c is returned unchanged and ok is false.
 func (c Choice) Detect(head []byte) (_ Choice, bomLen int, ok bool) {
-	if e, n, ok := DetectBOM(head); ok && (c.Auto || c.Enc.Name == e.Name) {
+	if e, n, ok := detectBOM(head); ok && (c.Auto || c.Enc.Name == e.Name) {
 		return Choice{Enc: e}, n, true
 	}
 	if c.Auto {
-		if e, ok := DetectUTF16(head); ok {
+		if e, ok := detectUTF16(head); ok {
 			return Choice{Enc: e}, 0, true
 		}
 	}

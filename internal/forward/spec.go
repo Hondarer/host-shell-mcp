@@ -145,8 +145,9 @@ func parseHost(v string) (string, error) {
 	return v, nil
 }
 
+// validHost reports whether h is a well-formed destination host without brackets.
 func validHost(h string) bool {
-	return h != "" && len(h) <= 253 && !strings.ContainsAny(h, "/\\\r\n\t @[]")
+	return channel.ValidDestination(h, 1) && !strings.ContainsAny(h, "[]")
 }
 
 // Address formats a listen address for messages and status.

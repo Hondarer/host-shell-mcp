@@ -110,10 +110,10 @@ func (d *Deps) netExchange(ctx context.Context, _ *mcp.CallToolRequest, in NetEx
 		}
 	}
 
-	max := clampMax(d.base64Budget(), in.MaxBytes)
+	maxBytes := clampMax(d.base64Budget(), in.MaxBytes)
 	idle := time.Duration(orDefaultInt(in.IdleMs, 1000)) * time.Millisecond
-	recv := receive(ctx, conn, max, idle, until, &out)
-	out.Truncated = len(recv) >= max
+	recv := receive(ctx, conn, maxBytes, idle, until, &out)
+	out.Truncated = len(recv) >= maxBytes
 	out.ReceivedBytes = len(recv)
 	if out.Received, out.ReceiveEncoding, err = encodeReceived(recv, in.ReceiveEncoding); err != nil {
 		return nil, NetExchangeOutput{}, err
@@ -136,17 +136,17 @@ func (d *Deps) exchangeAddress(in NetExchangeInput, host string) (network, addr 
 	return "tcp", net.JoinHostPort(host, strconv.Itoa(in.Port)), nil
 }
 
-// receive reads up to max bytes until until matches, idle passes without data, the peer closes
+// receive reads up to maxBytes bytes until until matches, idle passes without data, the peer closes
 // or ctx ends, setting Matched and ClosedByPeer on out.
-func receive(ctx context.Context, conn net.Conn, max int, idle time.Duration, until *regexp.Regexp, out *NetExchangeOutput) []byte {
+func receive(ctx context.Context, conn net.Conn, maxBytes int, idle time.Duration, until *regexp.Regexp, out *NetExchangeOutput) []byte {
 	var recv []byte
 	buf := make([]byte, 32<<10)
-	for len(recv) < max {
+	for len(recv) < maxBytes {
 		conn.SetReadDeadline(time.Now().Add(idle))
 		if ctx.Err() != nil {
 			break
 		}
-		n, err := conn.Read(buf[:min(len(buf), max-len(recv))])
+		n, err := conn.Read(buf[:min(len(buf), maxBytes-len(recv))])
 		recv = append(recv, buf[:n]...)
 		if until != nil && until.Match(recv) {
 			out.Matched = true

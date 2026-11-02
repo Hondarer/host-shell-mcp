@@ -79,9 +79,6 @@ func setupProcess(cmd *exec.Cmd, sharedConsole bool) {
 	}
 }
 
-// SignalNames lists the signal names accepted by Signal on Windows.
-const SignalNames = "kill"
-
 // Signal terminates pid via taskkill; only "kill" is supported on Windows.
 func Signal(pid int, name string) error { return taskkill(pid, name, false) }
 

@@ -47,11 +47,11 @@ func negotiate(t *testing.T, bridgeOpt, targetOpt Options) (error, error) {
 	defer cancel()
 	te := make(chan error, 1)
 	go func() {
-		c, e := Target(a, targetOpt).Connect(ctx)
+		c, err := Target(a, targetOpt).Connect(ctx)
 		if c != nil {
 			defer c.Close()
 		}
-		te <- e
+		te <- err
 	}()
 	c, be := Client(b, bridgeOpt).Connect(ctx)
 	if c != nil {
@@ -61,8 +61,8 @@ func negotiate(t *testing.T, bridgeOpt, targetOpt Options) (error, error) {
 }
 
 func echo(ctx context.Context, in *Incoming) {
-	c, e := in.Accept()
-	if e != nil {
+	c, err := in.Accept()
+	if err != nil {
 		return
 	}
 	defer c.Close()
@@ -106,28 +106,28 @@ func TestTargetPassesPlainMCP(t *testing.T) {
 	a, b := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	peer, e := b.Connect(ctx)
-	if e != nil {
-		t.Fatal(e)
+	peer, err := b.Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
 	defer peer.Close()
 	go peer.Write(ctx, &jsonrpc.Request{Method: "initialize"})
-	c, e := Target(a, Options{Features: []string{ForwardLocal, ForwardRemote}}).Connect(ctx)
-	if e != nil {
-		t.Fatal(e)
+	c, err := Target(a, Options{Features: []string{ForwardLocal, ForwardRemote}}).Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
 	defer c.Close()
-	msg, e := c.Read(ctx)
-	if e != nil || msg.(*jsonrpc.Request).Method != "initialize" {
-		t.Fatalf("first message %v %v", msg, e)
+	msg, err := c.Read(ctx)
+	if err != nil || msg.(*jsonrpc.Request).Method != "initialize" {
+		t.Fatalf("first message %v %v", msg, err)
 	}
 	// With the HTTP proxy, plain MCP is a missing bridge --proxy.
 	a, b = mcp.NewInMemoryTransports()
 	peer2, _ := b.Connect(ctx)
 	defer peer2.Close()
 	go peer2.Write(ctx, &jsonrpc.Request{Method: "initialize"})
-	if _, e = Target(a, Options{Features: []string{HTTPProxy}}).Connect(ctx); e == nil || !strings.Contains(e.Error(), "--proxy") {
-		t.Fatalf("proxy without hello: %v", e)
+	if _, err = Target(a, Options{Features: []string{HTTPProxy}}).Connect(ctx); err == nil || !strings.Contains(err.Error(), "--proxy") {
+		t.Fatalf("proxy without hello: %v", err)
 	}
 }
 
@@ -140,16 +140,16 @@ func TestOlderPeers(t *testing.T) {
 		want   string
 	}{
 		{"host-shell/proxy/hello", Frame{Version: 1}, "older channel definition"},
-		{Prefix + "hello", Frame{Version: 2}, "unsupported channel version 2"},
-		{Prefix + "hello", Frame{Version: 1, Features: []string{"udp"}}, "unknown channel feature"},
+		{prefix + "hello", Frame{Version: 2}, "unsupported channel version 2"},
+		{prefix + "hello", Frame{Version: 1, Features: []string{"udp"}}, "unknown channel feature"},
 	} {
 		a, b := mcp.NewInMemoryTransports()
 		peer, _ := b.Connect(ctx)
 		params, _ := json.Marshal(tc.f)
 		go peer.Write(ctx, &jsonrpc.Request{Method: tc.method, Params: params})
-		_, e := Target(a, Options{}).Connect(ctx)
-		if e == nil || !strings.Contains(e.Error(), tc.want) {
-			t.Fatalf("%s: %v", tc.method, e)
+		_, err := Target(a, Options{}).Connect(ctx)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s: %v", tc.method, err)
 		}
 		peer.Close()
 	}
@@ -157,8 +157,8 @@ func TestOlderPeers(t *testing.T) {
 	a, b := mcp.NewInMemoryTransports()
 	peer, _ := a.Connect(ctx)
 	go func() { peer.Read(ctx); peer.Close() }()
-	if _, e := Client(b, Options{Features: []string{ForwardLocal}}).Connect(ctx); e == nil || !strings.Contains(e.Error(), "same version on both ends") {
-		t.Fatalf("closed target: %v", e)
+	if _, err := Client(b, Options{Features: []string{ForwardLocal}}).Connect(ctx); err == nil || !strings.Contains(err.Error(), "same version on both ends") {
+		t.Fatalf("closed target: %v", err)
 	}
 }
 
@@ -171,32 +171,32 @@ func TestBidirectionalStreams(t *testing.T) {
 	targetOpt.Listen = func(c *Conn, forward uint64, bind string, port int) (int, error) { return 4000 + int(forward), nil }
 	targetOpt.Unlisten = func(uint64) {}
 	bridgeOpt.Setup = func(ctx context.Context, c *Conn) error {
-		port, e := c.Listen(ctx, 1, "127.0.0.1", 0)
+		port, err := c.Listen(ctx, 1, "127.0.0.1", 0)
 		if port != 4001 {
-			return fmt.Errorf("port %d %v", port, e)
+			return fmt.Errorf("port %d %v", port, err)
 		}
-		return e
+		return err
 	}
 	bridge, target := pair(t, bridgeOpt, targetOpt)
 	payload := bytes.Repeat([]byte{0, 1, 2, 255}, 100000)
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Go(func() {
-			c, e := bridge.Dial(context.Background(), KindSOCKS, "example.com", 443, 7)
-			if e == nil {
-				e = roundTrip(c, payload)
+			c, err := bridge.Dial(context.Background(), KindSOCKS, "example.com", 443, 7)
+			if err == nil {
+				err = roundTrip(c, payload)
 			}
-			if e != nil {
-				t.Error("bridge open:", e)
+			if err != nil {
+				t.Error("bridge open:", err)
 			}
 		})
 		wg.Go(func() {
-			c, e := target.Dial(context.Background(), KindForward, "", 0, 1)
-			if e == nil {
-				e = roundTrip(c, payload)
+			c, err := target.Dial(context.Background(), KindForward, "", 0, 1)
+			if err == nil {
+				err = roundTrip(c, payload)
 			}
-			if e != nil {
-				t.Error("target open:", e)
+			if err != nil {
+				t.Error("target open:", err)
 			}
 		})
 	}
@@ -210,18 +210,18 @@ func roundTrip(c net.Conn, payload []byte) error {
 	defer c.Close()
 	errc := make(chan error, 1)
 	go func() {
-		_, e := c.Write(payload)
+		_, err := c.Write(payload)
 		c.(interface{ CloseWrite() error }).CloseWrite()
-		errc <- e
+		errc <- err
 	}()
-	got, e := io.ReadAll(c)
-	if e == nil {
-		e = <-errc
+	got, err := io.ReadAll(c)
+	if err == nil {
+		err = <-errc
 	}
-	if e == nil && !bytes.Equal(got, payload) {
-		e = fmt.Errorf("payload differs: %d bytes", len(got))
+	if err == nil && !bytes.Equal(got, payload) {
+		err = fmt.Errorf("payload differs: %d bytes", len(got))
 	}
-	return e
+	return err
 }
 
 // fakeTarget negotiates by hand so tests can send frames a real target never would.
@@ -235,24 +235,24 @@ func fakeTarget(t *testing.T, bridgeOpt Options, permitted []string) (*Conn, mcp
 		peer.Read(ctx) // hello
 		writeFrame(ctx, peer, "hello", Frame{Version: 1, Features: permitted})
 		for {
-			m, e := peer.Read(ctx)
-			if e != nil {
+			m, err := peer.Read(ctx)
+			if err != nil {
 				return
 			}
-			if r, ok := m.(*jsonrpc.Request); ok && r.Method == Prefix+"listen" {
+			if r, ok := m.(*jsonrpc.Request); ok && r.Method == prefix+"listen" {
 				var f Frame
 				json.Unmarshal(r.Params, &f)
 				writeFrame(ctx, peer, "listen_result", Frame{Forward: f.Forward, Port: 9})
 			}
-			if r, ok := m.(*jsonrpc.Request); ok && r.Method == Prefix+"ready" {
+			if r, ok := m.(*jsonrpc.Request); ok && r.Method == prefix+"ready" {
 				writeFrame(ctx, peer, "ready", Frame{})
 				return
 			}
 		}
 	}()
-	c, e := Client(b, bridgeOpt).Connect(ctx)
-	if e != nil {
-		t.Fatal(e)
+	c, err := Client(b, bridgeOpt).Connect(ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
 	t.Cleanup(func() { c.Close(); peer.Close() })
 	return c.(*Conn), peer
@@ -263,7 +263,7 @@ func TestTargetCannotChooseDestinations(t *testing.T) {
 	opt.Features = []string{ForwardRemote}
 	opened := make(chan *Incoming, 1)
 	opt.Handle(KindForward, func(ctx context.Context, in *Incoming) { opened <- in; in.Reject(CodeFailed) })
-	opt.Setup = func(ctx context.Context, c *Conn) error { _, e := c.Listen(ctx, 1, "127.0.0.1", 0); return e }
+	opt.Setup = func(ctx context.Context, c *Conn) error { _, err := c.Listen(ctx, 1, "127.0.0.1", 0); return err }
 	for _, tc := range []struct {
 		name  string
 		f     Frame
@@ -298,11 +298,11 @@ func TestTargetCannotChooseDestinations(t *testing.T) {
 	c.Unlisten(1)
 	writeFrame(context.Background(), peer, "open", Frame{ID: 2, Kind: KindForward, Forward: 1})
 	for {
-		m, e := peer.Read(context.Background())
-		if e != nil {
-			t.Fatal(e)
+		m, err := peer.Read(context.Background())
+		if err != nil {
+			t.Fatal(err)
 		}
-		if r := m.(*jsonrpc.Request); r.Method == Prefix+"open_result" {
+		if r := m.(*jsonrpc.Request); r.Method == prefix+"open_result" {
 			if !strings.Contains(string(r.Params), CodeClosed) {
 				t.Fatalf("result %s", r.Params)
 			}
@@ -328,22 +328,22 @@ func TestListenValidationAndLimit(t *testing.T) {
 	targetOpt.Unlisten = func(uint64) {}
 	bridge, _ := pair(t, Options{Features: []string{ForwardRemote}}, targetOpt)
 	ctx := context.Background()
-	if _, e := bridge.Listen(ctx, 1, "127.0.0.1", 1); Code(e) != CodeInUse {
-		t.Fatalf("in use: %v", e)
+	if _, err := bridge.Listen(ctx, 1, "127.0.0.1", 1); Code(err) != CodeInUse {
+		t.Fatalf("in use: %v", err)
 	}
 	for i := uint64(2); i < 2+MaxForwards; i++ {
-		if _, e := bridge.Listen(ctx, i, "::1", 1000+int(i)); e != nil {
-			t.Fatal(i, e)
+		if _, err := bridge.Listen(ctx, i, "::1", 1000+int(i)); err != nil {
+			t.Fatal(i, err)
 		}
 	}
-	if _, e := bridge.Listen(ctx, 100, "127.0.0.1", 2000); Code(e) != CodeLimit {
-		t.Fatalf("limit: %v", e)
+	if _, err := bridge.Listen(ctx, 100, "127.0.0.1", 2000); Code(err) != CodeLimit {
+		t.Fatalf("limit: %v", err)
 	}
 	bridge.Unlisten(2)
-	if _, e := bridge.Listen(ctx, 101, "127.0.0.1", 2001); e != nil {
-		t.Fatalf("after unlisten: %v", e)
+	if _, err := bridge.Listen(ctx, 101, "127.0.0.1", 2001); err != nil {
+		t.Fatalf("after unlisten: %v", err)
 	}
-	if _, e := bridge.Listen(ctx, 50, "127.0.0.1", 2002); e == nil {
+	if _, err := bridge.Listen(ctx, 50, "127.0.0.1", 2002); err == nil {
 		t.Fatal("decreasing forward ID accepted")
 	}
 	// A non-loopback bind is a protocol violation on the target.
@@ -361,8 +361,8 @@ func TestStreamLimitsAndValidation(t *testing.T) {
 	release := make(chan struct{})
 	defer close(release)
 	targetOpt.Handle(KindForward, func(ctx context.Context, in *Incoming) {
-		c, e := in.Accept()
-		if e == nil {
+		c, err := in.Accept()
+		if err == nil {
 			<-release
 			c.Close()
 		}
@@ -371,21 +371,21 @@ func TestStreamLimitsAndValidation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	for i := 0; i < MaxStreams; i++ {
-		if _, e := bridge.Dial(ctx, KindForward, "localhost", 80, 1); e != nil {
-			t.Fatal(i, e)
+		if _, err := bridge.Dial(ctx, KindForward, "localhost", 80, 1); err != nil {
+			t.Fatal(i, err)
 		}
 	}
-	if _, e := bridge.Dial(ctx, KindForward, "localhost", 80, 1); e != ErrLimit {
-		t.Fatalf("limit: %v", e)
+	if _, err := bridge.Dial(ctx, KindForward, "localhost", 80, 1); err != ErrLimit {
+		t.Fatalf("limit: %v", err)
 	}
-	s, e := bridge.newStream(201, true)
-	if e == nil {
+	s, err := bridge.newStream(201, true)
+	if err == nil {
 		s.stop()
 	}
 	b2, _ := pair(t, Options{Features: []string{ForwardLocal}}, Options{Features: []string{ForwardLocal}})
-	s, e = b2.newStream(2, true)
-	if e != nil {
-		t.Fatal(e)
+	s, err = b2.newStream(2, true)
+	if err != nil {
+		t.Fatal(err)
 	}
 	defer s.stop()
 	for _, tc := range []struct {
@@ -407,17 +407,17 @@ func TestBlockedStreamDeadline(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	mux := &Conn{ctx: ctx, cancel: cancel, streams: map[uint64]*stream{}, high: make(chan packet, 1), data: make(chan packet, 1)}
-	s, e := mux.newStream(1, false)
-	if e != nil {
-		t.Fatal(e)
+	s, err := mux.newStream(1, false)
+	if err != nil {
+		t.Fatal(err)
 	}
 	defer s.stop()
 	c := &streamConn{s: s}
 	c.SetWriteDeadline(time.Now().Add(20 * time.Millisecond))
 	// The data writer is stalled: completion must respect the caller's deadline.
-	_, e = c.Write([]byte("pending"))
-	if !errors.Is(e, os.ErrDeadlineExceeded) {
-		t.Fatalf("deadline: %v", e)
+	_, err = c.Write([]byte("pending"))
+	if !errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("deadline: %v", err)
 	}
 }
 
@@ -426,15 +426,15 @@ func TestHistoryPaging(t *testing.T) {
 	for i := 0; i < 105; i++ {
 		h.Add(func(seq uint64) uint64 { return seq })
 	}
-	events, next, truncated, e := h.Page(0, 2)
-	if e != nil || !truncated || next != 7 || len(events) != 2 || events[0] != 6 {
-		t.Fatalf("%v %d %v %v", events, next, truncated, e)
+	events, next, truncated, err := h.Page(0, 2)
+	if err != nil || !truncated || next != 7 || len(events) != 2 || events[0] != 6 {
+		t.Fatalf("%v %d %v %v", events, next, truncated, err)
 	}
 	events, next, truncated, _ = h.Page(103, 0)
 	if truncated || next != 105 || len(events) != 2 {
 		t.Fatalf("%v %d %v", events, next, truncated)
 	}
-	if _, _, _, e = h.Page(0, 101); e == nil {
+	if _, _, _, err = h.Page(0, 101); err == nil {
 		t.Fatal("limit accepted")
 	}
 	if !h.Merge(func(last *uint64) bool { *last = 0; return true }) {

@@ -190,7 +190,7 @@ func Run(ctx context.Context, opt Options, remote, local mcp.Transport) error {
 }
 
 // newGateway creates the client proxy gateway when --proxy is set and registers it on o.
-func newGateway(opt Options, o *channel.Options) (*clientproxy.Gateway, error) {
+func newGateway(opt Options, channelOpt *channel.Options) (*clientproxy.Gateway, error) {
 	if !opt.Proxy {
 		if len(opt.ProxyAllowHosts) > 0 {
 			return nil, errors.New("--proxy-allow-host requires --proxy")
@@ -201,7 +201,7 @@ func newGateway(opt Options, o *channel.Options) (*clientproxy.Gateway, error) {
 	if err != nil {
 		return nil, err
 	}
-	gateway.Register(o)
+	gateway.Register(channelOpt)
 	return gateway, nil
 }
 

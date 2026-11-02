@@ -7,18 +7,18 @@ import (
 )
 
 func TestCredentialDACL(t *testing.T) {
-	target, e := NewTarget()
-	if e != nil {
-		t.Fatal(e)
+	target, err := NewTarget()
+	if err != nil {
+		t.Fatal(err)
 	}
 	defer target.Close()
-	sd, e := windows.GetNamedSecurityInfo(target.File, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
-	if e != nil {
-		t.Fatal(e)
+	sd, err := windows.GetNamedSecurityInfo(target.File, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		t.Fatal(err)
 	}
-	acl, _, e := sd.DACL()
-	if e != nil {
-		t.Fatal(e)
+	acl, _, err := sd.DACL()
+	if err != nil {
+		t.Fatal(err)
 	}
 	if acl == nil {
 		t.Fatal("unrestricted DACL")

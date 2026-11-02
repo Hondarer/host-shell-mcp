@@ -19,7 +19,7 @@ const detectPending = 64
 //
 // In auto mode, each line (up to \n or \r) is passed through if valid UTF-8 or decoded using
 // fallback otherwise, handling mixed-encoding output line by line. Output starting with UTF-16
-// (via BOM or DetectUTF16) is converted as UTF-16 for the entire stream.
+// (via BOM or detectUTF16) is converted as UTF-16 for the entire stream.
 type Writer struct {
 	mu       sync.Mutex
 	w        io.Writer

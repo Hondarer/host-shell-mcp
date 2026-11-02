@@ -21,10 +21,10 @@ type Buffer struct {
 	total   int64
 }
 
-// NewBuffer creates a Buffer that retains up to max bytes across head and tail.
-func NewBuffer(max int) *Buffer {
-	h := max / 2
-	return &Buffer{headMax: h, tailMax: max - h}
+// NewBuffer creates a Buffer that retains up to maxBytes bytes across head and tail.
+func NewBuffer(maxBytes int) *Buffer {
+	h := maxBytes / 2
+	return &Buffer{headMax: h, tailMax: maxBytes - h}
 }
 
 // Write implements io.Writer.
@@ -58,7 +58,7 @@ func (b *Buffer) omitted() int64 {
 	return b.total - int64(len(b.head)) - int64(min(len(b.tail), b.tailMax))
 }
 
-// String returns the buffered content, inserting Marker(omitted) between head and tail when truncated.
+// String returns the buffered content, inserting marker(omitted) between head and tail when truncated.
 func (b *Buffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -73,21 +73,21 @@ func (b *Buffer) String() string {
 		tail = tail[1:]
 	}
 	return strings.ToValidUTF8(string(head), "\uFFFD") +
-		Marker(omitted) +
+		marker(omitted) +
 		strings.ToValidUTF8(string(tail), "\uFFFD")
 }
 
-// Marker returns the truncation notice for omitted bytes.
-func Marker(omitted int64) string {
+// marker returns the truncation notice for omitted bytes.
+func marker(omitted int64) string {
 	return fmt.Sprintf("\n... [host-shell: %d bytes omitted] ...\n", omitted)
 }
 
-// Text truncates s to at most max bytes and reports whether it was truncated.
-func Text(s string, max int) (string, bool) {
-	if len(s) <= max {
+// Text truncates s to at most maxBytes bytes and reports whether it was truncated.
+func Text(s string, maxBytes int) (string, bool) {
+	if len(s) <= maxBytes {
 		return s, false
 	}
-	b := NewBuffer(max)
+	b := NewBuffer(maxBytes)
 	b.Write([]byte(s))
 	return b.String(), true
 }
@@ -95,15 +95,15 @@ func Text(s string, max int) (string, bool) {
 // Ring is an io.Writer that retains the trailing window of a stream for incremental
 // reads by absolute byte offset.
 type Ring struct {
-	mu   sync.Mutex
-	max  int
-	base int64 // absolute offset of buf[0]
-	buf  []byte
+	mu       sync.Mutex
+	maxBytes int
+	base     int64 // absolute offset of buf[0]
+	buf      []byte
 }
 
-// NewRing creates a Ring that retains at least max bytes.
-func NewRing(max int) *Ring {
-	return &Ring{max: max}
+// NewRing creates a Ring that retains at least maxBytes bytes.
+func NewRing(maxBytes int) *Ring {
+	return &Ring{maxBytes: maxBytes}
 }
 
 // Write implements io.Writer.
@@ -111,8 +111,8 @@ func (r *Ring) Write(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.buf = append(r.buf, p...)
-	if len(r.buf) > 2*r.max {
-		drop := len(r.buf) - r.max
+	if len(r.buf) > 2*r.maxBytes {
+		drop := len(r.buf) - r.maxBytes
 		r.base += int64(drop)
 		r.buf = append([]byte(nil), r.buf[drop:]...)
 	}

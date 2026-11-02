@@ -5,18 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
 	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/hondarer/host-shell-mcp/internal/proc"
-	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
 func registerAdmin(r *Registry, d *Deps) {
@@ -281,25 +277,6 @@ func (d *Deps) logQuery(ctx context.Context, _ *mcp.CallToolRequest, in LogQuery
 	return nil, out, nil
 }
 
-// parseSince parses a relative duration ("30m", "2h", "1d") or timestamp.
-func parseSince(s string) (time.Time, error) {
-	s = strings.TrimSpace(s)
-	if n, ok := strings.CutSuffix(s, "d"); ok {
-		if days, err := strconv.Atoi(n); err == nil {
-			return time.Now().Add(-time.Duration(days) * 24 * time.Hour), nil
-		}
-	}
-	if dur, err := time.ParseDuration(s); err == nil {
-		return time.Now().Add(-dur), nil
-	}
-	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02 15:04:05", "2006-01-02 15:04", "2006-01-02"} {
-		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
-			return t, nil
-		}
-	}
-	return time.Time{}, fmt.Errorf("cannot parse time %q (use 30m, 2h, 1d or 2026-10-30 09:00)", s)
-}
-
 // ---- disk_list ----
 
 // DiskListInput is the input of disk_list.
@@ -335,7 +312,7 @@ func (d *Deps) diskList(_ context.Context, _ *mcp.CallToolRequest, in DiskListIn
 		if dk.TotalBytes > 0 {
 			dk.UsedPercent = float64(int(float64(dk.UsedBytes)/float64(dk.TotalBytes)*1000+0.5)) / 10
 		}
-		dk.Total, dk.Free = humanBytes(dk.TotalBytes), humanBytes(dk.FreeBytes)
+		dk.Total, dk.Free = approxSize(dk.TotalBytes), approxSize(dk.FreeBytes)
 	}
 	if disks == nil {
 		disks = []Disk{}
@@ -343,7 +320,7 @@ func (d *Deps) diskList(_ context.Context, _ *mcp.CallToolRequest, in DiskListIn
 	return nil, DiskListOutput{Disks: disks}, nil
 }
 
-func humanBytes(n uint64) string {
+func approxSize(n uint64) string {
 	const unit = 1024
 	if n < unit {
 		return fmt.Sprintf("%d B", n)
@@ -354,21 +331,4 @@ func humanBytes(n uint64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
-}
-
-// runTool runs an administrative command, prefixed with sudo -n when sudo is set (Linux only).
-// It goes through procSpec so the policy environment filter and proxy environment apply.
-func (d *Deps) runTool(ctx context.Context, argv []string, sudo bool) (proc.Result, error) {
-	if sudo && os.Geteuid() != 0 {
-		argv = append([]string{"sudo", "-n", "--"}, argv...)
-	}
-	if _, err := exec.LookPath(argv[0]); err != nil {
-		return proc.Result{}, fmt.Errorf("%s is not available on this host: %w", argv[0], err)
-	}
-	spec := d.procSpec(CommandSpec{Argv: argv})
-	return proc.Run(ctx, spec, proc.Options{
-		Output:    textenc.Choice{Auto: true, Enc: textenc.Console()},
-		Timeout:   d.Cfg.DefaultTimeout,
-		MaxOutput: 32 << 20,
-	})
 }

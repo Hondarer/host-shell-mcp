@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// Prefix is the method prefix of channel notifications.
-const Prefix = "host-shell/channel/"
+// prefix is the method prefix of channel notifications.
+const prefix = "host-shell/channel/"
 
 // legacyPrefix identifies peers built before the channel was shared by all features.
 const legacyPrefix = "host-shell/proxy/"

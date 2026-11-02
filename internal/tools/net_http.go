@@ -254,13 +254,13 @@ func requestBody(in NetRequestHTTPInput) (io.Reader, error) {
 }
 
 func (d *Deps) readBody(resp *http.Response, in NetRequestHTTPInput, out *NetRequestHTTPOutput) error {
-	max := d.Cfg.MaxOutputBytes
+	maxBytes := d.Cfg.MaxOutputBytes
 	enc := cmp.Or(in.ResponseEncoding, "auto")
 	if enc == "base64" || enc == "auto" {
-		max = d.base64Budget()
+		maxBytes = d.base64Budget()
 	}
-	max = clampMax(max, in.MaxBytes)
-	buf, err := io.ReadAll(io.LimitReader(resp.Body, int64(max)))
+	maxBytes = clampMax(maxBytes, in.MaxBytes)
+	buf, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxBytes)))
 	if err != nil {
 		return err
 	}

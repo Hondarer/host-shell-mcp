@@ -338,14 +338,14 @@ func (j *Job) Read(offset int64, n int) (data string, next, dropped int64) {
 // StdinEncoding returns the encoding of strings sent with Write.
 func (j *Job) StdinEncoding() textenc.Encoding { return j.stdinEnc }
 
-// ErrStdinClosed reports a write to a job whose standard input is closed.
-var ErrStdinClosed = errors.New("stdin is not open (start the job with stdin_open or pty, and do not close it before writing)")
+// errStdinClosed reports a write to a job whose standard input is closed.
+var errStdinClosed = errors.New("stdin is not open (start the job with stdin_open or pty, and do not close it before writing)")
 
 // Write sends pre-encoded bytes to stdin. If the process does not consume them within wait,
 // Write returns an error while the write continues in the background.
 func (j *Job) Write(data string, wait time.Duration) error {
 	if !j.stdinOpen() {
-		return ErrStdinClosed
+		return errStdinClosed
 	}
 	done := make(chan error, 1)
 	go func() { done <- j.write(data) }()
@@ -361,7 +361,7 @@ func (j *Job) write(data string) error {
 	j.stdinMu.Lock()
 	defer j.stdinMu.Unlock()
 	if j.stdin == nil {
-		return ErrStdinClosed
+		return errStdinClosed
 	}
 	_, err := io.WriteString(j.stdin, data)
 	return err

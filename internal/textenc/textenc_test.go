@@ -185,9 +185,9 @@ func TestDetectUTF16(t *testing.T) {
 		{"lone low surrogate", []byte{'a', 0, 'b', 0, 0x00, 0xDC, 'c', 0}, ""},
 		{"one byte", []byte{'a'}, ""},
 	} {
-		e, ok := DetectUTF16(c.data)
+		e, ok := detectUTF16(c.data)
 		if got := map[bool]string{true: e.Name}[ok]; got != c.want {
-			t.Errorf("%s: DetectUTF16 = %q, want %q", c.name, got, c.want)
+			t.Errorf("%s: detectUTF16 = %q, want %q", c.name, got, c.want)
 		}
 	}
 }
@@ -223,7 +223,7 @@ func TestDetectUTF16Binary(t *testing.T) {
 	}
 	samples["pseudo-random"] = rnd
 	for name, data := range samples {
-		if e, ok := DetectUTF16(data); ok {
+		if e, ok := detectUTF16(data); ok {
 			t.Errorf("%s was detected as %s", name, e.Name)
 		}
 	}

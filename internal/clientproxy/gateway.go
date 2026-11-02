@@ -61,20 +61,20 @@ func NewGateway(rules []string) (*Gateway, error) {
 	if len(rules) == 0 {
 		return nil, errors.New("--proxy requires --proxy-allow-host")
 	}
-	parsed, e := policy.ParseNameRules("--proxy-allow-host", rules)
-	if e != nil {
-		return nil, e
+	parsed, err := policy.ParseNameRules("--proxy-allow-host", rules)
+	if err != nil {
+		return nil, err
 	}
 	return &Gateway{rules: parsed, proxy: snapshotProxy(), tlsConfig: &tls.Config{MinVersion: tls.VersionTLS12}}, nil
 }
 
 // Register enables the HTTP proxy on the bridge's channel options.
-func (g *Gateway) Register(o *channel.Options) {
-	o.Enable(channel.HTTPProxy)
-	o.Handle(channel.KindHTTP, g.open)
-	o.Handle(channel.KindConnect, g.open)
-	o.OnReport(g.report)
-	o.OnAttach(g.peer.Attach)
+func (g *Gateway) Register(opt *channel.Options) {
+	opt.Enable(channel.HTTPProxy)
+	opt.Handle(channel.KindHTTP, g.open)
+	opt.Handle(channel.KindConnect, g.open)
+	opt.OnReport(g.report)
+	opt.OnAttach(g.peer.Attach)
 }
 func (g *Gateway) allowed(host string, port int) bool { return g.rules.Allow(host, port) }
 func (g *Gateway) report(kind string, f channel.Frame) {
@@ -88,7 +88,7 @@ func (g *Gateway) report(kind string, f channel.Frame) {
 		g.record(0, "", 0, channel.Failed, "authentication")
 	}
 }
-func (g *Gateway) record(id uint64, host string, port int, status, reason string) {
+func (g *Gateway) record(connID uint64, host string, port int, status, reason string) {
 	// Reasons are fixed strings, never raw network errors containing credentials.
 	if status == channel.Failed && reason == "authentication" && g.history.Merge(func(last *Event) bool {
 		if last.Reason != reason {
@@ -100,9 +100,9 @@ func (g *Gateway) record(id uint64, host string, port int, status, reason string
 		return
 	}
 	g.history.Add(func(seq uint64) Event {
-		return Event{EventHead: channel.NewEventHead(seq), ConnectionID: id, Outcome: channel.Outcome{Host: host, Port: port, Status: status, Reason: reason}, Count: 1}
+		return Event{EventHead: channel.NewEventHead(seq), ConnectionID: connID, Outcome: channel.Outcome{Host: host, Port: port, Status: status, Reason: reason}, Count: 1}
 	})
-	log.Printf("proxy: id=%d host=%q port=%d status=%s reason=%s", id, host, port, status, reason)
+	log.Printf("proxy: connID=%d host=%q port=%d status=%s reason=%s", connID, host, port, status, reason)
 }
 
 // Status returns the proxy state, destination rules and recent connection results.
@@ -121,8 +121,8 @@ func (g *Gateway) open(ctx context.Context, in *channel.Incoming) {
 	}
 	g.record(in.ID, in.Host, in.Port, channel.Allowed, "destination allowed")
 	if in.Kind == channel.KindHTTP {
-		conn, e := in.Accept()
-		if e != nil {
+		conn, err := in.Accept()
+		if err != nil {
 			return
 		}
 		defer conn.Close()
@@ -153,8 +153,8 @@ func (g *Gateway) serveHTTP(ctx context.Context, c net.Conn, f *channel.Incoming
 	for {
 		headerLimit.N = 32*1024 + 1
 		c.SetReadDeadline(time.Now().Add(dialTimeout))
-		req, e := http.ReadRequest(br)
-		if e != nil || headerLimit.N == 0 {
+		req, err := http.ReadRequest(br)
+		if err != nil || headerLimit.N == 0 {
 			return
 		}
 		headerLimit.N = 1<<63 - 1
@@ -166,16 +166,16 @@ func (g *Gateway) serveHTTP(ctx context.Context, c net.Conn, f *channel.Incoming
 		req.Host = req.URL.Host
 		req = req.WithContext(ctx)
 		stripHop(req.Header)
-		resp, e := tr.RoundTrip(req)
-		if e != nil {
+		resp, err := tr.RoundTrip(req)
+		if err != nil {
 			g.record(f.ID, f.Host, f.Port, channel.Failed, "HTTP upstream failed")
 			io.WriteString(c, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 			return
 		}
 		stripHop(resp.Header)
-		e = resp.Write(&idleWriter{c})
+		err = resp.Write(&idleWriter{c})
 		resp.Body.Close()
-		if e != nil || req.Close || resp.Close {
+		if err != nil || req.Close || resp.Close {
 			return
 		}
 	}
@@ -183,9 +183,9 @@ func (g *Gateway) serveHTTP(ctx context.Context, c net.Conn, f *channel.Incoming
 func (g *Gateway) connect(ctx context.Context, host string, port int) (net.Conn, error) {
 	target := net.JoinHostPort(host, strconv.Itoa(port))
 	req := &http.Request{URL: &url.URL{Scheme: "https", Host: target}}
-	pu, e := g.proxy(req)
-	if e != nil {
-		return nil, e
+	pu, err := g.proxy(req)
+	if err != nil {
+		return nil, err
 	}
 	d := &net.Dialer{Timeout: dialTimeout}
 	if pu == nil {
@@ -202,9 +202,9 @@ func (g *Gateway) connect(ctx context.Context, host string, port int) (net.Conn,
 		}
 		addr = net.JoinHostPort(pu.Hostname(), p)
 	}
-	c, e := d.DialContext(ctx, "tcp", addr)
-	if e != nil {
-		return nil, e
+	c, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, err
 	}
 	ok := false
 	defer func() {
@@ -217,8 +217,8 @@ func (g *Gateway) connect(ctx context.Context, host string, port int) (net.Conn,
 		conf := g.tlsConfig.Clone()
 		conf.ServerName = pu.Hostname()
 		tc := tls.Client(c, conf)
-		if e = tc.HandshakeContext(ctx); e != nil {
-			return nil, e
+		if err = tc.HandshakeContext(ctx); err != nil {
+			return nil, err
 		}
 		c = tc
 	}
@@ -227,13 +227,13 @@ func (g *Gateway) connect(ctx context.Context, host string, port int) (net.Conn,
 		pass, _ := pu.User.Password()
 		r.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(pu.User.Username()+":"+pass)))
 	}
-	if e = r.Write(c); e != nil {
-		return nil, e
+	if err = r.Write(c); err != nil {
+		return nil, err
 	}
 	br := bufio.NewReader(c)
-	resp, e := http.ReadResponse(br, r)
-	if e != nil {
-		return nil, e
+	resp, err := http.ReadResponse(br, r)
+	if err != nil {
+		return nil, err
 	}
 	if resp.StatusCode != 200 {
 		return nil, errors.New("upstream CONNECT rejected")
@@ -295,8 +295,8 @@ func snapshotProxy() func(*http.Request) (*url.URL, error) {
 		if !strings.Contains(raw, "://") {
 			raw = "http://" + raw
 		}
-		u, e := url.Parse(raw)
-		if e != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		u, err := url.Parse(raw)
+		if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") {
 			return nil, errors.New("invalid upstream proxy configuration")
 		}
 		return u, nil

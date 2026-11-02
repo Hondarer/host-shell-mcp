@@ -51,8 +51,8 @@ const (
 	groupAdmin  = "admin"  // processes, services, logs, disks, registry
 )
 
-// Groups are the group names and descriptions.
-var Groups = [][2]string{
+// groups are the group names and descriptions.
+var groups = [][2]string{
 	{groupFiles, "fs_* file reading, writing and file operations"},
 	{groupSearch, "search_grep, search_find"},
 	{groupExec, "exec_run, exec_sudo and job_* (commands, background jobs, pseudo terminals)"},

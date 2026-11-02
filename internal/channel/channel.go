@@ -120,8 +120,8 @@ func (c *Conn) queueContext(ctx context.Context, msg jsonrpc.Message, data bool)
 		return io.ErrClosedPipe
 	}
 	select {
-	case e := <-p.done:
-		return e
+	case err := <-p.done:
+		return err
 	case <-ctx.Done():
 		return ctx.Err()
 	case <-c.ctx.Done():
@@ -145,10 +145,10 @@ func (c *Conn) writer() {
 			}
 		}
 		timer := time.AfterFunc(30*time.Second, func() { c.Close() })
-		e := c.base.Write(c.ctx, p.msg)
+		err := c.base.Write(c.ctx, p.msg)
 		timer.Stop()
-		p.done <- e
-		if e != nil {
+		p.done <- err
+		if err != nil {
 			return
 		}
 	}
@@ -156,11 +156,11 @@ func (c *Conn) writer() {
 func (c *Conn) reader() {
 	defer c.Close()
 	for {
-		msg, e := c.base.Read(c.ctx)
-		if e != nil {
+		msg, err := c.base.Read(c.ctx)
+		if err != nil {
 			return
 		}
-		if req, ok := msg.(*jsonrpc.Request); ok && strings.HasPrefix(req.Method, Prefix) {
+		if req, ok := msg.(*jsonrpc.Request); ok && strings.HasPrefix(req.Method, prefix) {
 			if req.ID.IsValid() || len(req.Params) > 24*1024 {
 				return
 			}
@@ -168,8 +168,8 @@ func (c *Conn) reader() {
 			if json.Unmarshal(req.Params, &f) != nil {
 				return
 			}
-			if e = c.handle(strings.TrimPrefix(req.Method, Prefix), f); e != nil {
-				log.Printf("client channel protocol error: %v", e)
+			if err = c.handle(strings.TrimPrefix(req.Method, prefix), f); err != nil {
+				log.Printf("client channel protocol error: %v", err)
 				return
 			}
 		} else {
@@ -250,8 +250,8 @@ func (c *Conn) handle(kind string, f Frame) error {
 			return errors.New("duplicate ready")
 		}
 		if !c.bridge {
-			if e := c.send("ready", Frame{}); e != nil {
-				return e
+			if err := c.send("ready", Frame{}); err != nil {
+				return err
 			}
 		}
 		c.readyOnce.Do(func() { close(c.ready) })
@@ -339,8 +339,8 @@ func (c *Conn) handleOpen(f Frame) error {
 			return c.emit("open_result", Frame{ID: f.ID, Error: CodeClosed})
 		}
 	}
-	s, e := c.newStream(f.ID, true)
-	if e != nil {
+	s, err := c.newStream(f.ID, true)
+	if err != nil {
 		if c.bridge {
 			c.reportAll("limit", f)
 		}

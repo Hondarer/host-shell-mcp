@@ -19,9 +19,9 @@ type limitedListener struct {
 
 func (l *limitedListener) Accept() (net.Conn, error) {
 	for {
-		c, e := l.Listener.Accept()
-		if e != nil {
-			return nil, e
+		c, err := l.Listener.Accept()
+		if err != nil {
+			return nil, err
 		}
 		if l.active.Add(1) > channel.MaxStreams {
 			l.active.Add(-1)
@@ -43,4 +43,4 @@ type countedConn struct {
 	release func()
 }
 
-func (c *countedConn) Close() error { e := c.Conn.Close(); c.once.Do(c.release); return e }
+func (c *countedConn) Close() error { err := c.Conn.Close(); c.once.Do(c.release); return err }

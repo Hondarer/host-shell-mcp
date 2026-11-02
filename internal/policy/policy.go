@@ -66,19 +66,19 @@ type Policy struct {
 	redact []redaction
 }
 
-// New validates o and compiles a Policy. known maps tool names to their group names.
-func New(o Options, known map[string]string) (*Policy, error) {
-	p := &Policy{ReadOnly: o.ReadOnly}
+// New validates opt and compiles a Policy. known maps tool names to their group names.
+func New(opt Options, known map[string]string) (*Policy, error) {
+	p := &Policy{ReadOnly: opt.ReadOnly}
 	var err error
-	if p.tools, err = parseSelector(cmp.Or(o.Tools, "all"), known); err != nil {
+	if p.tools, err = parseSelector(cmp.Or(opt.Tools, "all"), known); err != nil {
 		return nil, fmt.Errorf("tools: %w", err)
 	}
-	if o.Confirm != "" {
-		if p.confirm, err = parseSelector(o.Confirm, known); err != nil {
+	if opt.Confirm != "" {
+		if p.confirm, err = parseSelector(opt.Confirm, known); err != nil {
 			return nil, fmt.Errorf("confirm: %w", err)
 		}
 	}
-	for _, r := range o.AllowPaths {
+	for _, r := range opt.AllowPaths {
 		root, err := resolveRoot(r)
 		if err != nil {
 			return nil, fmt.Errorf("allow-path: %w", err)
@@ -86,7 +86,7 @@ func New(o Options, known map[string]string) (*Policy, error) {
 		p.writeRoots = append(p.writeRoots, root)
 		p.readRoots = append(p.readRoots, root)
 	}
-	for _, r := range o.AllowReadPaths {
+	for _, r := range opt.AllowReadPaths {
 		root, err := resolveRoot(r)
 		if err != nil {
 			return nil, fmt.Errorf("allow-read-path: %w", err)
@@ -97,36 +97,36 @@ func New(o Options, known map[string]string) (*Policy, error) {
 		// With only read-only roots configured, disallow all writes.
 		p.writeRoots = []string{}
 	}
-	for _, c := range o.AllowCommands {
+	for _, c := range opt.AllowCommands {
 		if _, err := path.Match(c, ""); err != nil {
 			return nil, fmt.Errorf("allow-command %q: %w", c, err)
 		}
 		p.allowCommands = append(p.allowCommands, normalizeProgram(c))
 	}
-	for _, c := range o.DenyCommands {
+	for _, c := range opt.DenyCommands {
 		re, err := regexp.Compile(c)
 		if err != nil {
 			return nil, fmt.Errorf("deny-command: %w", err)
 		}
 		p.denyCommands = append(p.denyCommands, re)
 	}
-	for _, h := range o.AllowHosts {
+	for _, h := range opt.AllowHosts {
 		r, err := parseHostRule(h)
 		if err != nil {
 			return nil, fmt.Errorf("allow-host %q: %w", h, err)
 		}
 		p.allowHosts = append(p.allowHosts, r)
 	}
-	for _, e := range o.UnsetEnv {
+	for _, e := range opt.UnsetEnv {
 		if _, err := path.Match(e, ""); err != nil {
 			return nil, fmt.Errorf("unset-env %q: %w", e, err)
 		}
 		p.unsetEnv = append(p.unsetEnv, e)
 	}
-	if o.Redact {
+	if opt.Redact {
 		p.redact = builtinRedactions()
 	}
-	for _, r := range o.RedactPatterns {
+	for _, r := range opt.RedactPatterns {
 		re, err := regexp.Compile(r)
 		if err != nil {
 			return nil, fmt.Errorf("redact-pattern: %w", err)

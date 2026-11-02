@@ -288,7 +288,7 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 		}
 	}
 
-	out := TransferOutput{Source: absLocal(in.LocalPath), Destination: dest}
+	out := TransferOutput{Source: absPath(in.LocalPath), Destination: dest}
 	results := make([]FileResult, len(files))
 	for i, f := range files {
 		results[i] = FileResult{Path: f.rel, Bytes: f.size}
@@ -478,7 +478,7 @@ func (t *transfer) pull(ctx context.Context, req *mcp.CallToolRequest, in Transf
 	if err != nil {
 		return nil, TransferOutput{}, err
 	}
-	out := TransferOutput{Source: in.RemotePath, Destination: absLocal(dest)}
+	out := TransferOutput{Source: in.RemotePath, Destination: absPath(dest)}
 	if isDir {
 		entries = slices.DeleteFunc(entries, func(e wire.ManifestEntry) bool { return excluded(e.Path, in.Exclude) })
 	}
@@ -606,23 +606,16 @@ func (t *transfer) manifest(ctx context.Context, p string) ([]wire.ManifestEntry
 	return m.Files, nil
 }
 
+// hashLocal returns the SHA-256 of a regular local file (see wire.HashFile).
 func hashLocal(p string) (string, error) {
-	f, err := os.Open(p)
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	if fi, err := f.Stat(); err != nil || !fi.Mode().IsRegular() {
+	if fi, err := os.Stat(p); err != nil || !fi.Mode().IsRegular() {
 		return "", fmt.Errorf("%s is not a regular file", p)
 	}
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
+	_, sum, err := wire.HashFile(p)
+	return sum, err
 }
 
-func absLocal(p string) string {
+func absPath(p string) string {
 	if a, err := filepath.Abs(p); err == nil {
 		return a
 	}

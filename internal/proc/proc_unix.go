@@ -49,8 +49,8 @@ var signals = []struct {
 	{"usr2", syscall.SIGUSR2, "USR2"},
 }
 
-// SignalNames lists the signal names accepted by Signal.
-var SignalNames = func() string {
+// signalNames lists the signal names accepted by Signal.
+var signalNames = func() string {
 	names := make([]string, len(signals))
 	for i, s := range signals {
 		names[i] = s.name
@@ -64,13 +64,7 @@ func lookupSignal(name string) (syscall.Signal, string, error) {
 			return s.sig, s.kill, nil
 		}
 	}
-	return 0, "", fmt.Errorf("unknown signal %q (use one of: %s)", name, SignalNames)
-}
-
-// KillName returns the kill(1) name of a signal accepted by Signal (for example "TERM" for "terminate").
-func KillName(name string) (string, error) {
-	_, k, err := lookupSignal(name)
-	return k, err
+	return 0, "", fmt.Errorf("unknown signal %q (use one of: %s)", name, signalNames)
 }
 
 // Signal sends a named signal to pid.

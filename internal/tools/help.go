@@ -102,7 +102,7 @@ func (d *Deps) hostSummary() string {
 		{"Default shell for exec_run", d.DefaultShell},
 		{"Console encoding (commands)", textenc.Console().Name},
 		{"File encoding (system)", textenc.File().Name},
-		{"Output limit per call", formatBytes(d.Cfg.MaxOutputBytes)},
+		{"Output limit per call", exactSize(d.Cfg.MaxOutputBytes)},
 		{"Command timeout (default / max)", fmt.Sprintf("%s / %s", d.Cfg.DefaultTimeout, d.Cfg.MaxTimeout)},
 		{"Tool groups", strings.Join(d.enabledGroups(), ", ")},
 	} {
@@ -128,7 +128,7 @@ func Instructions(d *Deps) string {
 		host, runtime.GOOS, runtime.GOARCH, cwd)
 	fmt.Fprintf(&sb, "Defaults: exec_run shell %q; console encoding %s; file encoding %s; output limit %s per call; command timeout %s (max %s).\n",
 		d.DefaultShell, textenc.Console().Name, textenc.File().Name,
-		formatBytes(d.Cfg.MaxOutputBytes), d.Cfg.DefaultTimeout, d.Cfg.MaxTimeout)
+		exactSize(d.Cfg.MaxOutputBytes), d.Cfg.DefaultTimeout, d.Cfg.MaxTimeout)
 	if d.Proxy != nil {
 		fmt.Fprintf(&sb, "\nClient proxy enabled; credential URL file: %s. Use proxy_status on the bridge to diagnose denied destinations.\n", d.Proxy.File)
 	}
@@ -159,7 +159,7 @@ func Instructions(d *Deps) string {
 	return sb.String()
 }
 
-func formatBytes(n int) string {
+func exactSize(n int) string {
 	switch {
 	case n >= 1<<20 && n%(1<<20) == 0:
 		return fmt.Sprintf("%d MiB", n>>20)

@@ -57,25 +57,25 @@ type TargetOptions struct {
 }
 
 // NewTarget creates the target side of port forwarding.
-func NewTarget(o TargetOptions) *Target {
-	return &Target{local: o.Local, remote: o.Remote, ports: o.RemotePorts, policy: o.Policy, audit: o.Audit, dial: (&net.Dialer{}).DialContext, timeout: establishTimeout, listeners: map[uint64]*targetListener{}}
+func NewTarget(opt TargetOptions) *Target {
+	return &Target{local: opt.Local, remote: opt.Remote, ports: opt.RemotePorts, policy: opt.Policy, audit: opt.Audit, dial: (&net.Dialer{}).DialContext, timeout: dialTimeout, listeners: map[uint64]*targetListener{}}
 }
 
 // Register permits the directions on the target's channel options.
-func (t *Target) Register(o *channel.Options) {
+func (t *Target) Register(opt *channel.Options) {
 	if t.local {
-		o.Enable(channel.ForwardLocal)
-		o.Handle(channel.KindForward, t.open)
-		o.Handle(channel.KindSOCKS, t.open)
+		opt.Enable(channel.ForwardLocal)
+		opt.Handle(channel.KindForward, t.open)
+		opt.Handle(channel.KindSOCKS, t.open)
 	}
 	if t.remote {
-		o.Enable(channel.ForwardRemote)
-		o.Listen = t.listen
-		o.Unlisten = t.unlisten
+		opt.Enable(channel.ForwardRemote)
+		opt.Listen = t.listen
+		opt.Unlisten = t.unlisten
 	}
 }
 
-func (t *Target) event(msg string, attrs ...any) {
+func (t *Target) auditEvent(msg string, attrs ...any) {
 	if t.audit != nil {
 		t.audit.Event(msg, attrs...)
 	}
@@ -87,12 +87,12 @@ func (t *Target) open(ctx context.Context, in *channel.Incoming) {
 	if in.Kind == channel.KindSOCKS {
 		direction = SOCKS
 	}
-	result := func(status, reason string) {
-		t.event("forward_connect", "direction", direction, "forward_id", in.Forward, "host", in.Host, "port", in.Port, "result", status, "reason", reason)
+	recordConnect := func(result, reason string) {
+		t.auditEvent("forward_connect", "direction", direction, "forward_id", in.Forward, "host", in.Host, "port", in.Port, "result", result, "reason", reason)
 	}
 	if t.policy != nil {
 		if err := t.policy.CheckHost(in.Host, in.Port); err != nil {
-			result(channel.Denied, channel.ReasonNotAllowed)
+			recordConnect(channel.Denied, channel.ReasonNotAllowed)
 			in.Reject(channel.CodeNotAllowed)
 			return
 		}
@@ -104,11 +104,11 @@ func (t *Target) open(ctx context.Context, in *channel.Incoming) {
 		},
 		Failed: func(err error) string {
 			code := dialCode(err)
-			result(channel.Failed, dialFailure(code))
+			recordConnect(channel.Failed, dialFailure(code))
 			return code
 		},
 		Relay: func(stream, external net.Conn) {
-			result(channel.Allowed, channel.ReasonEstablished)
+			recordConnect(channel.Allowed, channel.ReasonEstablished)
 			pipe(stream, external)
 		},
 	})
@@ -117,20 +117,20 @@ func (t *Target) open(ctx context.Context, in *channel.Incoming) {
 func (t *Target) listen(c *channel.Conn, id uint64, bind string, port int) (int, error) {
 	addr := net.JoinHostPort(bind, strconv.Itoa(port))
 	if port != 0 && !t.ports.Contains(port) {
-		t.event("forward_listen", "forward_id", id, "address", addr, "result", channel.Denied, "reason", "listen port not allowed")
+		t.auditEvent("forward_listen", "forward_id", id, "address", addr, "result", channel.Denied, "reason", "listen port not allowed")
 		return 0, &channel.Error{Code: channel.CodeNotAllowed}
 	}
 	l, err := t.bind(bind, port)
 	if err != nil {
 		code := listenCode(err)
-		t.event("forward_listen", "forward_id", id, "address", addr, "result", channel.Failed, "reason", dialFailure(code))
+		t.auditEvent("forward_listen", "forward_id", id, "address", addr, "result", channel.Failed, "reason", dialFailure(code))
 		return 0, &channel.Error{Code: code}
 	}
 	addr = l.Addr().String()
 	t.mu.Lock()
 	t.listeners[id] = &targetListener{addr: addr, l: l}
 	t.mu.Unlock()
-	t.event("forward_listen", "forward_id", id, "address", addr, "result", "ok", "reason", "listening")
+	t.auditEvent("forward_listen", "forward_id", id, "address", addr, "result", "ok", "reason", "listening")
 	go func() {
 		<-c.Done()
 		t.unlisten(id)
@@ -192,7 +192,7 @@ func (t *Target) unlisten(id uint64) {
 	t.mu.Unlock()
 	if tl != nil {
 		tl.l.Close()
-		t.event("forward_unlisten", "forward_id", id, "address", tl.addr)
+		t.auditEvent("forward_unlisten", "forward_id", id, "address", tl.addr)
 	}
 }
 
@@ -221,7 +221,7 @@ func (t *Target) Close() {
 		t.unlisten(id)
 	}
 	// A goroutine that removed a listener before the snapshot still holds unlistenMu until it has
-	// recorded forward_unlisten.
+	// recorded forward_unlisten; taking the lock waits for it.
 	t.unlistenMu.Lock()
-	t.unlistenMu.Unlock()
+	t.unlistenMu.Unlock() //lint:ignore SA2001 the empty critical section waits for a running unlisten
 }

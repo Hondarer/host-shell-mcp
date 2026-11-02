@@ -29,7 +29,7 @@ func TestBufferKeepsHeadAndTail(t *testing.T) {
 	if !strings.HasPrefix(got, "01234") || !strings.HasSuffix(got, "56789") {
 		t.Fatalf("String() = %q", got)
 	}
-	if !strings.Contains(got, Marker(990)) {
+	if !strings.Contains(got, marker(990)) {
 		t.Fatalf("String() = %q, want marker for 990 bytes", got)
 	}
 }

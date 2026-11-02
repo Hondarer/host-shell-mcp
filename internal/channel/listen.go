@@ -21,9 +21,9 @@ func (c *Conn) handleListen(f Frame) error {
 	if full {
 		return c.emit("listen_result", Frame{Forward: f.Forward, Error: CodeLimit})
 	}
-	port, e := c.opt.Listen(c, f.Forward, f.Bind, f.Port)
-	if e != nil {
-		return c.emit("listen_result", Frame{Forward: f.Forward, Error: Code(e)})
+	port, err := c.opt.Listen(c, f.Forward, f.Bind, f.Port)
+	if err != nil {
+		return c.emit("listen_result", Frame{Forward: f.Forward, Error: Code(err)})
 	}
 	c.fwMu.Lock()
 	c.forwards[f.Forward] = true
@@ -48,15 +48,15 @@ func (c *Conn) Listen(ctx context.Context, forward uint64, bind string, port int
 	c.forwards[forward] = true
 	c.listens[forward] = ch
 	c.fwMu.Unlock()
-	fail := func(e error) (int, error) {
+	fail := func(err error) (int, error) {
 		c.fwMu.Lock()
 		c.forwards[forward] = false
 		delete(c.listens, forward)
 		c.fwMu.Unlock()
-		return 0, e
+		return 0, err
 	}
-	if e := c.send("listen", Frame{Forward: forward, Bind: bind, Port: port}); e != nil {
-		return fail(e)
+	if err := c.send("listen", Frame{Forward: forward, Bind: bind, Port: port}); err != nil {
+		return fail(err)
 	}
 	select {
 	case f := <-ch:

@@ -49,7 +49,7 @@ func Default() Config {
 		DefaultTimeout: 60 * time.Second,
 		MaxTimeout:     30 * time.Minute,
 		WindowsShell:   "powershell",
-		LogFile:        DefaultLogFile(),
+		LogFile:        defaultLogFile(),
 	}
 }
 
@@ -84,11 +84,11 @@ func (c Config) ClampTimeout(sec int) time.Duration {
 	return d
 }
 
-// DefaultLogFile returns the OS-specific default audit log path:
+// defaultLogFile returns the OS-specific default audit log path:
 //
 //   - Linux: $XDG_STATE_HOME/host-shell/audit.log (default ~/.local/state/host-shell/audit.log)
 //   - Windows: %LOCALAPPDATA%\host-shell\audit.log
-func DefaultLogFile() string {
+func defaultLogFile() string {
 	if runtime.GOOS == "windows" {
 		if d := os.Getenv("LOCALAPPDATA"); d != "" {
 			return filepath.Join(d, "host-shell", "audit.log")

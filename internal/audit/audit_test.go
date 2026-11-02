@@ -95,9 +95,9 @@ func lines(t *testing.T, b []byte) []map[string]any {
 
 func TestSessionSecretMask(t *testing.T) {
 	dir := t.TempDir()
-	l, e := Open(filepath.Join(dir, "audit.log"))
-	if e != nil {
-		t.Fatal(e)
+	l, err := Open(filepath.Join(dir, "audit.log"))
+	if err != nil {
+		t.Fatal(err)
 	}
 	secret := "session-secret-value"
 	l.SetMask(func(s string) string { return strings.ReplaceAll(s, secret, "[REDACTED]") })
@@ -107,9 +107,9 @@ func TestSessionSecretMask(t *testing.T) {
 	if len(paths) != 1 {
 		t.Fatal(paths)
 	}
-	b, e := os.ReadFile(paths[0])
-	if e != nil {
-		t.Fatal(e)
+	b, err := os.ReadFile(paths[0])
+	if err != nil {
+		t.Fatal(err)
 	}
 	if bytes.Contains(b, []byte(secret)) || !bytes.Contains(b, []byte("[REDACTED]")) {
 		t.Fatalf("secret mask failed")

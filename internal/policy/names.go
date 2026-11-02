@@ -24,11 +24,11 @@ func ParseNameRules(option string, rules []string) (NameRules, error) {
 		if host == "" || strings.HasSuffix(r, ":") {
 			return nil, fmt.Errorf("empty host or port in %s rule %q", option, r)
 		}
-		if _, e := path.Match(host, "example.com"); e != nil {
+		if _, err := path.Match(host, "example.com"); err != nil {
 			return nil, fmt.Errorf("invalid host glob in %s rule %q", option, r)
 		}
 		if port != "" {
-			if _, e := path.Match(port, "443"); e != nil {
+			if _, err := path.Match(port, "443"); err != nil {
 				return nil, errors.New("invalid port glob in " + option + " rule " + strconv.Quote(r))
 			}
 		}
@@ -38,7 +38,7 @@ func ParseNameRules(option string, rules []string) (NameRules, error) {
 
 // SplitNameRule splits HOST[:PORT], accepting bracketed IPv6 hosts.
 func SplitNameRule(r string) (string, string) {
-	if h, p, e := net.SplitHostPort(r); e == nil {
+	if h, p, err := net.SplitHostPort(r); err == nil {
 		return strings.Trim(h, "[]"), p
 	}
 	if strings.Count(r, ":") == 1 {

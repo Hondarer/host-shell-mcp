@@ -2,6 +2,13 @@
 // on, so the bridge does not depend on the tool implementations.
 package wire
 
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"io"
+	"os"
+)
+
 // BridgeClientName is the client name host-shell bridge connects with.
 const BridgeClientName = "host-shell-bridge"
 
@@ -22,4 +29,19 @@ type FsManifestOutput struct {
 	Files     []ManifestEntry `json:"files"`
 	Skipped   int             `json:"skipped,omitempty"`
 	Truncated bool            `json:"truncated,omitempty"`
+}
+
+// HashFile returns the size and hex SHA-256 of the file at path, the digest ManifestEntry.SHA256
+// carries, so both ends compare files the same way.
+func HashFile(path string) (size int64, sum string, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return 0, "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if size, err = io.Copy(h, f); err != nil {
+		return 0, "", err
+	}
+	return size, hex.EncodeToString(h.Sum(nil)), nil
 }

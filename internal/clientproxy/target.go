@@ -29,7 +29,7 @@ type Target struct {
 	token, auth string
 	listener    net.Listener
 	server      *http.Server
-	mux         *channel.Conn
+	conn        *channel.Conn
 	dir         string
 	once        sync.Once
 	audit       *audit.Logger
@@ -38,34 +38,34 @@ type Target struct {
 
 func NewTarget() (*Target, error) {
 	secret := make([]byte, 32)
-	if _, e := rand.Read(secret); e != nil {
-		return nil, e
+	if _, err := rand.Read(secret); err != nil {
+		return nil, err
 	}
 	t := &Target{token: hex.EncodeToString(secret)}
 	t.auth = "Basic " + base64.StdEncoding.EncodeToString([]byte("host-shell:"+t.token))
-	l, e := net.Listen("tcp4", "127.0.0.1:0")
-	if e != nil {
-		return nil, e
+	l, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return nil, err
 	}
 	t.listener = &limitedListener{Listener: l, reject: func() {
-		if t.mux != nil {
-			t.mux.Report("limit", channel.Frame{})
+		if t.conn != nil {
+			t.conn.Report("limit", channel.Frame{})
 		}
 	}}
 	t.URL = "http://host-shell:" + t.token + "@" + l.Addr().String()
-	t.dir, e = os.MkdirTemp("", "host-shell-proxy-")
-	if e != nil {
+	t.dir, err = os.MkdirTemp("", "host-shell-proxy-")
+	if err != nil {
 		l.Close()
-		return nil, e
+		return nil, err
 	}
-	if e = secureDir(t.dir); e != nil {
+	if err = secureDir(t.dir); err != nil {
 		t.Close()
-		return nil, e
+		return nil, err
 	}
 	t.File = filepath.Join(t.dir, "proxy-url")
-	if e = os.WriteFile(t.File, []byte(t.URL+"\n"), 0600); e != nil {
+	if err = os.WriteFile(t.File, []byte(t.URL+"\n"), 0600); err != nil {
 		t.Close()
-		return nil, e
+		return nil, err
 	}
 	return t, nil
 }
@@ -77,12 +77,12 @@ func (t *Target) SetAudit(al *audit.Logger) {
 }
 
 // Register permits the HTTP proxy on the target's channel options.
-func (t *Target) Register(o *channel.Options) {
-	o.Enable(channel.HTTPProxy)
-	o.OnAttach(t.attach)
+func (t *Target) Register(opt *channel.Options) {
+	opt.Enable(channel.HTTPProxy)
+	opt.OnAttach(t.attach)
 }
 func (t *Target) attach(c *channel.Conn) {
-	t.mux = c
+	t.conn = c
 	t.server = &http.Server{Handler: t, ReadHeaderTimeout: dialTimeout, IdleTimeout: idleTimeout, MaxHeaderBytes: 32 * 1024}
 	go func() { t.server.Serve(t.listener) }()
 	go func() { <-c.Done(); t.Close() }()
@@ -104,15 +104,15 @@ func (t *Target) Close() {
 func (t *Target) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if subtle.ConstantTimeCompare([]byte(r.Header.Get("Proxy-Authorization")), []byte(t.auth)) != 1 {
 		// Authentication failures do not reveal the requested host or credentials.
-		t.mux.Report("auth_failed", channel.Frame{})
+		t.conn.Report("auth_failed", channel.Frame{})
 		t.authFailed.add()
 		w.Header().Set("Proxy-Authenticate", `Basic realm="host-shell"`)
-		http.Error(w, "proxy authentication required", 407)
+		http.Error(w, "proxy authentication required", http.StatusProxyAuthRequired)
 		return
 	}
 	host, port, msg := destination(r)
 	if msg != "" {
-		http.Error(w, msg, 400)
+		http.Error(w, msg, http.StatusBadRequest)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), dialTimeout)
@@ -120,14 +120,14 @@ func (t *Target) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "CONNECT" {
 		kind = channel.KindConnect
 	}
-	c, e := t.mux.Dial(ctx, kind, host, port, 0)
+	c, err := t.conn.Dial(ctx, kind, host, port, 0)
 	cancel()
-	t.connect(kind, host, port, e)
-	if e != nil {
-		code := dialStatus(e)
-		if e == channel.ErrLimit {
+	t.auditConnect(kind, host, port, err)
+	if err != nil {
+		code := dialStatus(err)
+		if err == channel.ErrLimit {
 			// A limit reached on the bridge is already recorded there.
-			t.mux.Report("limit", channel.Frame{Host: host, Port: port})
+			t.conn.Report("limit", channel.Frame{Host: host, Port: port})
 		}
 		http.Error(w, http.StatusText(code), code)
 		return
@@ -146,10 +146,10 @@ func destination(r *http.Request) (host string, port int, msg string) {
 	if r.Method == "CONNECT" {
 		host, port = r.Host, 443
 	}
-	h, p, e := net.SplitHostPort(host)
-	if e == nil {
+	h, p, err := net.SplitHostPort(host)
+	if err == nil {
 		host = h
-		if port, e = strconv.Atoi(p); e != nil {
+		if port, err = strconv.Atoi(p); err != nil {
 			return "", 0, "invalid port"
 		}
 	} else if strings.Contains(host, ":") {
@@ -168,28 +168,28 @@ func destination(r *http.Request) (host string, port int, msg string) {
 func dialStatus(err error) int {
 	switch channel.Code(err) {
 	case channel.CodeNotAllowed:
-		return 403
+		return http.StatusForbidden
 	case channel.CodeLimit:
-		return 503
+		return http.StatusServiceUnavailable
 	case channel.CodeTimeout:
-		return 504
+		return http.StatusGatewayTimeout
 	}
-	return 502
+	return http.StatusBadGateway
 }
 
 // serveConnect answers CONNECT and tunnels the client connection through stream c.
 func serveConnect(w http.ResponseWriter, c net.Conn) {
 	hj, ok := w.(http.Hijacker)
 	if !ok {
-		http.Error(w, "hijacking unavailable", 500)
+		http.Error(w, "hijacking unavailable", http.StatusInternalServerError)
 		return
 	}
-	local, buf, e := hj.Hijack()
-	if e != nil {
+	local, buf, err := hj.Hijack()
+	if err != nil {
 		return
 	}
 	defer local.Close()
-	if _, e = buf.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n"); e != nil {
+	if _, err = buf.WriteString("HTTP/1.1 200 Connection Established\r\n\r\n"); err != nil {
 		return
 	}
 	if buf.Flush() != nil {
@@ -207,9 +207,9 @@ func serveRequest(w http.ResponseWriter, r *http.Request, c net.Conn, host strin
 	r.URL = &url.URL{Scheme: "http", Host: net.JoinHostPort(host, strconv.Itoa(port)), Path: r.URL.Path, RawPath: r.URL.RawPath, RawQuery: r.URL.RawQuery}
 	tr := &http.Transport{Proxy: nil, DisableKeepAlives: true, ResponseHeaderTimeout: dialTimeout, DialContext: func(context.Context, string, string) (net.Conn, error) { return c, nil }}
 	defer tr.CloseIdleConnections()
-	resp, e := tr.RoundTrip(r)
-	if e != nil {
-		http.Error(w, "proxy upstream failed", 502)
+	resp, err := tr.RoundTrip(r)
+	if err != nil {
+		http.Error(w, "proxy upstream failed", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
@@ -221,11 +221,11 @@ func serveRequest(w http.ResponseWriter, r *http.Request, c net.Conn, host strin
 	io.Copy(&responseWriter{ResponseWriter: w, rc: rc}, &idleBody{ReadCloser: resp.Body, c: c})
 }
 
-// connect records the stream opened for one proxy request (one HTTP request or CONNECT, as the
+// auditConnect records the stream opened for one proxy request (one HTTP request or CONNECT, as the
 // proxy does not reuse streams). Only the destination and the result are recorded, never paths,
 // queries, headers, bodies or credentials. A 502 from the bridge's upstream after the stream is
 // established looks like any response here, so the record shows only the stream's result.
-func (t *Target) connect(kind, host string, port int, err error) {
+func (t *Target) auditConnect(kind, host string, port int, err error) {
 	if t.audit == nil {
 		return
 	}
@@ -369,7 +369,7 @@ func bypass(u *url.URL, list string) bool {
 		if r == "" {
 			continue
 		}
-		if _, n, e := net.ParseCIDR(r); e == nil {
+		if _, n, err := net.ParseCIDR(r); err == nil {
 			if n.Contains(net.ParseIP(h)) {
 				return true
 			}
@@ -412,9 +412,9 @@ type responseWriter struct {
 
 func (w *responseWriter) Write(p []byte) (int, error) {
 	w.rc.SetWriteDeadline(time.Now().Add(idleTimeout))
-	n, e := w.ResponseWriter.Write(p)
-	if e == nil {
-		e = w.rc.Flush()
+	n, err := w.ResponseWriter.Write(p)
+	if err == nil {
+		err = w.rc.Flush()
 	}
-	return n, e
+	return n, err
 }

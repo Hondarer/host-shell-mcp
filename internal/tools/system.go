@@ -162,7 +162,7 @@ func (d *Deps) sysGetInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp
 // enabledGroups returns the names of the groups with exposed tools.
 func (d *Deps) enabledGroups() []string {
 	var out []string
-	for _, g := range Groups {
+	for _, g := range groups {
 		if d.groupEnabled(g[0]) {
 			out = append(out, g[0])
 		}
@@ -221,8 +221,8 @@ func (d *Deps) procList(_ context.Context, _ *mcp.CallToolRequest, in ProcListIn
 		})
 	}
 	out := ProcListOutput{Total: len(all)}
-	if max := orDefaultInt(in.Max, 500); len(all) > max {
-		all, out.Truncated = all[:max], true
+	if maxProcs := orDefaultInt(in.Max, 500); len(all) > maxProcs {
+		all, out.Truncated = all[:maxProcs], true
 	}
 	out.Processes = all
 	return nil, out, nil

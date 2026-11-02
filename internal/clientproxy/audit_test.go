@@ -103,7 +103,7 @@ func TestAuditProxyConnect(t *testing.T) {
 		&channel.Error{Code: "refused"}:   "failed upstream connection failed",
 		errors.New("stream setup failed"): "failed upstream connection failed",
 	} {
-		target.connect(channel.KindHTTP, "limit.example", 80, err)
+		target.auditConnect(channel.KindHTTP, "limit.example", 80, err)
 		records := auditRecords(t, log, "proxy_connect")
 		last := records[len(records)-1]
 		if got := last["result"].(string) + " " + last["reason"].(string); got != want {

@@ -5,8 +5,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -512,7 +510,7 @@ func (d *Deps) searchFind(ctx context.Context, _ *mcp.CallToolRequest, in Search
 	default:
 		return nil, SearchFindOutput{}, fmt.Errorf("unknown sort %q (use path or mtime)", in.Sort)
 	}
-	max := orDefaultInt(in.MaxResults, 1000)
+	maxResults := orDefaultInt(in.MaxResults, 1000)
 	root := cmp.Or(in.Path, ".")
 
 	type found struct {
@@ -532,7 +530,7 @@ func (d *Deps) searchFind(ctx context.Context, _ *mcp.CallToolRequest, in Search
 			return nil
 		}
 		if !byMtime {
-			if len(out.Paths) >= max {
+			if len(out.Paths) >= maxResults {
 				out.Truncated = true
 				return errStop
 			}
@@ -555,8 +553,8 @@ func (d *Deps) searchFind(ctx context.Context, _ *mcp.CallToolRequest, in Search
 	}
 	if byMtime {
 		slices.SortStableFunc(all, func(a, b found) int { return b.mtime.Compare(a.mtime) })
-		if len(all) > max {
-			all, out.Truncated = all[:max], true
+		if len(all) > maxResults {
+			all, out.Truncated = all[:maxResults], true
 		}
 		for _, f := range all {
 			out.Paths = append(out.Paths, f.path)
@@ -580,17 +578,17 @@ func (d *Deps) fsManifest(ctx context.Context, _ *mcp.CallToolRequest, in FsMani
 		return nil, wire.FsManifestOutput{}, fmt.Errorf("include: %w", err)
 	}
 	root := cmp.Or(in.Path, ".")
-	max := orDefaultInt(in.MaxFiles, 2000)
+	maxFiles := orDefaultInt(in.MaxFiles, 2000)
 	out := wire.FsManifestOutput{Root: absPath(root), Files: []wire.ManifestEntry{}}
 	skipped, err := walkFiles(ctx, root, in.ExcludeDirs, false, func(path, rel string, de fs.DirEntry) error {
 		if !de.Type().IsRegular() || !include.match(rel, de.Name()) {
 			return nil
 		}
-		if len(out.Files) >= max {
+		if len(out.Files) >= maxFiles {
 			out.Truncated = true
 			return errStop
 		}
-		size, sum, err := hashFile(path)
+		size, sum, err := wire.HashFile(path)
 		if err != nil {
 			out.Skipped++
 			return nil
@@ -607,18 +605,4 @@ func (d *Deps) fsManifest(ctx context.Context, _ *mcp.CallToolRequest, in FsMani
 	}
 	out.Skipped += skipped
 	return nil, out, nil
-}
-
-func hashFile(path string) (int64, string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return 0, "", err
-	}
-	defer f.Close()
-	h := sha256.New()
-	n, err := io.Copy(h, f)
-	if err != nil {
-		return 0, "", err
-	}
-	return n, hex.EncodeToString(h.Sum(nil)), nil
 }

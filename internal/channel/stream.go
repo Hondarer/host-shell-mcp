@@ -24,9 +24,9 @@ type Incoming struct {
 
 // Accept confirms the stream and returns it as a connection.
 func (in *Incoming) Accept() (net.Conn, error) {
-	if e := in.s.mux.send("open_result", Frame{ID: in.ID}); e != nil {
+	if err := in.s.mux.send("open_result", Frame{ID: in.ID}); err != nil {
 		in.s.stop()
-		return nil, e
+		return nil, err
 	}
 	return &streamConn{s: in.s}, nil
 }
@@ -47,9 +47,9 @@ func (c *Conn) Dial(ctx context.Context, kind, host string, port int, forward ui
 		return nil, io.ErrClosedPipe
 	}
 	c.openMu.Lock()
-	if e := ctx.Err(); e != nil {
+	if err := ctx.Err(); err != nil {
 		c.openMu.Unlock()
-		return nil, e
+		return nil, err
 	}
 	c.opened++
 	id := 2 * c.opened
@@ -57,25 +57,25 @@ func (c *Conn) Dial(ctx context.Context, kind, host string, port int, forward ui
 		id--
 	}
 	c.lastOwn.Store(id)
-	s, e := c.newStream(id, false)
-	if e != nil {
+	s, err := c.newStream(id, false)
+	if err != nil {
 		c.openMu.Unlock()
 		return nil, ErrLimit
 	}
-	e = c.queueContext(ctx, notification("open", Frame{ID: id, Host: host, Port: port, Kind: kind, Forward: forward}), false)
+	err = c.queueContext(ctx, notification("open", Frame{ID: id, Host: host, Port: port, Kind: kind, Forward: forward}), false)
 	c.openMu.Unlock()
-	if e != nil {
+	if err != nil {
 		s.stop()
 		if c.emit("close", Frame{ID: id}) != nil {
 			c.Close()
 		}
-		return nil, e
+		return nil, err
 	}
 	select {
-	case e = <-s.opened:
-		if e != nil {
+	case err = <-s.opened:
+		if err != nil {
 			s.stop()
-			return nil, e
+			return nil, err
 		}
 		return &streamConn{s: s}, nil
 	case <-ctx.Done():
@@ -168,7 +168,7 @@ func (s *stream) receive(ctx context.Context) {
 		eof := s.receivedEOF
 		s.flowMu.Unlock()
 		if n > 0 {
-			if _, e := s.pipeW.Write(buf[:n]); e != nil {
+			if _, err := s.pipeW.Write(buf[:n]); err != nil {
 				s.stop()
 				return
 			}
@@ -205,7 +205,7 @@ func (s *stream) transmit(ctx context.Context) {
 				return
 			}
 		}
-		n, e := s.pipeR.Read(buf[:min(frameSize, credit)])
+		n, err := s.pipeR.Read(buf[:min(frameSize, credit)])
 		if n > 0 {
 			s.flowMu.Lock()
 			s.sendCredit -= n
@@ -220,8 +220,8 @@ func (s *stream) transmit(ctx context.Context) {
 			}
 
 		}
-		if e != nil {
-			if e == io.EOF {
+		if err != nil {
+			if err == io.EOF {
 				s.mux.send("half_close", Frame{ID: s.id})
 			}
 			return
@@ -235,7 +235,7 @@ func (s *streamConn) Read(b []byte) (int, error) { return s.s.appR.Read(b) }
 func (s *streamConn) Write(b []byte) (int, error) {
 	s.s.writeMu.Lock()
 	defer s.s.writeMu.Unlock()
-	n, e := s.s.appW.Write(b)
+	n, err := s.s.appW.Write(b)
 	s.s.written += uint64(n)
 	for s.s.sent.Load() < s.s.written {
 		s.s.flowMu.Lock()
@@ -268,7 +268,7 @@ func (s *streamConn) Write(b []byte) (int, error) {
 			timer.Stop()
 		}
 	}
-	return n, e
+	return n, err
 }
 func (s *streamConn) CloseWrite() error    { return s.s.appW.Close() }
 func (s *streamConn) CloseRead() error     { return s.s.appR.Close() }
@@ -328,12 +328,12 @@ func (s *stream) handleOpenResult(f Frame) error {
 		return errors.New("unexpected result")
 	}
 	s.established = f.Error == ""
-	var e error
+	var err error
 	if f.Error != "" {
-		e = &Error{Code: f.Error}
+		err = &Error{Code: f.Error}
 	}
 	select {
-	case s.opened <- e:
+	case s.opened <- err:
 		return nil
 	default:
 		return errors.New("duplicate result")
@@ -345,8 +345,8 @@ func (s *stream) handleData(f Frame) error {
 	if !s.established {
 		return errors.New("data before open result")
 	}
-	b, e := base64.StdEncoding.DecodeString(f.Data)
-	if e != nil || len(b) == 0 || len(b) > frameSize {
+	b, err := base64.StdEncoding.DecodeString(f.Data)
+	if err != nil || len(b) == 0 || len(b) > frameSize {
 		return errors.New("invalid data")
 	}
 	s.flowMu.Lock()

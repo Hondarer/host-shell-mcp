@@ -105,11 +105,11 @@ type activityReader struct {
 }
 
 func (r *activityReader) Read(b []byte) (int, error) {
-	n, e := r.Reader.Read(b)
+	n, err := r.Reader.Read(b)
 	if n > 0 {
 		r.touch()
 	}
-	return n, e
+	return n, err
 }
 
 type activityWriter struct {
@@ -118,11 +118,11 @@ type activityWriter struct {
 }
 
 func (w *activityWriter) Write(b []byte) (int, error) {
-	n, e := w.Writer.Write(b)
+	n, err := w.Writer.Write(b)
 	if n > 0 {
 		w.touch()
 	}
-	return n, e
+	return n, err
 }
 
 // CloseWrite half-closes c when it supports that (TCP connections and channel streams) and

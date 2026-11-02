@@ -18,7 +18,7 @@ func expectHello(msg jsonrpc.Message) (Frame, error) {
 	if ok && strings.HasPrefix(req.Method, legacyPrefix) {
 		return f, errLegacy
 	}
-	if !ok || req.Method != Prefix+"hello" || req.ID.IsValid() || json.Unmarshal(req.Params, &f) != nil {
+	if !ok || req.Method != prefix+"hello" || req.ID.IsValid() || json.Unmarshal(req.Params, &f) != nil {
 		return f, errors.New("peer did not send channel hello")
 	}
 	if f.Version != version {
@@ -75,11 +75,11 @@ type peeked struct {
 
 func (p *peeked) Read(ctx context.Context) (jsonrpc.Message, error) {
 	p.mu.Lock()
-	m, e := p.first, p.err
+	m, err := p.first, p.err
 	p.first, p.err = nil, nil
 	p.mu.Unlock()
-	if m != nil || e != nil {
-		return m, e
+	if m != nil || err != nil {
+		return m, err
 	}
 	return p.Connection.Read(ctx)
 }
@@ -92,5 +92,5 @@ func writeFrame(ctx context.Context, base mcp.Connection, kind string, f Frame) 
 // marshaling cannot fail.
 func notification(kind string, f Frame) *jsonrpc.Request {
 	b, _ := json.Marshal(f)
-	return &jsonrpc.Request{Method: Prefix + kind, Params: b}
+	return &jsonrpc.Request{Method: prefix + kind, Params: b}
 }

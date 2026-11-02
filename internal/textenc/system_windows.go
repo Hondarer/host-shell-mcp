@@ -17,7 +17,7 @@ func Console() Encoding {
 func File() Encoding { return codePage(windows.GetACP()) }
 
 func codePage(cp uint32) Encoding {
-	if e, ok := FromCodePage(int(cp)); ok {
+	if e, ok := fromCodePage(int(cp)); ok {
 		return e
 	}
 	return UTF8

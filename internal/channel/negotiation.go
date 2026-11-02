@@ -97,7 +97,7 @@ func (t *transport) connectTarget(ctx context.Context, base mcp.Connection) (mcp
 	switch {
 	case req != nil && strings.HasPrefix(req.Method, legacyPrefix):
 		return fail(errLegacy)
-	case req != nil && strings.HasPrefix(req.Method, Prefix):
+	case req != nil && strings.HasPrefix(req.Method, prefix):
 		f, err := expectHello(msg)
 		if err != nil {
 			return fail(err)

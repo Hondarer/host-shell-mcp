@@ -13,21 +13,21 @@ import (
 
 func TestProxyStdio(t *testing.T) {
 	binary := filepath.Join(t.TempDir(), "host-shell.exe")
-	if out, e := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); e != nil {
-		t.Fatalf("build: %v: %s", e, out)
+	if out, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build: %v: %s", err, out)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, "bridge", "--proxy", "--proxy-allow-host", "allowed.example:443", "--", binary, "--mcp", "--no-log", "--client-proxy")
-	cs, e := mcp.NewClient(&mcp.Implementation{Name: "stdio-proxy-test"}, nil).Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
-	if e != nil {
-		t.Fatal(e)
+	cs, err := mcp.NewClient(&mcp.Implementation{Name: "stdio-proxy-test"}, nil).Connect(ctx, &mcp.CommandTransport{Command: cmd}, nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 	defer cs.Close()
 	for _, name := range []string{"sys_get_info", "proxy_status"} {
-		res, e := cs.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: map[string]any{}})
-		if e != nil || res.IsError {
-			t.Fatalf("%s: %v %+v", name, e, res)
+		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: map[string]any{}})
+		if err != nil || res.IsError {
+			t.Fatalf("%s: %v %+v", name, err, res)
 		}
 		b, _ := json.Marshal(res.StructuredContent)
 		var out map[string]any

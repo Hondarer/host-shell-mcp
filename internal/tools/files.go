@@ -149,10 +149,10 @@ func (d *Deps) fsList(_ context.Context, _ *mcp.CallToolRequest, in FsListInput)
 	if err != nil {
 		return nil, FsListOutput{}, err
 	}
-	max := orDefaultInt(in.MaxEntries, 1000)
+	maxEntries := orDefaultInt(in.MaxEntries, 1000)
 	out := FsListOutput{Path: absPath(path), Entries: []Entry{}}
 	for _, e := range ents {
-		if len(out.Entries) >= max {
+		if len(out.Entries) >= maxEntries {
 			out.Truncated = true
 			break
 		}
