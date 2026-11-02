@@ -138,7 +138,7 @@ func forEach(ctx context.Context, n, parallel int, fn func(i int)) error {
 type FileResult struct {
 	Path   string `json:"path" jsonschema:"path relative to the source"`
 	Bytes  int64  `json:"bytes"`
-	Status string `json:"status" jsonschema:"sent, unchanged, exists (differs and overwrite is not set), would-send (dry_run), skipped (not a regular file) or error"`
+	Result string `json:"result" jsonschema:"sent, unchanged, exists (differs and overwrite is not set), would-send (dry_run), skipped (not a regular file) or error"`
 	Error  string `json:"error,omitempty"`
 }
 
@@ -148,7 +148,7 @@ type TransferOutput struct {
 	Destination string       `json:"destination"`
 	Transferred int          `json:"transferred" jsonschema:"files sent (or that would be sent with dry_run)"`
 	Unchanged   int          `json:"unchanged"`
-	Failed      int          `json:"failed" jsonschema:"files with status exists or error"`
+	Failed      int          `json:"failed" jsonschema:"files with result exists or error"`
 	Bytes       int64        `json:"bytes" jsonschema:"bytes transferred"`
 	Files       []FileResult `json:"files" jsonschema:"per-file results (unchanged files are omitted when there are many)"`
 	Truncated   bool         `json:"truncated,omitempty" jsonschema:"the file list was shortened"`
@@ -156,10 +156,10 @@ type TransferOutput struct {
 }
 
 func (o *TransferOutput) add(r FileResult) {
-	switch r.Status {
+	switch r.Result {
 	case "sent", "would-send":
 		o.Transferred++
-		if r.Status == "sent" {
+		if r.Result == "sent" {
 			o.Bytes += r.Bytes
 		}
 	case "unchanged":
@@ -174,7 +174,7 @@ func (o *TransferOutput) add(r FileResult) {
 func (o *TransferOutput) finish(start time.Time) {
 	o.DurationMs = time.Since(start).Milliseconds()
 	if len(o.Files) > maxListed {
-		o.Files = slices.DeleteFunc(o.Files, func(r FileResult) bool { return r.Status == "unchanged" })
+		o.Files = slices.DeleteFunc(o.Files, func(r FileResult) bool { return r.Result == "unchanged" })
 		o.Truncated = true
 	}
 	if len(o.Files) > maxListed {
@@ -217,8 +217,9 @@ func (b transferBatch) run(ctx context.Context, req *mcp.CallToolRequest, parall
 	return b.output, nil
 }
 
-// transferStatus decides whether a file needs copying before any destination is changed.
-func transferStatus(in TransferInput, exists, identical bool, source string) (status, reason string) {
+// transferResult decides whether a file needs copying before any destination is changed. An empty
+// result means the file is to be sent.
+func transferResult(in TransferInput, exists, identical bool, source string) (result, reason string) {
 	switch {
 	case exists && identical:
 		return "unchanged", ""
@@ -300,21 +301,21 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 			target = strings.TrimRight(dest, `/\`) + "/" + f.rel
 		}
 		if f.link {
-			r.Status = "skipped"
+			r.Result = "skipped"
 			return r
 		}
 		sum, err := hashLocal(f.full)
 		if err != nil {
-			r.Status, r.Error = "error", err.Error()
+			r.Result, r.Error = "error", err.Error()
 			return r
 		}
 		e, exists := remote[f.rel]
-		r.Status, r.Error = transferStatus(in, exists, e.SHA256 == sum, "local")
-		if r.Status == "" {
+		r.Result, r.Error = transferResult(in, exists, e.SHA256 == sum, "local")
+		if r.Result == "" {
 			if err := t.sendFile(ctx, f, target, sum, report); err != nil {
-				r.Status, r.Error = "error", err.Error()
+				r.Result, r.Error = "error", err.Error()
 			} else {
-				r.Status = "sent"
+				r.Result = "sent"
 			}
 		}
 		return r
@@ -495,12 +496,12 @@ func (t *transfer) pull(ctx context.Context, req *mcp.CallToolRequest, in Transf
 		}
 		local, lerr := hashLocal(target)
 		exists := lerr == nil
-		r.Status, r.Error = transferStatus(in, exists, local == e.SHA256, "remote")
-		if r.Status == "" {
+		r.Result, r.Error = transferResult(in, exists, local == e.SHA256, "remote")
+		if r.Result == "" {
 			if err := t.fetchFile(ctx, src, target, e, report); err != nil {
-				r.Status, r.Error = "error", err.Error()
+				r.Result, r.Error = "error", err.Error()
 			} else {
-				r.Status = "sent"
+				r.Result = "sent"
 			}
 		}
 		return r

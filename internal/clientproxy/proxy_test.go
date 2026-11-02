@@ -142,7 +142,7 @@ func TestDeniedAndAuthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(status.Events) < 2 || status.Events[0].Status != "denied" {
+	if len(status.Events) < 2 || status.Events[0].Result != "denied" {
 		t.Fatalf("events %+v", status.Events)
 	}
 }

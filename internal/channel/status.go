@@ -57,7 +57,7 @@ func NewEventHead(seq uint64) EventHead {
 type Outcome struct {
 	Host   string `json:"host,omitempty"`
 	Port   int    `json:"port,omitempty"`
-	Status string `json:"status" jsonschema:"allowed, denied or failed"`
+	Result string `json:"result" jsonschema:"allowed, denied or failed"`
 	Reason string `json:"reason"`
 }
 

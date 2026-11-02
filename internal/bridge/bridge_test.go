@@ -122,7 +122,7 @@ type transferOut struct {
 	Failed      int `json:"failed"`
 	Files       []struct {
 		Path   string `json:"path"`
-		Status string `json:"status"`
+		Result string `json:"result"`
 		Error  string `json:"error"`
 	} `json:"files"`
 }

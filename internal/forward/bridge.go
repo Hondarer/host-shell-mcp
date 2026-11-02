@@ -267,13 +267,13 @@ func (m *Manager) sorted() []*forward {
 	return fs
 }
 
-func (m *Manager) record(f *forward, connID uint64, host string, port int, status, reason string) {
+func (m *Manager) record(f *forward, connID uint64, host string, port int, result, reason string) {
 	// Reasons are fixed strings; forwarded data is never recorded.
 	m.history.Add(func(seq uint64) Event {
 		return Event{EventHead: channel.NewEventHead(seq), ForwardID: f.id, ConnectionID: connID, Direction: f.spec.Direction,
-			Outcome: channel.Outcome{Host: host, Port: port, Status: status, Reason: reason}}
+			Outcome: channel.Outcome{Host: host, Port: port, Result: result, Reason: reason}}
 	})
-	log.Printf("forward: id=%d connection=%d direction=%s host=%q port=%d status=%s reason=%s", f.id, connID, f.spec.Direction, host, port, status, reason)
+	log.Printf("forward: id=%d connection=%d direction=%s host=%q port=%d result=%s reason=%s", f.id, connID, f.spec.Direction, host, port, result, reason)
 }
 
 func (m *Manager) nextConnID() uint64 {

@@ -54,7 +54,7 @@ Use the read-only `proxy_status` tool on `bridge` to inspect the proxy state and
 
 - **Inputs**: `after_seq` (non-negative integer, default `0`) and `limit` (1–100, default `20`).
 - **Outputs**: `enabled`, `state`, `allow_hosts`, `active_connections`, `events`, `next_seq`, and `truncated`.
-- Each entry in `events` contains `seq`, `time`, `connection_id`, `host`, `port`, `status` (`allowed` / `denied` / `failed`), `reason`, and `count` (when consecutive identical events are aggregated). Up to the latest 100 events are kept and returned in ascending `seq` order. Pass `next_seq` as `after_seq` on subsequent calls to read new events. `truncated` indicates that older events were dropped or more events remain after the returned page.
+- Each entry in `events` contains `seq`, `time`, `connection_id`, `host`, `port`, `result` (`allowed` / `denied` / `failed`), `reason`, and `count` (when consecutive identical events are aggregated). Up to the latest 100 events are kept and returned in ascending `seq` order. Pass `next_seq` as `after_seq` on subsequent calls to read new events. `truncated` indicates that older events were dropped or more events remain after the returned page.
 - The same metadata is written to `bridge` standard error. Request bodies, URL paths and query strings, and credentials are never included in diagnostics.
 - When a destination is denied, inspect `host`, `port`, and `reason`, add only the necessary destination to `--proxy-allow-host`, and restart the session (the agent cannot widen the allow list on its own).
 

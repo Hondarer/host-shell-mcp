@@ -54,7 +54,7 @@ host-shell bridge --proxy --proxy-allow-host 'packages.example.com:443' -- \
 
 - **入力**: `after_seq` (0 以上の整数、既定 `0`)、`limit` (1〜100、既定 `20`)。
 - **出力**: `enabled`、`state`、`allow_hosts`、`active_connections`、`events`、`next_seq`、`truncated`。
-- `events` の各要素は `seq`、`time`、`connection_id`、`host`、`port`、`status` (`allowed` / `denied` / `failed`)、`reason`、および集約時の `count` を持ちます。直近 100 件を保持し、`seq` の昇順で返します。継続取得時は前回の `next_seq` を `after_seq` に渡します。`truncated` は履歴の脱落または未返却のイベントがあることを示します。
+- `events` の各要素は `seq`、`time`、`connection_id`、`host`、`port`、`result` (`allowed` / `denied` / `failed`)、`reason`、および集約時の `count` を持ちます。直近 100 件を保持し、`seq` の昇順で返します。継続取得時は前回の `next_seq` を `after_seq` に渡します。`truncated` は履歴の脱落または未返却のイベントがあることを示します。
 - 同じメタ情報は `bridge` の標準エラーにも出力されます。リクエスト本文、URL のパスやクエリ、資格情報は診断情報に含まれません。
 - 通信が拒否された場合は `host`、`port`、`reason` を確認し、利用者が判断したうえで必要な宛先のみを `--proxy-allow-host` に追加して再起動してください (エージェントが独断で許可範囲を広げることはできません)。
 

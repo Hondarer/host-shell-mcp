@@ -131,7 +131,7 @@ Table: Forward tools
 
 Like `proxy_status`, `forward_status` accepts `after_seq` and `limit` (1–100, default `20`). It returns `state`, `forwards` (`forward_id`, `direction`, `persistent`, `listen_address`, `listen_port`, `host`, `port`, `active_connections`), `allow_local`, `allow_remote`, `active_connections`, `events`, `next_seq`, and `truncated`.
 
-Each entry in `events` contains `seq`, `time`, `forward_id`, `connection_id`, `direction`, `host`, `port`, `status` (`allowed` / `denied` / `failed`), and `reason`, retaining the latest 100 events. `reason` is one of the following fixed strings:
+Each entry in `events` contains `seq`, `time`, `forward_id`, `connection_id`, `direction`, `host`, `port`, `result` (`allowed` / `denied` / `failed`), and `reason`, retaining the latest 100 events. `reason` is one of the following fixed strings:
 
 | `reason` | Meaning |
 | --- | --- |

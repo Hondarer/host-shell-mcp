@@ -88,9 +88,9 @@ func (g *Gateway) report(kind string, f channel.Frame) {
 		g.record(0, "", 0, channel.Failed, "authentication")
 	}
 }
-func (g *Gateway) record(connID uint64, host string, port int, status, reason string) {
+func (g *Gateway) record(connID uint64, host string, port int, result, reason string) {
 	// Reasons are fixed strings, never raw network errors containing credentials.
-	if status == channel.Failed && reason == "authentication" && g.history.Merge(func(last *Event) bool {
+	if result == channel.Failed && reason == "authentication" && g.history.Merge(func(last *Event) bool {
 		if last.Reason != reason {
 			return false
 		}
@@ -100,9 +100,9 @@ func (g *Gateway) record(connID uint64, host string, port int, status, reason st
 		return
 	}
 	g.history.Add(func(seq uint64) Event {
-		return Event{EventHead: channel.NewEventHead(seq), ConnectionID: connID, Outcome: channel.Outcome{Host: host, Port: port, Status: status, Reason: reason}, Count: 1}
+		return Event{EventHead: channel.NewEventHead(seq), ConnectionID: connID, Outcome: channel.Outcome{Host: host, Port: port, Result: result, Reason: reason}, Count: 1}
 	})
-	log.Printf("proxy: connID=%d host=%q port=%d status=%s reason=%s", connID, host, port, status, reason)
+	log.Printf("proxy: connection=%d host=%q port=%d result=%s reason=%s", connID, host, port, result, reason)
 }
 
 // Status returns the proxy state, destination rules and recent connection results.

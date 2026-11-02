@@ -86,7 +86,7 @@ func TestProxySessionIntegration(t *testing.T) {
 		t.Fatalf("HTTP tool error: %v", res.Content)
 	}
 	status = testutil.Call[clientproxy.Status](t, cs, "proxy_status", nil)
-	if len(status.Events) == 0 || status.Events[0].Status != "denied" {
+	if len(status.Events) == 0 || status.Events[0].Result != "denied" {
 		t.Fatalf("missing denial %+v", status)
 	}
 	cs.Close()

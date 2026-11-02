@@ -239,7 +239,7 @@ func TestPersistentForwards(t *testing.T) {
 	c := dial(t, "127.0.0.1", local.ListenPort)
 	time.Sleep(300 * time.Millisecond)
 	roundTrip(t, c)
-	if e := s.waitEvent(t, "connection established"); e.Status != "allowed" {
+	if e := s.waitEvent(t, "connection established"); e.Result != "allowed" {
 		t.Fatalf("event %+v", e)
 	}
 	if err := s.manager.CloseForward(1); err == nil {
@@ -445,7 +445,7 @@ func TestRemoteFailuresAndRelease(t *testing.T) {
 			t.Fatal("refused destination kept the connection")
 		}
 		c.Close()
-		if e := s.waitEvent(t, "connection refused"); e.Direction != Remote || e.Status != "failed" {
+		if e := s.waitEvent(t, "connection refused"); e.Direction != Remote || e.Result != "failed" {
 			t.Fatalf("event %+v", e)
 		}
 		s.bridge.Close()

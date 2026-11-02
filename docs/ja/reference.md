@@ -1556,7 +1556,7 @@ Table: transfer_push の引数
 | `source`、`destination` | string | 転送元と転送先のパス |
 | `transferred`、`unchanged`、`failed` | integer | 転送ファイル数 (`dry_run` 時は予定数)、未変更スキップ数、失敗数 (`exists` + `error`) |
 | `bytes` | integer | 転送した総バイト数 |
-| `files` | object[] | ファイル別の結果 (`path`、`bytes`、`status` [`sent`/`unchanged`/`exists`/`would-send`/`skipped`/`error`]、`error`。500 件超過時は `unchanged` を省略し `truncated: true`) |
+| `files` | object[] | ファイル別の結果 (`path`、`bytes`、`result` [`sent`/`unchanged`/`exists`/`would-send`/`skipped`/`error`]、`error`。500 件超過時は `unchanged` を省略し `truncated: true`) |
 | `duration_ms` | integer | 所要時間 (ミリ秒) |
 
 Table: transfer_push と transfer_pull の出力

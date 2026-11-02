@@ -131,7 +131,7 @@ Table: 転送ツール
 
 `forward_status` の入力は `proxy_status` と同じく `after_seq` と `limit` (1〜100、既定 `20`) です。出力として `state`、`forwards` (`forward_id`、`direction`、`persistent`、`listen_address`、`listen_port`、`host`、`port`、`active_connections`)、`allow_local`、`allow_remote`、`active_connections`、`events`、`next_seq`、`truncated` を返します。
 
-`events` の各要素は `seq`、`time`、`forward_id`、`connection_id`、`direction`、`host`、`port`、`status` (`allowed` / `denied` / `failed`)、`reason` を持ち、直近 100 件を保持します。`reason` には次の固定文字列が入ります。
+`events` の各要素は `seq`、`time`、`forward_id`、`connection_id`、`direction`、`host`、`port`、`result` (`allowed` / `denied` / `failed`)、`reason` を持ち、直近 100 件を保持します。`reason` には次の固定文字列が入ります。
 
 | `reason` | 意味 |
 | --- | --- |

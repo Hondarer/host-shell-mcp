@@ -1555,7 +1555,7 @@ Each file is transferred as follows (on failure, `.host-shell-part` is removed; 
 | `source`, `destination` | string | Source and destination paths |
 | `transferred`, `unchanged`, `failed` | integer | Files transferred (or planned when `dry_run` is set), skipped as unchanged, and failed (`exists` + `error`) |
 | `bytes` | integer | Total bytes transferred |
-| `files` | object[] | Per-file results (`path`, `bytes`, `status` [`sent`/`unchanged`/`exists`/`would-send`/`skipped`/`error`], `error`). When more than 500 files are processed, `unchanged` entries are omitted and `truncated: true` is set |
+| `files` | object[] | Per-file results (`path`, `bytes`, `result` [`sent`/`unchanged`/`exists`/`would-send`/`skipped`/`error`], `error`). When more than 500 files are processed, `unchanged` entries are omitted and `truncated: true` is set |
 | `duration_ms` | integer | Elapsed time (milliseconds) |
 
 Table: Output of transfer_push and transfer_pull
