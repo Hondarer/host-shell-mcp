@@ -3,7 +3,7 @@
 > [!NOTE]
 > This is an English translation. The Japanese version ([../ja/coding-agents.md](../ja/coding-agents.md)) is the single source of truth (SSOT) and takes precedence if they differ.
 
-This guide describes deploying Copilot, agy, Claude Code, Codex, and Grok CLIs into a target user's directories and running them from the [code-server](code-server.md) terminal. This use case is under validation. The code-server skill does not automatically install or authenticate CLI coding agents.
+This guide describes deploying Copilot, agy, Claude Code, Codex, and Grok CLIs into a target user's directories and running them from the [code-server](code-server.md) terminal. The goal is to use the CLIs through SSH relays even in isolated environments where the target cannot reach the internet directly. Only Copilot CLI has been checked end to end on a target ([Verified scope](#verified-scope)). The code-server skill does not automatically install or authenticate CLI coding agents.
 
 An agent workflow scaffold is available in the [host-shell-coding-agents skill](../../.agents/skills/host-shell-coding-agents/SKILL.md). It does not yet include verified installers for individual CLIs.
 
@@ -37,7 +37,7 @@ host-shell bridge --proxy \
 
 code-server launched through `job_start` receives `HTTP_PROXY`, `HTTPS_PROXY`, and their lowercase variants, which terminal children normally inherit. Enable the proxy before starting code-server. Check that the CLI supports an authenticated HTTP proxy and that shell configuration does not override these variables. Proxy URLs contain credentials: do not print them with `env` or `printenv`.
 
-`NO_PROXY` is inherited. An excluded external API causes direct connection attempts, so configure it for the target. Allow destinations for login, token refresh, and required additional features as well as inference. Use `proxy_status` to investigate denials. TLS traffic after HTTP CONNECT is not decrypted. Custom networking implementations and plain HTTP Upgrade require separate compatibility checks.
+`NO_PROXY` is inherited as is. If an external API matches `NO_PROXY`, the CLI attempts a direct connection without using the proxy, so review `NO_PROXY` for the target. Allow destinations for login, token refresh, and required additional features as well as inference. Use `proxy_status` to investigate denials. TLS traffic after HTTP CONNECT is not decrypted. Custom networking implementations and plain HTTP Upgrade require separate compatibility checks.
 
 ## Deploying CLIs
 
@@ -95,90 +95,88 @@ Prompts and code may be sent to external services. Execution inside an isolated 
 
 When the MCP connection ends, code-server, the proxy, and forwards are stopped. Verify CLI and helper process termination on the target. Unix descendants that enter separate process groups or sessions may survive; do not assume every terminal process is reclaimed. Installed binaries, credentials, and history are not deleted on disconnect.
 
-## Clipboard copying fails only inside Copilot CLI
+## Built-in tools that need name resolution
 
-During validation on 2026-11-02, code-server 4.144.0 in Microsoft Edge could copy from an ordinary terminal, but copying failed inside Copilot CLI 1.0.83's interactive UI. Pressing `Ctrl+C` displayed `Copied` without updating the Windows clipboard. Pasting from the editor into the terminal still worked.
+The HTTP proxy does not relay DNS itself. Proxy-aware programs pass the hostname to the proxy, and it is resolved on the client side. Built-in tools that resolve names on the target before connecting fail on targets without DNS.
 
-While mouse support is enabled, Copilot receives mouse input, so dragging cannot create a code-server selection. Holding `Shift` while dragging and then pressing `Ctrl+Shift+C` was also tried and did not copy anything while mouse support was enabled.
+Copilot CLI's built-in Web Fetch also resolves names before connecting, failing with `WebFetchBlockedUrlError: failed to lookup address information: Name or service not known`. Adding destination rules does not fix it. Enable [remote-dns](remote-dns.md) on both ends before starting code-server. The host-shell-connect skill deploys the adapter and gives the `--remote-dns-library` path.
 
-The user confirmed that copying works with mouse support still enabled by selecting and copying on the code-server side without the mouse:
+- A denial (HTTP 403, `CONNECT tunnel failed, response 403`) is not a DNS failure. Check the reason with `proxy_status`.
+- Work running in VS Code extension or agent hosts, such as the in-editor Copilot Chat, needs the code-server [patched-copy mode](remote-dns.md#extension-and-agent-hosts-in-code-server).
+- Proxy-aware alternatives such as `curl` still need explicit rules for the required hosts and ports.
 
-1. Press `Ctrl+Shift+P` to open the Command Palette and run `Terminal: Select All`.
-2. Then run `Terminal: Copy Selection`.
-3. Paste into an editor outside the browser and trim it to the part you need.
+## Copilot destinations
 
-The entire terminal content is selected; partial selection is not possible. Whether the selection includes output above the visible area was not individually verified. If you use this often, assign keys to the two commands. This method preserves Copilot's mouse interactions, including wheel scrolling. Try this method first.
-
-As an alternative, resuming with `copilot --continue --no-mouse` restores mouse selection and copying. However, the user reported that wheel scrolling stopped working and other interactions were impaired. Treat disabling mouse support as a fallback with usability limitations.
-
-Exporting the conversation to a file with `/share`, opening it in the editor, and copying from there was also confirmed to work. It suits partial selections and long output.
-
-[Copilot CLI Issue #2082](https://github.com/github/copilot-cli/issues/2082) includes the `mouse: false` workaround, reports that it restored copying, and reports of a Copied notification without clipboard updates. [code-server Issue #7938](https://github.com/coder/code-server/issues/7938) also describes TUI mouse handling interfering with selection and copying. The observed improvement is consistent with bypassing Copilot's own clipboard path, but the exact failing internal operation has not been identified. Verify by pasting into an editor outside the browser; a `Copied` notification alone is insufficient.
-
-If copying also fails in an ordinary terminal, investigate browser clipboard permissions and the access URL separately. See the [official Copilot command reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference) for related options and settings.
-
-## Validation status
-
-Results as of 2026-11-02: the following installed Linux x86_64 executables returned exit code 0 for `--version`, both directly and through a local host-shell `job_start` with a PTY. This does not validate distribution provenance, deployment to a remote target, authentication, or inference.
-
-| CLI | Local version | Direct / host-shell PTY startup |
+| Purpose | Destinations | Status |
 | --- | --- | --- |
-| Copilot | 1.0.83 | Passed / Passed |
-| agy | 1.4.12 | Passed / Passed |
-| Claude Code | 2.1.316 | Passed / Passed |
-| Codex | 0.166.0 | Passed / Passed |
-| Grok | 1.0.70 | Passed / Passed |
+| Login, API, and inference | `github.com:443`, `api.github.com:443`, `*.githubcopilot.com:443`, `copilot-proxy.githubusercontent.com:443` | Authentication and conversational responses verified with this set |
+| Copilot Chat BYOK model catalog (`https://main.vscode-cdn.net/extensions/copilotChat.json`) | `main.vscode-cdn.net:443` | Retrieval verified after allowing it |
+| Additional downloads | `release-assets.githubusercontent.com:443` | Which feature uses this destination is unconfirmed |
 
-Table: Initial checks
+Table: Copilot destinations
 
-Codex printed a warning that it could not create PATH aliases on a read-only file system; version reporting still succeeded. This environment-specific warning is not evidence that normal CLI operations work.
-
-Existing tests for `internal/clientproxy`, `internal/jobs`, and `internal/bridge` also passed. They validate the relay and job management foundation, not each coding agent's API compatibility.
-
-### Copilot CLI in an isolated container
-
-On 2026-11-02, code-server 4.144.0 and Copilot CLI 1.0.83 were deployed to a Podman container running Oracle Linux 10.2 / x86_64 / glibc 2.39. host-shell was built from commit `fa2c855`. The container uses `--network none`, has only loopback, and has no external route. SSH uses a `ProxyCommand` relaying stdio through `podman exec -i` to sshd listening on the container's loopback. This does not validate ordinary TCP-based SSH reachability.
-
-- Official code-server and Copilot archive SHA-256 hashes were verified, then files were deployed and verified again using `transfer_push` over SSH. Copilot came from [github/copilot-cli v1.0.83](https://github.com/github/copilot-cli/releases/tag/v1.0.83), archive `copilot-linux-x64.tar.gz`, SHA-256 `ffbe1c429664b8a05efed67ecdb467123e40fcaa3c6c14ef9a98ba74da4687b7`.
-- Copilot `--version`, `--help`, and version reporting with a PTY succeeded on the target.
-- The code-server login page was reachable, and the user successfully authenticated Copilot by entering the CLI-displayed code in a separate browser (device code flow). Login validation is complete. Long-term authentication behavior, such as what happens after credentials expire, has not been tested.
-- Direct TCP access to an external IP failed, while `https://api.github.com` returned HTTP 200 through the client proxy. This HTTP check alone does not establish successful Copilot inference. A subsequent user screenshot showed Copilot conversational responses and tool execution.
-- The allowlist was `github.com:443`, `api.github.com:443`, `*.githubcopilot.com:443`, and `copilot-proxy.githubusercontent.com:443`. Arbitrary websites were not allowed.
-
-Direct name resolution inside the container fails. The HTTP proxy does not relay DNS queries: it receives hostnames and resolves them on the client side, or through the configured upstream proxy route. Allowed hosts worked, while unlisted hosts returned HTTP 403. HTTPS reports `CONNECT tunnel failed, response 403`. The additional artifact destination `release-assets.githubusercontent.com:443` was also recorded as denied; required destinations still need to be checked for each feature. The user screenshot showed Copilot's built-in Web Fetch failing with `WebFetchBlockedUrlError: failed to lookup address information: Name or service not known`, followed by a `curl` request receiving proxy HTTP 403. This suggests the built-in Web Fetch performs target-side name resolution separately from connecting through the proxy; its internal implementation has not been inspected. Adding an allowed destination alone must not be treated as sufficient to enable this tool.
-
-Distinguish proxy-compatible commands from built-in tools that require a preliminary DNS lookup. The latter can use the optional [remote-dns feature](remote-dns.md). Independent resolver-hook testing showed Copilot CLI Web Fetch failing on DNS without the hook and succeeding with it for the same URL. See that document for scope and diagnostics, including environment sanitization in the bundled VS Code SDK. A proxy-compatible command such as `curl` remains an alternative after explicit authorization of the required host and port.
-
-### Required destination for Copilot Chat's BYOK model catalog
-
-code-server's Copilot Chat retrieves its known-model catalog for BYOK (external models using the user's own API keys or similar credentials) from `https://main.vscode-cdn.net/extensions/copilotChat.json`. GitHub and Copilot API allow rules do not cover this destination: **this feature requires additionally allowing `main.vscode-cdn.net:443`**. The [retrieval implementation](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts) confirms the URL.
-
-Add the following to existing startup allow rules:
+At startup, the in-editor Copilot Chat fetches the known-model catalog for BYOK (external models using the user's own API keys) from `main.vscode-cdn.net` ([fetching implementation](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts)). GitHub and Copilot API rules alone do not cover it, resulting in a `Failed to update known models list` warning. To allow fetching the catalog, add the following to the existing startup rules:
 
 ```text
 --proxy-allow-host main.vscode-cdn.net:443
 ```
 
-When `proxy_rules_update` is available, read the current `rules_revision` and both complete rule lists, then add this single destination to the allowlist. Runtime updates need no restart but end with the session; also include the destination in the next startup configuration.
+If `proxy_rules_update` is available, read the current `rules_revision` and complete allow and deny lists, add this single destination, and submit the update. Session updates take effect without restarting but end with the session, so add the option to future startup commands as well. Telemetry and experimentation hosts (such as `mobile.events.data.microsoft.com` and `default.exp-tas.com`) are not needed to fetch the model catalog.
 
-On 2026-11-03, CONNECT to the same URL returned 403 before authorization. After the update, a version-1 catalog containing five providers (19,535 bytes) was retrieved as valid JSON. This direct retrieval does not establish that the extension itself has retried successfully. Check normal Copilot API destinations and the BYOK catalog destination separately for their respective features.
+## Clipboard copying fails only inside Copilot CLI
 
-The following statuses apply only to Copilot CLI. Other CLIs have only the local startup checks above.
+Use this when copying works in an ordinary terminal, but inside Copilot CLI's interactive screen `Copied` appears without updating the clipboard. Verified with Copilot CLI 1.0.83, code-server 4.144.0, and Microsoft Edge.
 
-| Stage | Pass criteria | Status |
+While mouse support is enabled, Copilot receives mouse input, so dragging cannot create a code-server selection. Shift+drag or `Ctrl+Shift+C` does not copy either.
+
+| Method | Steps | Limitations |
 | --- | --- | --- |
-| Deployment | Transfer, hash verification, and dependency checks on the target | Passed (Copilot) |
-| Startup | Target `--version` and `--help` succeed | Passed (Copilot) |
-| Terminal | Rendering, input, Ctrl-C, and resizing work inside code-server | Passed; user confirmed all items worked on 2026-11-02 |
-| Clipboard | Copy terminal text outside the browser | Passed with mouse enabled using `Terminal: Select All` and `Terminal: Copy Selection` (Shift+drag fails); `--no-mouse` also works but impairs wheel scrolling |
-| Authentication | Login succeeds using the selected method | Passed; user entered the displayed code in a separate browser |
-| Inference | Obtain a response through bridge while direct target egress is blocked | Conversational responses observed in user screenshot; built-in Web Fetch fails on DNS |
-| Operations | Edit a test file and execute a small command | Not tested |
-| Shutdown | Check code-server, CLI, helpers, and listeners after MCP disconnect | Not tested |
-| Multiple connections | Check startup, authentication state, and disconnect effects across connections | Not tested |
+| Copy everything from the Command Palette (recommended) | Press `Ctrl+Shift+P`, run `Terminal: Select All`, then `Terminal: Copy Selection`. Paste into an editor outside the browser and trim it | Copies the whole terminal; partial selection is impossible. Whether output above the visible area is included is unconfirmed. Bind keys to both commands for frequent use |
+| Save with `/share` | Save the conversation to a file, open it in the editor, and copy | Suits partial selection and long output |
+| Disable mouse handling | Resume with `copilot --continue --no-mouse` and select with the mouse | Wheel scrolling and other interactions degrade |
 
-Table: Target validation stages
+Table: Copy methods
 
-Record OS, CPU, libc, CLI/code-server/host-shell versions, distribution sources and hashes, authentication method without secrets, allowed destinations, completed stages, and failure reasons.
+The recommended method keeps Copilot's mouse interactions such as wheel scrolling. Do not treat the `Copied` notification as success; verify by pasting outside the browser. Which internal step fails is not determined. Related reports are [Copilot CLI issue #2082](https://github.com/github/copilot-cli/issues/2082) (the `mouse: false` workaround, and the clipboard staying unchanged after `Copied`) and [code-server issue #7938](https://github.com/coder/code-server/issues/7938) (selection and copy problems caused by TUI mouse handling).
 
-Optional name resolution relay: [remote-dns](remote-dns.md). See `--remote-dns` on both ends and target `--remote-dns-library PATH` for a prebuilt adapter.
+If copying also fails in an ordinary terminal, the cause is different; check the browser's clipboard permission and access URL. See the [Copilot CLI reference](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference) for related commands and settings.
+
+## Verified scope
+
+### Copilot CLI
+
+Verified with Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz` from [github/copilot-cli v1.0.83](https://github.com/github/copilot-cli/releases/tag/v1.0.83), SHA-256 `ffbe1c429664b8a05efed67ecdb467123e40fcaa3c6c14ef9a98ba74da4687b7`) and code-server 4.144.0. The target is an Oracle Linux 10.2 / x86_64 / glibc 2.39 Podman container started with `--network none` and no external route. SSH reaches an in-container sshd through `ProxyCommand` (`podman exec -i` stdio relay); SSH connections over ordinary TCP are not covered.
+
+| Stage | Pass criterion | Status |
+| --- | --- | --- |
+| Deployment | Transfer, hash verification, and dependency checks on the target | Passed |
+| Startup | `--version` and `--help` succeed on the target | Passed |
+| Terminal | Rendering, input, Ctrl-C, and resizing work in code-server | Passed |
+| Clipboard | Copy from the terminal to outside the browser | Passed with the [Command Palette method](#clipboard-copying-fails-only-inside-copilot-cli) |
+| Authentication | Login succeeds with the chosen method | Passed with device code (entering the displayed code in a separate browser). Behavior after credential expiry is unverified |
+| Inference | Responses arrive only through the bridge with direct target egress blocked | Passed |
+| Built-in Web Fetch | Fetching succeeds on a target without DNS | Passed together with [remote-dns](remote-dns.md) |
+| Operations | Editing a test file and running a small command succeed | Unverified |
+| Shutdown | After MCP disconnect, check code-server, CLI, helper processes, and listeners | Unverified |
+| Multiple connections | Startup, authentication state, and disconnect effects across connections | Unverified |
+
+Table: Copilot CLI validation stages
+
+### Other CLIs
+
+Only `--version` has been checked, both standalone and through a local host-shell PTY `job_start` on a local Linux x86_64 machine. Source verification, target deployment, authentication, and inference are unverified.
+
+| CLI | Checked version |
+| --- | --- |
+| agy | 1.4.12 |
+| Claude Code | 2.1.316 |
+| Codex | 0.166.0 |
+| Grok | 1.0.70 |
+
+Table: CLIs checked for startup
+
+On a read-only file system, Codex warns that it cannot create its PATH alias. Version output is unaffected.
+
+### Recording validation
+
+For new validation, record OS, CPU, and libc; CLI, code-server, and host-shell versions; source and hash; authentication method (without secrets); allowed destinations; and passed stages with failure causes. Keep the history in `docs/prompts/past/` (Japanese only) and reflect only the results here. Past history is in [261102-coding-agents-validation.md](../prompts/past/261102-coding-agents-validation.md).

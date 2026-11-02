@@ -226,13 +226,13 @@ On subsequent runs, unchanged files with matching SHA-256 hashes are skipped.
 
 ## Copying from the terminal
 
-Copying may work in an ordinary terminal while Copilot CLI shows `Copied` without updating the clipboard. With mouse support enabled, even Shift+drag cannot select text. In the validation environment, running `Terminal: Select All` and then `Terminal: Copy Selection` from the Command Palette copied successfully with mouse support still enabled (the whole terminal is copied). `--no-mouse` also works, but impairs wheel scrolling and other interactions. See [Clipboard copying fails only inside Copilot CLI](coding-agents.md#clipboard-copying-fails-only-inside-copilot-cli) for applicability and limitations.
+Copying may work in an ordinary terminal while Copilot CLI shows `Copied` without updating the clipboard. With mouse support enabled, even Shift+drag cannot select text. Running `Terminal: Select All` and then `Terminal: Copy Selection` from the Command Palette copies with mouse support still enabled (the whole terminal is copied). `--no-mouse` also works, but impairs wheel scrolling and other interactions. See [Clipboard copying fails only inside Copilot CLI](coding-agents.md#clipboard-copying-fails-only-inside-copilot-cli) for applicability and limitations.
 
 ## Blue dot or pencil near the cursor in Edge
 
 Microsoft Edge's Writing assistance can show a blue dot or pencil icon in the code-server terminal input area. Distinguish this browser UI from code-server and Copilot CLI running in the terminal.
 
-On 2026-11-02, the user identified **Show writing hints** under **Writing assistance** in Edge settings as the relevant toggle. Open `edge://settings/languages` and turn it off. The setting's location and label may differ between Edge versions.
+Turning off **Show writing hints** under **Writing assistance** in Edge settings removes them. Open `edge://settings/languages` and turn it off. The setting's location and label may differ between Edge versions.
 
 The parent **Use writing assistance** toggle can remain enabled while cursor hints are disabled. No code-server or container configuration changes are needed.
 

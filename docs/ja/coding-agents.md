@@ -3,7 +3,7 @@
 > [!NOTE]
 > この文書が正本です。英訳は [../en/coding-agents.md](../en/coding-agents.md) にあります。内容が一致しない場合は日本語版が優先されます。
 
-Copilot、agy、Claude Code、Codex、Grok の CLI を接続先のユーザー領域へ配置し、[code-server](code-server.md) のターミナルから利用する構成と検証手順を説明します。現時点では検証中のユースケースです。code-server 用スキルは CLI 型 AI コーディングエージェントの導入・認証を自動実行しません。
+Copilot、agy、Claude Code、Codex、Grok の CLI を接続先のユーザー領域へ配置し、[code-server](code-server.md) のターミナルから利用する構成と検証手順を説明します。接続先から直接インターネットへ通信できない隔離環境でも、SSH 経由の中継で CLI を利用することが目的です。実機で一通り確認できているのは Copilot CLI だけです ([検証済みの範囲](#検証済みの範囲))。code-server 用スキルは CLI 型 AI コーディングエージェントの導入・認証を自動実行しません。
 
 エージェント向けの手順のひな型は [host-shell-coding-agents スキル](../../.agents/skills/host-shell-coding-agents/SKILL.md) にあります。CLI ごとの実証済みインストーラーはまだ含まれていません。
 
@@ -37,7 +37,7 @@ host-shell bridge --proxy \
 
 `job_start` で起動する code-server には `HTTP_PROXY`、`HTTPS_PROXY` と小文字版が設定され、ターミナルの子プロセスにも通常は継承されます。プロキシを有効にしてから code-server を起動してください。CLI が認証付き HTTP プロキシに対応しているか、シェル設定が環境変数を上書きしていないかを確認します。プロキシ URL には認証情報が含まれるため、`env` や `printenv` で出力しないでください。
 
-`NO_PROXY` は継承されます。外部 API が除外対象になっていると直接通信を試みるため、接続先に合わせて設定します。許可先には推論 API だけでなく、ログイン、トークン更新、必要な追加機能の宛先も含めます。拒否の調査には `proxy_status` を使用します。HTTP CONNECT 後の TLS 通信は復号されません。CLI が独自の通信実装を使う場合や、平文 HTTP の Upgrade を必要とする場合は別途互換性確認が必要です。
+`NO_PROXY` はそのまま継承されます。外部 API が `NO_PROXY` に含まれているとプロキシを通さず直接通信を試みるため、接続先に合わせて見直してください。許可先には推論 API だけでなく、ログイン、トークン更新、必要な追加機能の宛先も含めます。拒否の調査には `proxy_status` を使用します。HTTP CONNECT 後の TLS 通信は復号されません。CLI が独自の通信実装を使う場合や、平文 HTTP の Upgrade を必要とする場合は別途互換性確認が必要です。
 
 ## CLI の配置
 
@@ -95,90 +95,88 @@ sequenceDiagram
 
 MCP 接続終了時には code-server とプロキシ・転送を停止します。CLI とその補助プロセスの終了は実機で確認してください。Unix の別プロセスグループやセッションへ離脱した子孫は残る可能性があるため、ターミナル内の全プロセスが必ず回収されるとは扱いません。配置したバイナリ、認証情報、履歴は切断だけでは削除されません。
 
-## Copilot CLI のコピーが動作しない場合
+## 名前解決が必要な内蔵ツール
 
-2026-11-02 の検証では、Microsoft Edge から code-server 4.144.0 を利用し、通常のターミナルではコピーできる一方、Copilot CLI 1.0.83 の対話画面内でだけコピーできませんでした。`Ctrl+C` で `Copied` と表示されても Windows のクリップボードは更新されず、エディターからターミナルへのペーストは動作していました。
+HTTP プロキシは DNS 自体を中継しません。プロキシ対応のプログラムはホスト名をプロキシへ渡し、接続元側で名前解決されます。一方、接続前に接続先で名前解決を行う内蔵ツールは、DNS のない接続先では失敗します。
 
-マウス操作が有効な間は、Copilot がマウス入力を受け取るため、ドラッグでは code-server 側の選択を作れません。`Shift` を押しながらドラッグして `Ctrl+Shift+C` を押す方法も試しましたが、マウス有効時はコピーできませんでした。
+Copilot CLI の内蔵 Web Fetch も接続前に名前解決を行うため、`WebFetchBlockedUrlError: failed to lookup address information: Name or service not known` で失敗します。宛先許可を追加しても解消しません。両端で [remote-dns](remote-dns.md) を有効にしてから code-server を起動してください。スキル host-shell-connect がアダプターを配置し、`--remote-dns-library` のパスを示します。
 
-利用者は、マウスを使わずに code-server 側で選択・コピーする次の方法で、マウス操作を有効にしたまま正しくコピーできることを確認しました。
+- 拒否 (HTTP 403、`CONNECT tunnel failed, response 403`) は DNS 障害ではありません。`proxy_status` で拒否理由を確認します。
+- 画面内の Copilot Chat など、VS Code の拡張ホスト・エージェントホストで動く処理には、code-server の [専用コピーモード](remote-dns.md#code-server-の拡張エージェントホストへの適用) が必要です。
+- 代替としてプロキシ対応の `curl` などを使う場合も、必要なホスト・ポートへの明示的な許可が必要です。
 
-1. `Ctrl+Shift+P` でコマンド パレットを開き、`Terminal: Select All` を実行します。
-2. 続けて `Terminal: Copy Selection` を実行します。
-3. ブラウザー外のエディターなどへ貼り付け、必要な部分を切り出します。
+## Copilot の許可先
 
-ターミナルの内容がまとめて選択されるため、部分的な選択はできません。どの範囲まで選択されるか (表示範囲より前の出力を含むか) は個別に確認していません。頻繁に使う場合は、2 つのコマンドにキーを割り当てると操作を短縮できます。この方法なら、ホイールスクロールなど Copilot のマウス操作を維持できます。まずこの方法を試してください。
-
-代替策として、`copilot --continue --no-mouse` で再開するとマウスでの選択とコピーができることを確認しました。ただし、利用者からホイールスクロールが効かないなどの問題が報告されています。マウス処理の無効化は、操作性の制限を伴う代替策として扱います。
-
-`/share` で会話をファイルへ保存し、エディターで開いてコピーする方法も利用できることを確認しました。部分的に選択したい場合や長い出力をコピーする場合に向きます。
-
-[Copilot CLI Issue #2082](https://github.com/github/copilot-cli/issues/2082) には `mouse: false` による回避と改善報告、Copied 表示後もクリップボードが変わらない報告があります。[code-server Issue #7938](https://github.com/coder/code-server/issues/7938) でも、TUI のマウス処理による選択・コピーの問題が報告されています。今回も Copilot 内のコピー経路を避けて改善したと考えられますが、内部のどの処理で失敗したかは未確定です。`Copied` 表示だけで成功とは扱わず、ブラウザー外のエディターなどへ貼り付けて確認してください。
-
-通常のターミナルからもコピーできない場合は、この事例と区別し、ブラウザーのクリップボード権限やアクセス URL を確認します。関連する操作と設定は [Copilot の公式リファレンス](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference) を参照してください。
-
-## 検証状況
-
-2026-11-02 時点の結果です。手元の Linux x86_64 に配置済みの以下の実体で、単体実行とローカル host-shell の PTY 付き `job_start` の両方で `--version` が終了コード 0 になることを確認しました。配布元の照合、接続先への注入、認証・推論の成功を意味しません。
-
-| CLI | 手元のバージョン | 単体 / host-shell PTY 起動 |
+| 用途 | 許可先 | 状態 |
 | --- | --- | --- |
-| Copilot | 1.0.83 | 成功 / 成功 |
-| agy | 1.4.12 | 成功 / 成功 |
-| Claude Code | 2.1.316 | 成功 / 成功 |
-| Codex | 0.166.0 | 成功 / 成功 |
-| Grok | 1.0.70 | 成功 / 成功 |
+| ログイン、API、推論 | `github.com:443`、`api.github.com:443`、`*.githubcopilot.com:443`、`copilot-proxy.githubusercontent.com:443` | この組み合わせで認証と対話応答を確認済み |
+| Copilot Chat の BYOK モデル一覧 (`https://main.vscode-cdn.net/extensions/copilotChat.json`) | `main.vscode-cdn.net:443` | 許可後の取得を確認済み |
+| 追加配布物の取得 | `release-assets.githubusercontent.com:443` | どの機能で使用されるかは未確認 |
 
-Table: 初期確認
+Table: Copilot の許可先
 
-Codex は読み取り専用ファイルシステムで PATH 用エイリアスを作成できない警告を出しましたが、バージョン表示は成功しました。この環境固有の警告は、通常操作の成功を示すものではありません。
-
-`internal/clientproxy`、`internal/jobs`、`internal/bridge` の既存テストも成功しています。これは中継・ジョブ管理の基盤の確認であり、各 CLI 型 AI コーディングエージェントの API 互換性の確認ではありません。
-
-### Copilot CLI の隔離コンテナーでの確認
-
-2026-11-02 に Oracle Linux 10.2 / x86_64 / glibc 2.39 の Podman コンテナーへ code-server 4.144.0 と Copilot CLI 1.0.83 を配置しました。host-shell は `fa2c855` のソースからビルドしました。コンテナーは `--network none` で起動し、ネットワーク機器はループバックのみ、外部へのルートはありません。SSH の `ProxyCommand` が `podman exec -i` による標準入出力中継を使用し、コンテナー内のループバックで待ち受ける sshd に接続します。通常の TCP 接続による SSH 到達性の検証とは区別します。
-
-- code-server と Copilot の公式配布アーカイブの SHA-256 を照合し、SSH 上の `transfer_push` で配置・再照合しました。Copilot の配布元は [github/copilot-cli の v1.0.83](https://github.com/github/copilot-cli/releases/tag/v1.0.83)、アーカイブは `copilot-linux-x64.tar.gz`、SHA-256 は `ffbe1c429664b8a05efed67ecdb467123e40fcaa3c6c14ef9a98ba74da4687b7` です。
-- 接続先で Copilot の `--version`、`--help` と PTY 付きのバージョン表示が成功しました。
-- code-server のログインページへの到達を確認し、利用者は Copilot CLI に表示されたコードを別のブラウザーに入力するデバイスコード方式で認証し、ログインに成功しました。今回のログイン検証は完了しています。認証情報の有効期限後の挙動など、長期の認証維持は検証していません。
-- コンテナーから外部 IP への直接 TCP 接続は失敗し、クライアント経由プロキシで `https://api.github.com` への HTTP 200 を確認しました。この HTTP 確認だけでは Copilot の推論成功を意味しません。その後、利用者のスクリーンショットで Copilot の対話応答とツール実行を確認しました。
-- 検証時の許可先は `github.com:443`、`api.github.com:443`、`*.githubcopilot.com:443`、`copilot-proxy.githubusercontent.com:443` です。任意の Web サイトへのアクセスは許可していません。
-
-コンテナー内で直接行う名前解決は失敗します。HTTP プロキシは DNS 自体を中継せず、ホスト名を受け取ってクライアント側 (上流プロキシ利用時はその経路) で名前解決します。許可済みホストへの通信成功と、許可対象外ホストへの HTTP 403 を確認しました。HTTPS では `CONNECT tunnel failed, response 403` と表示されます。追加配布物の取得先 `release-assets.githubusercontent.com:443` も許可対象外として記録されており、必要な機能に応じた許可先の確認が残っています。利用者のスクリーンショットでは、Copilot 内蔵の Web Fetch が `WebFetchBlockedUrlError: failed to lookup address information: Name or service not known` で失敗し、続けて実行した `curl` はプロキシから 403 を受けていました。内蔵 Web Fetch がプロキシ接続とは別に接続先側で事前の名前解決を行っていると考えられますが、その内部実装は未確認です。宛先許可の追加だけで内蔵 Web Fetch が動作するとは扱いません。
-
-この構成では、プロキシ経由で通信できるコマンドと、事前の DNS 問い合わせを必要とする内蔵ツールを区別します。後者には任意機能の [remote-dns](remote-dns.md) を使用できます。名前解決フック単体の検証では、同一 URL の Copilot CLI Web Fetch がフックなしでは DNS エラー、フックありでは成功しました。VS Code 同梱 SDK の環境変数除去などの適用範囲は、同文書の診断節を参照してください。代替としてプロキシ対応の `curl` などを使う場合も、必要なホスト・ポートへの明示的な許可が必要です。
-
-### Copilot Chat の BYOK モデル一覧に必要な許可先
-
-code-server の Copilot Chat は、BYOK（利用者自身の API キーなどを使う外部モデル）の既知モデル一覧を `https://main.vscode-cdn.net/extensions/copilotChat.json` から取得します。GitHub・Copilot API の許可だけではこの宛先を含まないため、この機能には **`main.vscode-cdn.net:443` の追加許可が必要**です。[取得処理の実装](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts) でも取得先を確認できます。
-
-起動オプションでは既存の許可先に次を追加します。
+画面内の Copilot Chat は、起動時に BYOK (利用者自身の API キーなどを使う外部モデル) の既知モデル一覧を `main.vscode-cdn.net` から取得します ([取得処理の実装](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts))。GitHub・Copilot API の許可だけでは取得できず、モデル一覧の更新失敗 (`Failed to update known models list`) が記録されます。取得を許可する場合は、既存の許可先に次を追加します。
 
 ```text
 --proxy-allow-host main.vscode-cdn.net:443
 ```
 
-`proxy_rules_update` が利用できる場合は、現在の `rules_revision` と許可・拒否の全リストを読み、上記1件を許可先に加えて更新します。実行中セッションの更新は再起動不要ですが、セッション終了後は保持されないため、次回の起動オプションにも追加してください。
+`proxy_rules_update` が利用できる場合は、現在の `rules_revision` と許可・拒否の全リストを読み、上記 1 件を許可先に加えて更新します。実行中セッションの更新は再起動不要ですが、セッション終了後は保持されないため、次回の起動オプションにも追加してください。テレメトリーや実験用の宛先 (`mobile.events.data.microsoft.com`、`default.exp-tas.com` など) は、モデル一覧の取得には不要です。
 
-2026-11-03 の検証では、未許可時は同じ URL への CONNECT が 403、許可後は形式バージョン1・5プロバイダー分の JSON（19,535バイト）を取得できました。Copilot 拡張自身の再取得成功は、この直接取得の確認と区別します。通常の Copilot 応答に必要な API と BYOK のカタログ取得先は、機能ごとに確認してください。
+## Copilot CLI のコピーが動作しない場合
 
-以下の状態は Copilot CLI に限ります。他の CLI は上記のローカル起動確認のみです。
+通常のターミナルではコピーできるのに、Copilot CLI の対話画面内でだけ、`Copied` と表示されてもクリップボードが更新されない場合の対処です。Copilot CLI 1.0.83、code-server 4.144.0、Microsoft Edge の組み合わせで確認しています。
+
+マウス操作が有効な間は Copilot がマウス入力を受け取るため、ドラッグでは code-server 側の選択を作れません。`Shift` を押しながらのドラッグや `Ctrl+Shift+C` でもコピーできません。
+
+| 方法 | 手順 | 制限 |
+| --- | --- | --- |
+| コマンド パレットで全体をコピー (推奨) | `Ctrl+Shift+P` で `Terminal: Select All` を実行し、続けて `Terminal: Copy Selection` を実行する。ブラウザー外のエディターなどへ貼り付け、必要な部分を切り出す | ターミナル全体が対象で、部分的な選択はできない。表示範囲より前の出力を含むかは未確認。頻繁に使う場合は 2 つのコマンドにキーを割り当てる |
+| `/share` で保存 | 会話をファイルへ保存し、エディターで開いてコピーする | 部分的な選択や長い出力に向く |
+| マウス処理の無効化 | `copilot --continue --no-mouse` で再開し、マウスで選択・コピーする | ホイールスクロールが効かないなど、操作性が下がる |
+
+Table: コピーの方法
+
+推奨の方法なら、ホイールスクロールなど Copilot のマウス操作を維持できます。`Copied` の表示だけで成功とは扱わず、ブラウザー外へ貼り付けて確認してください。内部のどの処理で失敗するかは確定していません。関連する報告は [Copilot CLI Issue #2082](https://github.com/github/copilot-cli/issues/2082) (`mouse: false` による回避、Copied 表示後もクリップボードが変わらない報告) と [code-server Issue #7938](https://github.com/coder/code-server/issues/7938) (TUI のマウス処理による選択・コピーの問題) にあります。
+
+通常のターミナルからもコピーできない場合は別の原因です。ブラウザーのクリップボード権限やアクセス URL を確認します。関連する操作と設定は [Copilot の公式リファレンス](https://docs.github.com/en/copilot/reference/copilot-cli-reference/cli-command-reference) を参照してください。
+
+## 検証済みの範囲
+
+### Copilot CLI
+
+Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz`、[github/copilot-cli の v1.0.83](https://github.com/github/copilot-cli/releases/tag/v1.0.83)、SHA-256 `ffbe1c429664b8a05efed67ecdb467123e40fcaa3c6c14ef9a98ba74da4687b7`) と code-server 4.144.0 で確認しました。接続先は Oracle Linux 10.2 / x86_64 / glibc 2.39 の Podman コンテナーです。`--network none` で起動し、外部へのルートはありません。SSH は `ProxyCommand` (`podman exec -i` による標準入出力中継) でコンテナー内の sshd に接続しており、通常の TCP による SSH 接続はこの確認に含みません。
 
 | 段階 | 合格条件 | 状態 |
 | --- | --- | --- |
-| 配置 | 対象への転送・ハッシュ照合・依存物確認 | 成功 (Copilot) |
-| 起動 | 対象で `--version`・`--help` が成功 | 成功 (Copilot) |
-| ターミナル | code-server 内で描画・入力・Ctrl-C・リサイズが動作 | 成功。2026-11-02 に利用者が全項目良好と確認 |
-| クリップボード | ターミナルからブラウザー外へコピーできる | マウス有効のまま `Terminal: Select All` と `Terminal: Copy Selection` で成功 (Shift＋ドラッグは失敗)。`--no-mouse` でも成功するがホイール操作に制限あり |
-| 認証 | 選択した方式でログインが成功 | 成功。表示コードを別ブラウザーに入力する方式で利用者が確認 |
-| 推論 | 接続先の直接通信を遮断し、bridge 経由だけで応答を取得 | 利用者のスクリーンショットで対話応答を確認。内蔵 Web Fetch は DNS エラー |
+| 配置 | 対象への転送・ハッシュ照合・依存物確認 | 成功 |
+| 起動 | 対象で `--version`・`--help` が成功 | 成功 |
+| ターミナル | code-server 内で描画・入力・Ctrl-C・リサイズが動作 | 成功 |
+| クリップボード | ターミナルからブラウザー外へコピーできる | [コマンド パレットの方法](#copilot-cli-のコピーが動作しない場合) で成功 |
+| 認証 | 選択した方式でログインが成功 | デバイスコード方式 (表示コードを別ブラウザーに入力) で成功。有効期限後の認証維持は未検証 |
+| 推論 | 接続先の直接通信を遮断し、bridge 経由だけで応答を取得 | 成功 |
+| 内蔵 Web Fetch | 接続先に DNS がない状態で取得が成功 | [remote-dns](remote-dns.md) の併用で成功 |
 | 操作 | 検証用ファイルの編集と小さなコマンドの実行が成功 | 未検証 |
 | 終了 | MCP 切断後、code-server・CLI・補助プロセス・待ち受けを確認 | 未検証 |
 | 複数接続 | 別接続の起動・認証状態・切断の影響を確認 | 未検証 |
 
-Table: 実機検証の段階
+Table: Copilot CLI の検証段階
 
-検証記録には OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、成功段階と失敗理由を残します。
+### その他の CLI
 
-名前解決を接続元へ中継する任意機能: [remote-dns](remote-dns.md)。両端の `--remote-dns` と、接続先の `--remote-dns-library PATH`（事前ビルド版を使う場合）を参照してください。
+手元の Linux x86_64 で、単体実行とローカル host-shell の PTY 付き `job_start` の両方で `--version` が成功することだけを確認しています。配布元の照合、接続先への配置、認証・推論は未検証です。
+
+| CLI | 確認したバージョン |
+| --- | --- |
+| agy | 1.4.12 |
+| Claude Code | 2.1.316 |
+| Codex | 0.166.0 |
+| Grok | 1.0.70 |
+
+Table: 起動を確認した CLI
+
+Codex は読み取り専用ファイルシステムでは、PATH 用エイリアスを作成できない警告を出します。バージョン表示には影響しません。
+
+### 検証の記録
+
+新しく検証するときは、OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、成功段階と失敗理由を記録します。経緯の記録は `docs/prompts/past/` に置き、この文書には結果だけを反映します。これまでの経緯は [CLI 型 AI コーディングエージェントの検証記録](../prompts/past/261102-coding-agents-validation.md) にあります。

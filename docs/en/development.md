@@ -111,6 +111,7 @@ Follow these rules when modifying the codebase.
 - **Support cancellation of long-running operations**: The handler's `ctx` is cancelled when the client cancels a request; bind all child processes and network operations to `ctx`.
 - **Keep code comments in English**: Write comments in Go files, shell scripts, Makefiles, workflows, and `SKILL.md` in English (preserve Japanese strings in test data).
 - **Maintain Japanese documentation as the single source of truth (SSOT)**: `docs/ja/` is the SSOT and `docs/en/` contains English translations. Update `docs/ja/` first and reflect changes in `docs/en/` in the same change. If they differ, the Japanese version takes precedence. `README.md` and `docs/README.md` include both English and Japanese in that order.
+- **Write documents as the final specification**: Documents describe use cases, procedures, verified scope, and limitations. Work history (dates, who confirmed what, investigation steps, log excerpts) goes to `docs/prompts/past/` instead. See [AGENTS.md](../../AGENTS.md#documentation-policy) for details.
 
 ## Adding a tool
 
