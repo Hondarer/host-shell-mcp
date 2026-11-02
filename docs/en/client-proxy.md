@@ -46,6 +46,12 @@ Both standard HTTP proxy requests and `CONNECT` tunnels are supported. TLS traff
 - **Precedence in tools**: An explicit `proxy` argument (a proxy URL or `none`) in `net_request_http` takes precedence; when omitted, the session relay proxy and `NO_PROXY` apply (`unix_socket` requests always connect directly). `exec_sudo` follows `sudo`'s own environment preservation rules, so proxy variables are not guaranteed to propagate automatically.
 - **Scope of restrictions**: This feature does not isolate all OS-level networking. Because `CONNECT` can carry arbitrary TCP streams to allowed ports, permit only the specific hosts and ports required. Any `--allow-host` rules on the target continue to apply to the `net_*` tools.
 
+### Distinguishing DNS failures from denied destinations
+
+This is an HTTP proxy, not a relay for the target OS's DNS queries. When an application sends a hostname to the proxy, resolution happens on the client side or through the configured upstream proxy route. Thus HTTP/HTTPS can work through the proxy even when `getaddrinfo` or `nslookup` fails in a container without networking. Applications that perform their own lookup before connecting to the proxy require separate handling.
+
+`destination not allowed` in `proxy_status` means the destination allowlist rejected the request; it is not a DNS error. HTTP returns 403, and HTTPS receives 403 for CONNECT. Compare requests to allowed hosts, denied hosts and ports, and application errors. Adding external networking to the container is not necessary merely to make proxy-based name resolution work.
+
 ## Authentication and diagnostics
 
 The target proxy listener binds only to an ephemeral port on IPv4 loopback (`127.0.0.1`) and requires a session-specific proxy authentication token.

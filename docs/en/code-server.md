@@ -224,6 +224,18 @@ Transferring the former 20 default extensions (144 MB) took 3–4 seconds, so th
 
 On subsequent runs, unchanged files with matching SHA-256 hashes are skipped.
 
+## Copying from the terminal
+
+Copying may work in an ordinary terminal while Copilot CLI shows `Copied` without updating the clipboard. In the validation environment, holding Shift while dragging and then pressing Ctrl+C with Shift still held (Ctrl+Shift+C) restored copying with mouse support enabled. `--no-mouse` also works, but impairs wheel scrolling and other interactions. See [Clipboard copying fails only inside Copilot CLI](coding-agents.md#clipboard-copying-fails-only-inside-copilot-cli) for applicability and limitations.
+
+## Blue dot or pencil near the cursor in Edge
+
+Microsoft Edge's Writing assistance can show a blue dot or pencil icon in the code-server terminal input area. Distinguish this browser UI from code-server and Copilot CLI running in the terminal.
+
+On 2026-11-02, the user identified **Show writing hints** under **Writing assistance** in Edge settings as the relevant toggle. Open `edge://settings/languages` and turn it off. The setting's location and label may differ between Edge versions.
+
+The parent **Use writing assistance** toggle can remain enabled while cursor hints are disabled. No code-server or container configuration changes are needed.
+
 ## Security considerations
 
 - Operations performed inside code-server's built-in terminal and file explorer bypass `host-shell` policy restrictions (`--allow-command`, `--allow-path`, `--deny-command`, etc.) and are not logged in `host-shell`'s audit log (only the port-forward connection `forward_connect` is logged on the target). When policy restrictions are active on the target, the agent explains this and asks for explicit user approval before proceeding. Target administrators control whether this path is available via `--allow-forward-local`.
