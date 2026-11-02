@@ -85,7 +85,7 @@ To avoid modifying system directories on the target, place the binary in a user-
 
 Table: Default locations
 
-- If `/tmp` is mounted `noexec`, execution policies (such as AppLocker) block startup, or directory permissions are unsafe, `deploy.sh` falls back to the second candidate.
+- If `/tmp` is mounted `noexec`, execution policies (such as AppLocker) block startup, directory permissions are unsafe, or the file system has less free space than the binary (about 12 MiB), `deploy.sh` falls back to the second candidate. The free space is checked before anything is written.
 - The `/tmp` directory is created with mode `700` to prevent replacement by other users. Symbolic links and directories owned or writable by other users are rejected.
 - Use system directories such as `/opt`, `/usr/local`, or `C:/` only when explicitly requested (`sudo` is not used).
 - Files in `/tmp` and `%TEMP%` may be removed on reboot or by periodic cleanup (such as `systemd-tmpfiles`). If removed, rerun the deployment procedure (agent registration does not change).

@@ -1,7 +1,9 @@
 package tools
 
 import (
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -42,5 +44,18 @@ func TestDescendantPIDs(t *testing.T) {
 	}
 	if got := descendantPIDs(parents, 6); len(got) != 0 {
 		t.Errorf("descendantPIDs(6) = %v, want none", got)
+	}
+}
+
+func TestCheckSpace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "new-file")
+	if err := checkSpace(path, 0); err != nil {
+		t.Errorf("unknown size should pass: %v", err)
+	}
+	if err := checkSpace(path, 1); err != nil {
+		t.Errorf("one byte should fit: %v", err)
+	}
+	if err := checkSpace(path, 1<<62); err == nil || !strings.Contains(err.Error(), "not enough space") {
+		t.Errorf("4 EiB should not fit: %v", err)
 	}
 }

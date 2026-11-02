@@ -34,6 +34,7 @@ function Get-HscsConfig {
         Port          = $port
         PortFirst     = [int]$values["CODE_SERVER_PORT_FIRST"]
         PortLast      = [int]$values["CODE_SERVER_PORT_LAST"]
+        InstallMiB    = [int64]$values["CODE_SERVER_INSTALL_MIB"]
         Sha256        = @{
             "linux-amd64"   = $values["CODE_SERVER_LINUX_AMD64_SHA256"]
             "linux-arm64"   = $values["CODE_SERVER_LINUX_ARM64_SHA256"]

@@ -16,6 +16,7 @@ When the MCP server is registered via `host-shell bridge` on the local machine, 
 - File data streams directly between `bridge` and `host-shell` in 1 MiB chunks without passing through the model context. Each destination file is written to a temporary path, verified by SHA-256, and renamed into place.
 - Files with matching SHA-256 hashes are skipped (`unchanged`), so repeated calls transfer only modified files. Existing files that differ are skipped and reported as `exists` unless `overwrite: true`. `dry_run: true` previews actions without transferring bytes.
 - Up to `parallel` files (default 4, max 16) transfer concurrently while preserving result order.
+- `transfer_push` compares the bytes it would write with the free space at the destination before sending and fails without writing anything if they do not fit. For other large placements (for example `net_request_http` with `save_to`, or files written with `fs_write`), check `available_bytes` of `fs_stat` on the destination directory first.
 - Executable permissions are preserved between Linux hosts. Empty directories and symbolic links are skipped.
 - If `transfer_push` and `transfer_pull` are not listed, the server was registered without `host-shell bridge`.
 

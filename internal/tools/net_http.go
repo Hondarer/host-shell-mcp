@@ -318,6 +318,9 @@ func textual(mediaType string) bool {
 }
 
 func (d *Deps) saveBody(resp *http.Response, path string, pr *progress, out *NetRequestHTTPOutput) error {
+	if err := checkSpace(path, resp.ContentLength); err != nil {
+		return err
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		return err

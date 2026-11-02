@@ -31,6 +31,17 @@ else {
         throw "code-server is running; stop it before reinstalling"
     }
     New-Item -ItemType Directory -Force -Path $config.BaseDir | Out-Null
+    # Check the space before extracting, so a full disk fails early instead of leaving a partial tree.
+    $free = $null
+    try {
+        $free = (New-Object System.IO.DriveInfo ([System.IO.Path]::GetPathRoot($config.BaseDir))).AvailableFreeSpace
+    }
+    catch {
+        # DriveInfo does not support UNC paths; skip the check there.
+    }
+    if ($null -ne $free -and $free -lt ($config.InstallMiB * 1MB)) {
+        throw "not enough disk space for $($config.BaseDir): $($config.InstallMiB) MiB needed, $([int64]($free / 1MB)) MiB available"
+    }
     $temp = Join-Path $config.BaseDir (".extract-" + [guid]::NewGuid().ToString("n"))
     New-Item -ItemType Directory -Force -Path $temp | Out-Null
     try {

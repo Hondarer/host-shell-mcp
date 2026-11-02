@@ -15,7 +15,7 @@ Below, `$SKILL` refers to the directory containing this `SKILL.md` (`.agents/ski
 
 | Path | Contents |
 |---|---|
-| `version.env` | code-server version, bundled VS Code version, target port range (`8000`–`8079`), and SHA-256 of each release archive |
+| `version.env` | code-server version, bundled VS Code version, target port range (`8000`–`8079`), disk space `install` needs (`CODE_SERVER_INSTALL_MIB`), and SHA-256 of each release archive |
 | `defaults/User/settings.json`, `defaults/Machine/settings.json` | Default settings installed on first setup |
 | `defaults/extensions.txt` | Default extensions (`publisher.name` or `publisher.name@version`, one per line) |
 | `packages/` | Release archives and `extensions/<TYPE>/` (VSIX files and `resolved-extensions.txt`) fetched by `download` (not tracked in Git) |
@@ -50,7 +50,8 @@ Table: Folder layout
 3. The installation kit is transferred with `transfer_push`. If `bridge` does not publish `transfer_push` (for example, when started with `--no-transfer`; note that `bridge` refuses to start against a `--read-only` target unless `--no-transfer` is set), stop and inform the user.
 4. If `restrictions` in `sys_get_info` is non-empty, explain that code-server's built-in terminal and file access bypass `host-shell` restrictions (`--read-only`, `--allow-command`, `--allow-path`, etc.) and are not recorded in the `host-shell` audit log. Proceed only after receiving the user's explicit approval.
 5. On Linux targets, code-server requires glibc and a writable home directory; `install.sh` checks both before extracting. Musl-based distributions such as Alpine containers are not supported.
-6. Ask the user which directory code-server should open (default: the target user's home directory, `home` in `sys_get_info`).
+6. Check free disk space before sending anything. Call `fs_stat` on the target user's home directory (Linux) or `LOCALAPPDATA` (Windows; retrieve it with `exec_run` `echo $env:LOCALAPPDATA`) and read `available_bytes`. Installation needs about 1 GiB there (measured: kit about 225 MiB plus about 690 MiB for code-server, extensions, and user data; see "Required disk space" in `docs/en/code-server.md`). If less is available, stop and tell the user how much is free and how much is needed. `transfer_push` and `install` also refuse when space runs short, but checking first avoids a partial kit.
+7. Ask the user which directory code-server should open (default: the target user's home directory, `home` in `sys_get_info`).
 
 ### 2. Fetch on the client
 
@@ -80,7 +81,7 @@ The kit directory on the target is `<home>/.local/share/host-shell-code-server/k
 
 Table: Files to send
 
-The release archive is roughly 210–230 MB and the default extensions are roughly 140 MB; let the user know the initial transfer takes some time. Unchanged files are skipped on subsequent runs.
+The release archive is roughly 200–225 MiB and the default extensions are about 1.5 MiB; let the user know the initial transfer takes some time. Unchanged files are skipped on subsequent runs. If `transfer_push` reports `not enough space on the target`, stop and relay the message.
 
 ### 4. Install
 
@@ -89,7 +90,7 @@ Run with `exec_run` and `timeout_sec: 900`:
 - Linux: `argv: ["bash", "<kit>/scripts/linux/install.sh"]`
 - Windows: `argv: ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "<kit>\\scripts\\windows\\install.ps1"]`
 
-The script verifies and extracts the archive, creates the configuration file with a newly generated password (never printed), and on the first install copies default settings (only for files that do not yet exist) and installs default extensions (while the marker file is absent). Relay any errors—such as missing utilities (`tar`, `gzip`, `sha256sum`, `od`), missing glibc, or an unwritable `HOME`—directly to the user.
+The script verifies and extracts the archive, creates the configuration file with a newly generated password (never printed), and on the first install copies default settings (only for files that do not yet exist) and installs default extensions (while the marker file is absent). Before extracting, it checks that `CODE_SERVER_INSTALL_MIB` (768 MiB, in `version.env`) is free and exits without extracting anything if not. Relay any errors—such as missing utilities (`tar`, `gzip`, `sha256sum`, `od`, `df`), `not enough disk space`, missing glibc, or an unwritable `HOME`—directly to the user.
 
 ### 5. Copy the configuration to the client
 

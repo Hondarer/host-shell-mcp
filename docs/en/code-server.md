@@ -160,6 +160,26 @@ Table: File locations on the target
 
 In addition to the paths above, code-server and its extensions may create small files (a few tens of kilobytes in total) in directories shared with other VS Code-based tools (`~/.vscode-oss-shared/`, `~/.copilot/logs/`, `~/.cache/Microsoft/`, `~/.local/state/crossnote/`, etc.; under `%USERPROFILE%` on Windows). Because those directories are shared, `--purge` leaves them intact, while removing `coder-logs` and `heartbeat` written by code-server.
 
+## Required disk space
+
+The table below shows measured disk usage on the target with code-server 4.144.0 and the three default extensions. The Linux figures come from running `install` in a development environment (WSL2, ext4). The Windows figures are the sizes of the extracted release archive and extensions, not a measurement of `install` running on Windows.
+
+| Location | Linux x86_64 | Windows amd64 |
+| --- | --- | --- |
+| Kit (release archive, extensions, scripts) | 222 MiB | 204 MiB |
+| code-server | 683 MiB | 632 MiB |
+| Extensions | 5 MiB | 5 MiB |
+| User data (settings) | 1 MiB | (not measured) |
+| Total | 912 MiB | about 840 MiB |
+
+Table: Disk usage on the target (measured)
+
+- The directories are listed in [Stopping and uninstalling](#stopping-and-uninstalling). The kit, code-server, extensions, and user data share one file system (the home directory on Linux, the drive of `%LOCALAPPDATA%` on Windows).
+- The peak usage during installation equals the total: the extracted tree is moved within the same file system, never held twice.
+- Logs and caches grow after startup. A headless start added less than 1 MiB, but browser use and additional extensions add more.
+- Installation needs **about 1 GiB** free on the file system of the home directory (Windows: `%LOCALAPPDATA%`). The skill checks it with `available_bytes` of `fs_stat` before sending the kit, and `transfer_push` checks before transferring. `install` checks the space it needs for code-server and the rest (`CODE_SERVER_INSTALL_MIB` in `version.env`, 768 MiB) before extracting and exits without extracting anything if it is short.
+- The kit stays after installation (it is used to reinstall and to reapply extensions). Remove it with an uninstall using `--purge` when it is no longer needed.
+
 ## Transfer size and time
 
 The table below shows reference measurements taken in a development environment (WSL) with `bridge` connected directly to `host-shell` without SSH. Actual transfer times depend on the bandwidth of your SSH route (`transfer_push` encodes chunks in base64, so wire traffic is approximately 1.33× the raw file size).
@@ -167,10 +187,12 @@ The table below shows reference measurements taken in a development environment 
 | Step | Linux x86_64 | Windows amd64 |
 | --- | --- | --- |
 | Release archive | 231 MB, 16 s | 212 MB, 17 s |
-| Default extensions (20) | 144 MB, 3 s | 144 MB, 4 s |
-| `install` (extraction and extension setup) | 43 s | 82 s |
+| Default extensions (3) | 1.4 MB | 1.4 MB |
+| `install` (extraction and extension setup) | 9 s | 82 s (measured with the former 20 default extensions) |
 
 Table: Transfer size and time (measured)
+
+Transferring the former 20 default extensions (144 MB) took 3–4 seconds, so the current three take negligible time.
 
 On subsequent runs, unchanged files with matching SHA-256 hashes are skipped.
 

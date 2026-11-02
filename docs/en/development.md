@@ -78,6 +78,7 @@ internal/audit/        Audit log (JSON Lines)
 internal/config/       Startup option values and defaults (no components created at runtime)
 internal/askpass/      Askpass helper that passes the exec_sudo password to sudo -A
 internal/wire/         Names and transfer payloads shared by the bridge and target tools
+internal/bytesize/     Byte count formatting for people (shared by the target tools and bridge)
 internal/testutil/     Test helpers shared across packages
 internal/version/      Version metadata
 .agents/skills/host-shell-connect/
@@ -105,6 +106,7 @@ Follow these rules when modifying the codebase.
 - **Keep MCP guidance self-contained**: Write tool descriptions, argument descriptions, `help_get` topics, and error messages concretely enough for agents to determine their next action without external docs.
 - **Isolate OS differences internally**: Place OS-specific logic behind `runtime.GOOS` checks or in `_unix.go` and `_windows.go` files.
 - **Unrestricted by default, restricted only when specified**: Apply only policies explicitly passed via startup flags. To prevent new tools from bypassing restrictions, implement `PathArgs` on input types taking paths, implement `CommandArgs` on input types spawning programs, and validate network destinations with `d.Policy.CheckHost`.
+- **Check free space before placing large files**: Operations that write large files on the target (transfers, downloads, extraction) check the free space before writing and fail without writing anything when it is short. Tools use `checkSpace`, `bridge` uses `checkRemoteSpace` (`available_bytes` of `fs_stat`), and skill scripts use `df` or `DriveInfo`.
 - **Support cancellation of long-running operations**: The handler's `ctx` is cancelled when the client cancels a request; bind all child processes and network operations to `ctx`.
 - **Keep code comments in English**: Write comments in Go files, shell scripts, Makefiles, workflows, and `SKILL.md` in English (preserve Japanese strings in test data).
 - **Maintain Japanese documentation as the single source of truth (SSOT)**: `docs/ja/` is the SSOT and `docs/en/` contains English translations. Update `docs/ja/` first and reflect changes in `docs/en/` in the same change. If they differ, the Japanese version takes precedence. `README.md` and `docs/README.md` include both English and Japanese in that order.

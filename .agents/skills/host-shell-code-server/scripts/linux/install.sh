@@ -24,7 +24,7 @@ case "${1:-}" in
 esac
 
 # python3, openssl and ss are deliberately not required: minimal closed environments often lack them.
-require_cmd tar gzip sha256sum od uname tr
+require_cmd tar gzip sha256sum od uname tr df tail cut
 type="$(linux_type)" || die "unsupported architecture: $(uname -m) (supported: x86_64, aarch64)"
 # The bundled node is linked against glibc; checking its loader first avoids sending and extracting
 # the archive on musl-based systems, where node would fail with an obscure "not found".
@@ -41,6 +41,12 @@ else
     die "code-server is running; stop it before reinstalling"
   fi
   mkdir -p "${HSCS_LIB_DIR}"
+  # Check the space before extracting, so a full disk fails early instead of leaving a partial tree.
+  avail_kib="$(df -Pk "${HSCS_LIB_DIR}" | tail -n 1 | tr -s ' ' | cut -d' ' -f4)"
+  need_kib=$((CODE_SERVER_INSTALL_MIB * 1024))
+  if [[ "${avail_kib}" =~ ^[0-9]+$ ]] && ((avail_kib < need_kib)); then
+    die "not enough disk space in ${HSCS_LIB_DIR}: ${CODE_SERVER_INSTALL_MIB} MiB needed, $((avail_kib / 1024)) MiB available"
+  fi
   tmp="$(mktemp -d "${HSCS_LIB_DIR}/.extract.XXXXXX")"
   trap 'rm -rf "${tmp}"' EXIT
   tar -C "${tmp}" -xzf "${archive}" || die "failed to extract ${archive}"

@@ -12,6 +12,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/hondarer/host-shell-mcp/internal/bytesize"
 	"github.com/hondarer/host-shell-mcp/internal/proc"
 )
 
@@ -312,23 +313,10 @@ func (d *Deps) diskList(_ context.Context, _ *mcp.CallToolRequest, in DiskListIn
 		if dk.TotalBytes > 0 {
 			dk.UsedPercent = float64(int(float64(dk.UsedBytes)/float64(dk.TotalBytes)*1000+0.5)) / 10
 		}
-		dk.Total, dk.Free = approxSize(dk.TotalBytes), approxSize(dk.FreeBytes)
+		dk.Total, dk.Free = bytesize.Format(dk.TotalBytes), bytesize.Format(dk.FreeBytes)
 	}
 	if disks == nil {
 		disks = []Disk{}
 	}
 	return nil, DiskListOutput{Disks: disks}, nil
-}
-
-func approxSize(n uint64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-	div, exp := uint64(unit), 0
-	for m := n / unit; m >= unit; m /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }

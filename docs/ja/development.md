@@ -78,6 +78,7 @@ internal/audit/        操作ログ (JSON Lines)
 internal/config/       起動オプションの設定値と既定値 (実行時に生成する部品は持たない)
 internal/askpass/      exec_sudo のパスワードを sudo -A へ渡す askpass ヘルパー
 internal/wire/         bridge と接続先ツールが共有する名前と転送データ型
+internal/bytesize/     バイト数の表示用整形 (接続先ツールと bridge で共有)
 internal/testutil/     パッケージ横断のテスト用ヘルパー
 internal/version/      バージョン情報
 .agents/skills/host-shell-connect/
@@ -105,6 +106,7 @@ docs/en/               文書の英語版 (docs/ja/ の英訳)
 - **MCP 情報のみでの自己完結**: ツール説明、引数説明、`help_get` 本文、エラー メッセージは、エージェントが次の操作を判断できるよう具体的に記述します。
 - **OS 差異の内部吸収**: OS 固有処理は `runtime.GOOS` 分岐または `_unix.go`、`_windows.go` ファイルに分離します。
 - **既定は無制限・明示指定のみ制限**: 起動オプションで指定されたポリシーのみを適用します。新規ツールで制限が回避されないよう、パス引数を持つ入力型には `PathArgs`、プログラムを起動する入力型には `CommandArgs` を実装し、ネットワーク接続先は `d.Policy.CheckHost` で検査します。
+- **大きなファイル配置前の空き容量確認**: 接続先に大きなファイルを書き込む処理 (転送、ダウンロード、展開) は、書き込みを始める前に空き容量を確認し、足りない場合は何も書き込まずにエラーを返します。ツールでは `checkSpace`、`bridge` では `checkRemoteSpace` (`fs_stat` の `available_bytes`)、スキルのスクリプトでは `df` または `DriveInfo` を使用します。
 - **長時間処理のキャンセル対応**: ハンドラーの `ctx` はクライアントからのキャンセル通知で完了するため、子プロセスや通信処理はすべて `ctx` に紐付けます。
 - **コード コメントの英語統一**: Go コード、シェル スクリプト、Makefile、ワークフローのコメントと、スキル (`SKILL.md`) は英語で記述します (テスト データ内の日本語文字列はそのまま維持します)。
 - **文書の正本は日本語**: `docs/ja/` の日本語版を正本とし、`docs/en/` に英訳を配置します。文書を変更する際は正本の日本語版を変更し、同じ変更で英語版へ反映します。内容が一致しない場合は日本語版が優先されます。`README.md` と `docs/README.md` には英語、日本語の順で両言語を記述します。

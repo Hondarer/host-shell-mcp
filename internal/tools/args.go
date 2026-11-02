@@ -3,8 +3,10 @@ package tools
 import (
 	"encoding/base64"
 	"fmt"
+	"path/filepath"
 	"regexp"
 
+	"github.com/hondarer/host-shell-mcp/internal/bytesize"
 	"github.com/hondarer/host-shell-mcp/internal/textenc"
 )
 
@@ -78,4 +80,18 @@ func compileUntil(pattern string) (*regexp.Regexp, error) {
 		return nil, fmt.Errorf("until: %w", err)
 	}
 	return re, nil
+}
+
+// checkSpace fails when size bytes would not fit on the file system that is to hold path (a
+// file that may not exist yet); an unknown size or free space passes.
+func checkSpace(path string, size int64) error {
+	if size <= 0 {
+		return nil
+	}
+	dir := filepath.Dir(absPath(path))
+	avail, ok := availableBytes(dir)
+	if !ok || uint64(size) <= avail {
+		return nil
+	}
+	return fmt.Errorf("not enough space for %s: %s needed, %s available on its file system", path, bytesize.Format(uint64(size)), bytesize.Format(avail))
 }

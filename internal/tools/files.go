@@ -172,9 +172,10 @@ type FsStatInput struct {
 
 // FsStatOutput is the output of fs_stat.
 type FsStatOutput struct {
-	Path       string `json:"path"`
-	Entry      Entry  `json:"entry"`
-	LinkTarget string `json:"link_target,omitempty"`
+	Path           string  `json:"path"`
+	Entry          Entry   `json:"entry"`
+	LinkTarget     string  `json:"link_target,omitempty"`
+	AvailableBytes *uint64 `json:"available_bytes,omitempty" jsonschema:"free space available to this user on the file system containing the path (check before placing large files)"`
 }
 
 func (d *Deps) fsStat(_ context.Context, _ *mcp.CallToolRequest, in FsStatInput) (*mcp.CallToolResult, FsStatOutput, error) {
@@ -185,6 +186,9 @@ func (d *Deps) fsStat(_ context.Context, _ *mcp.CallToolRequest, in FsStatInput)
 	out := FsStatOutput{Path: absPath(in.Path), Entry: newEntry(info.Name(), info)}
 	if info.Mode()&fs.ModeSymlink != 0 {
 		out.LinkTarget, _ = os.Readlink(in.Path)
+	}
+	if n, ok := availableBytes(in.Path); ok {
+		out.AvailableBytes = &n
 	}
 	return nil, out, nil
 }

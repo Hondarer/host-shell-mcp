@@ -107,6 +107,12 @@ func TestFileOperations(t *testing.T) {
 		t.Fatal("fs_mkdir did not create")
 	}
 	os.WriteFile(filepath.Join(src, "sub", "f.txt"), []byte("data"), 0o644)
+	st := testutil.Call[struct {
+		AvailableBytes *uint64 `json:"available_bytes"`
+	}](t, cs, "fs_stat", map[string]any{"path": src})
+	if st.AvailableBytes == nil || *st.AvailableBytes == 0 {
+		t.Errorf("fs_stat available_bytes = %v", st.AvailableBytes)
+	}
 
 	// Copying a directory needs recursive.
 	testutil.CallErr(t, cs, "fs_copy", map[string]any{"source": src, "destination": filepath.Join(dir, "copy")})

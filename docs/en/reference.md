@@ -746,6 +746,7 @@ Table: Arguments of fs_stat
 | `path` | string | Absolute path |
 | `entry` | object | Attributes (same format as elements of [`fs_list`](#fs_list)) |
 | `link_target` | string | Target of a symbolic link |
+| `available_bytes` | integer | Free space available to the connected user on the file system containing the path (omitted when unavailable); use it before placing large files |
 
 Table: Output of fs_stat
 
@@ -1220,7 +1221,7 @@ Sends an HTTP or HTTPS request and returns the status, headers, and response bod
 | `proxy` | string | | Proxy URL or `none` (uses environment variables such as `HTTP_PROXY` when omitted) |
 | `response_encoding` | string | | `auto` (default), `text`, `base64` |
 | `max_bytes` | integer | | Maximum response body bytes to return (defaults to and is capped at `--max-output`) |
-| `save_to` | string | | Stream the response body directly to a file on the target instead of returning it in `body` (no size limit) |
+| `save_to` | string | | Stream the response body directly to a file on the target instead of returning it in `body` (no size limit; fails before saving when `Content-Length` exceeds the free space at the destination) |
 
 Table: Arguments of net_request_http
 
@@ -1543,6 +1544,8 @@ Transfers a local file or directory to the target.
 | `parallel` | integer | | Number of concurrent file transfers (1 to 16; `4` when omitted) |
 
 Table: Arguments of transfer_push
+
+Before anything is sent, the bytes the push is expected to write (files missing on the target or differing in size, plus the largest existing file of the same size) are compared with the free space of the file system holding the destination or its nearest existing parent (`available_bytes` of `fs_stat`). If they do not fit, the call fails without writing anything (not checked with `dry_run`).
 
 Each file is transferred as follows (on failure, `.host-shell-part` is removed; empty directories and symbolic links are skipped):
 

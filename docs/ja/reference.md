@@ -747,6 +747,7 @@ Table: fs_stat の引数
 | `path` | string | 絶対パス |
 | `entry` | object | 属性 ([`fs_list`](#fs_list) の要素と同一形式) |
 | `link_target` | string | シンボリック リンクのリンク先 |
+| `available_bytes` | integer | パスを含むファイル システムで接続ユーザーが使用できる空き容量 (取得できない場合は省略)。大きなファイルを配置する前の確認に使用する |
 
 Table: fs_stat の出力
 
@@ -1221,7 +1222,7 @@ HTTP / HTTPS リクエストを送信し、ステータス、ヘッダー、レ�
 | `proxy` | string | | プロキシ URL または `none` (省略時は環境変数 `HTTP_PROXY` 等に従う) |
 | `response_encoding` | string | | `auto` (既定)、`text`、`base64` |
 | `max_bytes` | integer | | レスポンス本文の最大取得バイト数 (省略時および上限は `--max-output`) |
-| `save_to` | string | | レスポンス本文を結果に含めず接続先ファイルへ直接保存する (サイズ上限なし) |
+| `save_to` | string | | レスポンス本文を結果に含めず接続先ファイルへ直接保存する (サイズ上限なし。`Content-Length` が保存先の空き容量を超える場合は保存前にエラー) |
 
 Table: net_request_http の引数
 
@@ -1544,6 +1545,8 @@ Table: bridge のオプション
 | `parallel` | integer | | 同時転送ファイル数 (1〜16、省略時は `4`) |
 
 Table: transfer_push の引数
+
+転送を始める前に、書き込む見込みのバイト数 (接続先にないファイルとサイズが異なるファイルの合計に、同サイズの既存ファイルのうち最大のものを加えた値) と、転送先 (または存在する最も近い親ディレクトリ) を含むファイル システムの空き容量 (`fs_stat` の `available_bytes`) を比較し、足りない場合は何も書き込まずにエラーを返します (`dry_run` 時は確認しません)。
 
 各ファイルは次の手順で転送されます (失敗時は `.host-shell-part` を削除し、空ディレクトリとシンボリック リンクはスキップします)。
 

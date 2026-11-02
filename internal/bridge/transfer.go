@@ -22,6 +22,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/hondarer/host-shell-mcp/internal/bytesize"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/wire"
 )
@@ -286,6 +287,12 @@ func (t *transfer) push(ctx context.Context, req *mcp.CallToolRequest, in Transf
 				e.Path = filepath.Base(in.LocalPath)
 			}
 			remote[e.Path] = e
+		}
+	}
+
+	if !in.DryRun {
+		if err := t.checkRemoteSpace(ctx, dest, pushBytes(files, remote)); err != nil {
+			return nil, TransferOutput{}, err
 		}
 	}
 
@@ -588,6 +595,71 @@ func (t *transfer) remoteStat(ctx context.Context, p string) (string, bool, erro
 		return "", false, err
 	}
 	return st.Entry.Type, true, nil
+}
+
+// pushBytes estimates the space a push needs on the target: every file that is missing there or
+// differs in size, plus the largest same-size file, since a replaced file is written beside the
+// old one before the rename. Unchanged files are found only by hashing, so this is an upper bound.
+func pushBytes(files []localFile, remote map[string]wire.ManifestEntry) int64 {
+	var need, sameSize int64
+	for _, f := range files {
+		if f.link {
+			continue
+		}
+		if e, ok := remote[f.rel]; ok && e.Size == f.size {
+			sameSize = max(sameSize, f.size)
+			continue
+		}
+		need += f.size
+	}
+	return need + sameSize
+}
+
+// checkRemoteSpace fails before anything is sent when need bytes exceed the space available on
+// the target file system that holds dest (or its nearest existing parent). Targets that do not
+// report free space are not checked.
+func (t *transfer) checkRemoteSpace(ctx context.Context, dest string, need int64) error {
+	if need <= 0 {
+		return nil
+	}
+	p := strings.TrimRight(dest, `/\`)
+	for {
+		var st struct {
+			AvailableBytes *uint64 `json:"available_bytes"`
+		}
+		err := callRemote(ctx, t.remote, "fs_stat", map[string]any{"path": p}, &st)
+		var re *remoteError
+		switch {
+		case err == nil:
+			if st.AvailableBytes == nil || uint64(need) <= *st.AvailableBytes {
+				return nil
+			}
+			return fmt.Errorf("not enough space on the target: %s needed, %s available on the file system of %s; free space or choose another remote_path",
+				bytesize.Format(uint64(need)), bytesize.Format(*st.AvailableBytes), p)
+		case errors.As(err, &re) && notExist(re.msg):
+			parent := remoteParent(p)
+			if parent == "" || parent == p {
+				return nil
+			}
+			p = parent
+		default:
+			return err
+		}
+	}
+}
+
+// remoteParent returns the parent of a target path written with / or \ separators, or "".
+func remoteParent(p string) string {
+	i := strings.LastIndexAny(p, `/\`)
+	switch {
+	case i < 0:
+		return ""
+	case i == 0:
+		return p[:1]
+	case i == 2 && p[1] == ':':
+		return p[:3] // C:\
+	}
+	return p[:i]
 }
 
 // notExist reports whether a remote error message indicates a missing path.

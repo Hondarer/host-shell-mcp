@@ -456,6 +456,7 @@ All running jobs terminate when the SSH session disconnects ([Runs only while co
 When registered with `bridge`, prompts such as "transfer local `dist/` to `/srv/app/dist` on the target" or "download `/var/log/app` into the local `logs/` directory" use `transfer_push` and `transfer_pull`.
 
 - File data bypasses the agent context, streaming in 1 MiB chunks into a temporary file verified by SHA-256 before renaming.
+- Free space on the target is checked before the transfer starts; if it is insufficient, nothing is written. When placing large files by other means, check the free space first with `available_bytes` of `fs_stat`.
 - Identical files at the destination are skipped automatically, allowing repeated runs to act as a differential sync.
 - Existing files with different content are skipped unless `overwrite: true` is set. `exclude` filters out patterns such as `.git` or `node_modules`, and Linux executable bits are preserved.
 

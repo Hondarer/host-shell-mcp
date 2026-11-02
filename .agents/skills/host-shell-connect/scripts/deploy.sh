@@ -39,6 +39,9 @@ else
 	local_sum=$(shasum -a 256 "$file" | cut -d' ' -f1)
 fi
 
+size=$(wc -c <"$file" | tr -d ' ')
+size_kib=$(((size + 1023) / 1024))
+
 remote() { "$dir/remote.sh" "$route" "$1"; }
 hash_of() { tr -d '\r' | tr 'A-F' 'a-f' | grep -oE '[0-9a-f]{64}' | head -n 1; }
 ps="powershell -NoProfile -NonInteractive -Command"
@@ -57,11 +60,15 @@ query_cmd() {
 	windows) printf '%s "$p=%s; if (Test-Path -PathType Container (Split-Path $p)) { %s }; if (Test-Path $p) { (Get-FileHash $p).Hash }"' "$ps" "'$1'" "'dir-exists'" ;;
 	esac
 }
+# Fails before writing when the target file system has less free space than the binary needs,
+# so the next default path (for example outside a small /tmp) is tried instead.
+space_check='a=$(df -Pk "$d" 2>/dev/null | tail -n 1 | tr -s " " | cut -d" " -f4)
+case $a in "" | *[!0-9]*) ;; *) if [ "$a" -lt '"$size_kib"' ]; then echo "not enough disk space in $d: '"$size_kib"' KiB needed, $a KiB available" >&2; exit 1; fi ;; esac'
 # Writes to a temporary .new file and renames it into place so an active Linux binary can be replaced atomically.
 upload_cmd() {
 	case $os in
-	linux) printf 'd=$(dirname %s); [ -d "$d" ] || mkdir -p -m 700 "$d" || exit 1\n%s\necho writing; cat > %s.new && chmod 755 %s.new && mv -f %s.new %s && sha256sum %s' "$1" "$safe_dir" "$1" "$1" "$1" "$1" "$1" ;;
-	windows) printf '%s "$p=%s; New-Item -ItemType Directory -Force (Split-Path $p) | Out-Null; %s; $i=[Console]::OpenStandardInput(); $o=[IO.File]::Create($p + %s); $i.CopyTo($o); $o.Close(); Move-Item -Force ($p + %s) $p; (Get-FileHash $p).Hash"' "$ps" "'$1'" "'writing'" "'.new'" "'.new'" ;;
+	linux) printf 'd=$(dirname %s); [ -d "$d" ] || mkdir -p -m 700 "$d" || exit 1\n%s\n%s\necho writing; cat > %s.new && chmod 755 %s.new && mv -f %s.new %s && sha256sum %s' "$1" "$safe_dir" "$space_check" "$1" "$1" "$1" "$1" "$1" ;;
+	windows) printf '%s "$p=%s; New-Item -ItemType Directory -Force (Split-Path $p) | Out-Null; $f=$null; try { $f=(New-Object IO.DriveInfo ([IO.Path]::GetPathRoot($p))).AvailableFreeSpace } catch {}; if ($f -ne $null -and $f -lt %s) { [Console]::Error.WriteLine(%s + [int64]($f / 1KB) + %s); exit 1 }; %s; $i=[Console]::OpenStandardInput(); $o=[IO.File]::Create($p + %s); $i.CopyTo($o); $o.Close(); Move-Item -Force ($p + %s) $p; (Get-FileHash $p).Hash"' "$ps" "'$1'" "$size" "'not enough disk space: $size_kib KiB needed, '" "' KiB available'" "'writing'" "'.new'" "'.new'" ;;
 	esac
 }
 # Removes the binary (and its parent directory if created by this run and empty).
