@@ -18,6 +18,7 @@ Below, `$SKILL` refers to the directory containing `SKILL.md` (`.agents/skills/h
 | `bin/host-shell-linux-amd64`, `bin/host-shell-linux-arm64` | Linux executables |
 | `bin/host-shell-windows-amd64.exe`, `bin/host-shell-windows-arm64.exe` | Windows executables |
 | `bin/host-shell-darwin-amd64`, `bin/host-shell-darwin-arm64` | macOS executables (used locally for `host-shell bridge`) |
+| `bin/libhostshell_dns-linux-amd64.so`, `bin/libhostshell_dns-linux-arm64.so` | Prebuilt remote DNS adapters for Linux targets without a C compiler (`--remote-dns-library`; release archives only, or `make dns-lib`) |
 | `bin/VERSION` | Executable version |
 
 Table: Folder layout

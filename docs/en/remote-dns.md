@@ -23,17 +23,18 @@ host-shell bridge --remote-dns -- \
   ssh -T target /path/to/host-shell --mcp --remote-dns
 ```
 
-The target needs `cc` and glibc development headers to compile the embedded adapter at session startup. For targets without a compiler, build it in an environment compatible with the target CPU and glibc, then transfer it:
+The target needs `cc` and glibc development headers to compile the embedded adapter at session startup.
+
+For targets without a compiler, transfer a prebuilt adapter and pass it with `--remote-dns-library`. GitHub Release archives include `libhostshell_dns-linux-amd64.so` and `libhostshell_dns-linux-arm64.so` in `dist/` and in the host-shell-connect skill's `bin/`. CI builds them on AlmaLinux 8 (glibc 2.28) and checks that they require only glibc 2.17 symbols or older.
 
 ```bash
-cc -Wall -Wextra -Werror -O2 -fPIC -shared \
-  -o libhostshell_dns.so internal/remotedns/assets/preload.c -ldl -pthread
-
-# After transferring the library:
+# After transferring the adapter matching the target CPU:
 host-shell bridge --remote-dns -- \
   ssh -T target /path/to/host-shell --mcp --remote-dns \
-    --remote-dns-library /absolute/path/libhostshell_dns.so
+    --remote-dns-library /absolute/path/libhostshell_dns-linux-amd64.so
 ```
+
+To build from source, run `make dns-lib` for the target CPU on a system whose glibc is no newer than the target's.
 
 `exec_run` and `job_start` receive `LD_PRELOAD`, `HOST_SHELL_DNS_LIBRARY`, and `HOST_SHELL_DNS_SOCKET` automatically. Existing preload libraries are preserved. Policy `--unset-env` filtering and explicit call `env` overrides apply afterwards. Inspect `remote_dns`, `remote_dns_library`, and `remote_dns_socket` in `sys_get_info`. The adapter and owner-only socket live in a private per-session temporary directory removed on disconnect. A supplied original library is retained.
 
@@ -147,3 +148,11 @@ On 2026-11-02, the resolver hook was tested independently with code-server 4.144
 The bundled SDK executable was `lib/vscode/node_modules/@github/copilot-sdk-linux-x64/prebuilds/linux-x64/copilot-runtime`. The VS Code files `out/server-main.js`, `out/vs/workbench/api/node/extensionHostProcess.js`, and `out/vs/platform/agentHost/node/agentHostMain.js` remove `LD_PRELOAD`. Setting it on the parent process alone therefore does not cover this launch path. Distinguish this from standalone CLI success.
 
 A failed fetch of `https://hondarer-soft.com` at 13:11:49 JST that day matched a proxy event rejecting `hondarer-soft.com:443` as `destination not allowed`. Hooked Python resolved the hostname successfully. The message `a transport-level failure (DNS, connection, or TLS handshake)` alone does not establish a DNS failure; inspect the actual rejection reason with `proxy_status`. This investigation did not authorize the destination.
+
+## Continued-use log inspection (2026-11-03)
+
+The user confirmed that code-server opened in the browser and both the CLI and in-editor Copilot Chat responded correctly. Retained proxy events around 05:42 JST showed permitted connections to `api.individual.githubcopilot.com:443` and `api.github.com:443`. The running agent host, extension host, and bundled `copilot-runtime` all had `LD_PRELOAD` and the DNS adapter mapped. Retained code-server output contained two hooked `api.github.com` lookups, but those records lack query timestamps and cannot be attributed to each response in this test.
+
+Startup logs included signed-out/token-source-not-ready warnings, a BYOK model-list refresh `fetch failed`, and a custom-agent fetch `Canceled`. No DNS reinjection validation errors, `ENOTFOUND`, or `EAI_AGAIN` were found in the inspected logs. Destination rules rejected `mobile.events.data.microsoft.com`, `default.exp-tas.com`, Application Insights destinations, and `169.254.169.254:80`; no destinations were added. Proxy history retains only the latest 100 events, so this inspection does not establish error-free operation over the entire period.
+
+This browser instance uses the existing SSH session. A separate SSH session through a new client-loopback TCP entry point also passed MCP initialization, DNS relaying, and HTTPS checks, but the browser instance was not migrated to that session.

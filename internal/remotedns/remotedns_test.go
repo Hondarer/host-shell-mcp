@@ -56,14 +56,23 @@ func TestHookThroughChannelAndCleanup(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("Linux/glibc adapter")
 	}
-	for _, name := range []string{"cc", "python3"} {
+	// CI sets this to a release adapter so it is exercised instead of a freshly compiled one.
+	prebuilt := os.Getenv("HOST_SHELL_TEST_DNS_LIBRARY")
+	required := []string{"python3"}
+	if prebuilt == "" {
+		required = append(required, "cc")
+	}
+	for _, name := range required {
 		if _, err := exec.LookPath(name); err != nil {
+			if prebuilt != "" {
+				t.Fatal(name + " unavailable to test " + prebuilt)
+			}
 			t.Skip(name + " unavailable")
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	target, err := NewTarget(ctx, "")
+	target, err := NewTarget(ctx, prebuilt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,6 +183,11 @@ console.log(child.stdout);`
 	target.Close()
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Fatalf("session directory remains: %v", err)
+	}
+	if prebuilt != "" {
+		if _, err := os.Stat(prebuilt); err != nil {
+			t.Fatalf("prebuilt original removed: %v", err)
+		}
 	}
 }
 

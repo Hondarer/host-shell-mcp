@@ -1,0 +1,63 @@
+name: DNS adapter
+
+# Build the remote DNS adapter (libhostshell_dns-linux-<arch>.so) for targets without a C compiler.
+# Each architecture is built natively on AlmaLinux 8 (glibc 2.28); `make dns-lib` rejects symbols
+# newer than glibc 2.17, so the adapter also loads on older targets. The hook test then loads it on
+# both glibc 2.28 (the build container) and the runner's newer glibc, and the result is uploaded
+# as artifact dns-lib-<arch> for `make release`.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Revision to build (default is the triggering revision)
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: dns-lib (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      LIB: dist/libhostshell_dns-linux-${{ matrix.arch }}.so
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # A static test binary runs unchanged in the build container.
+      - name: Build test binary
+        run: CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/remotedns.test" ./internal/remotedns
+      - name: Build and test on glibc 2.28
+        run: |
+          docker run --rm -v "$PWD:/src" -v "$RUNNER_TEMP:/work" -w /src \
+            -e LIB -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" almalinux:8.10 sh -c '
+              set -e
+              dnf -y -q install gcc make binutils python3
+              make dns-lib
+              chown -R "$HOST_UID:$HOST_GID" dist
+              cd internal/remotedns
+              HOST_SHELL_TEST_DNS_LIBRARY="/src/$LIB" /work/remotedns.test \
+                -test.count=1 -test.v -test.run "TestHookThroughChannelAndCleanup\$"
+            '
+          test -f "$LIB"
+      - name: Test on the runner glibc
+        run: HOST_SHELL_TEST_DNS_LIBRARY="$PWD/$LIB" go test -count=1 -v -run 'TestHookThroughChannelAndCleanup$' ./internal/remotedns
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dns-lib-${{ matrix.arch }}
+          path: ${{ env.LIB }}
+          if-no-files-found: error
+          retention-days: 14

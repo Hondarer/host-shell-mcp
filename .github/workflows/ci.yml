@@ -49,8 +49,11 @@ jobs:
           chmod 755 /tmp/server.test
           cd /tmp && sudo -u hstest env HOST_SHELL_TEST_SUDO_PASSWORD=Hs-Test-Pass-1 ./server.test -test.run 'TestSudoPassword$' -test.v
 
+  dns-lib:
+    uses: ./.github/workflows/dns-lib.yml
+
   build:
-    needs: test
+    needs: [test, dns-lib]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -59,6 +62,11 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: dns-lib-*
+          path: dist
+          merge-multiple: true
       - name: Build release files
         run: make release
       - uses: actions/upload-artifact@v7

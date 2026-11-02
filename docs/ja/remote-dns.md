@@ -23,17 +23,18 @@ host-shell bridge --remote-dns -- \
   ssh -T target /path/to/host-shell --mcp --remote-dns
 ```
 
-接続先には `cc` と glibc 開発用ヘッダーが必要です。同梱の C ソースから、セッション開始時に共有ライブラリーを作成します。コンパイラーのない接続先では、対象の CPU・glibc と互換性のある環境で事前にビルドし、転送してください。
+接続先には `cc` と glibc 開発用ヘッダーが必要です。同梱の C ソースから、セッション開始時に共有ライブラリーを作成します。
+
+コンパイラーのない接続先では、ビルド済みのアダプターを転送し、`--remote-dns-library` で指定します。GitHub Release のアーカイブには、`dist/` とスキル host-shell-connect の `bin/` に `libhostshell_dns-linux-amd64.so` と `libhostshell_dns-linux-arm64.so` を同梱しています。CI が AlmaLinux 8 (glibc 2.28) 上でビルドします。glibc 2.17 以降のシンボルだけを使うことを検査しています。
 
 ```bash
-cc -Wall -Wextra -Werror -O2 -fPIC -shared \
-  -o libhostshell_dns.so internal/remotedns/assets/preload.c -ldl -pthread
-
-# ライブラリーを転送した後の接続例
+# 接続先の CPU に合うアダプターを転送した後の接続例
 host-shell bridge --remote-dns -- \
   ssh -T target /path/to/host-shell --mcp --remote-dns \
-    --remote-dns-library /absolute/path/libhostshell_dns.so
+    --remote-dns-library /absolute/path/libhostshell_dns-linux-amd64.so
 ```
+
+ソースからビルドする場合は、接続先の CPU 向けに、接続先以前の glibc を持つ環境で `make dns-lib` を実行します。
 
 `exec_run` / `job_start` に `LD_PRELOAD`、`HOST_SHELL_DNS_LIBRARY`、`HOST_SHELL_DNS_SOCKET` が自動設定されます。既存の `LD_PRELOAD` は保持します。ポリシーの `--unset-env` と、呼び出しの `env` による明示設定はその後に適用されます。`sys_get_info` の `remote_dns`、`remote_dns_library`、`remote_dns_socket` で設定を確認できます。ライブラリーとソケットはセッションごとの非公開一時ディレクトリーに置き、切断時に削除します。事前に転送した原本は削除しません。
 
@@ -147,3 +148,11 @@ go test ./internal/remotedns
 VS Code 同梱 SDK の実行体は `lib/vscode/node_modules/@github/copilot-sdk-linux-x64/prebuilds/linux-x64/copilot-runtime` でした。`out/server-main.js`、`out/vs/workbench/api/node/extensionHostProcess.js`、`out/vs/platform/agentHost/node/agentHostMain.js` に `LD_PRELOAD` を除去する処理があり、親プロセスへの設定だけでは、この起動経路をカバーできません。単体 CLI の成功とは区別してください。
 
 同日 13:11:49 (JST) の `https://hondarer-soft.com` 取得失敗は、プロキシ履歴では `hondarer-soft.com:443` が `destination not allowed` でした。フック付き Python での名前解決は成功しています。`a transport-level failure (DNS, connection, or TLS handshake)` という表示だけで DNS 障害と判断せず、`proxy_status` で実際の拒否理由を確認してください。この調査で宛先の許可は追加していません。
+
+## 継続利用時のログ確認（2026-11-03）
+
+利用者がブラウザーで code-server を開き、CLI と画面内 Copilot Chat の両方が正しく応答することを確認しました。05:42 JST 前後の保持されているプロキシ履歴では、`api.individual.githubcopilot.com:443` と `api.github.com:443` への接続が許可されています。実行中のエージェントホスト・拡張ホスト・同梱 `copilot-runtime` は、いずれも `LD_PRELOAD` と DNS アダプターの読み込みを確認できました。code-server の保持出力には `api.github.com` のフック通過が2件ありましたが、この出力には問い合わせ時刻がないため、今回の各応答との対応は断定しません。
+
+起動時には Copilot の未サインイン・トークンソース未準備、BYOK モデル一覧更新の `fetch failed`、custom agents 取得の `Canceled` が記録されています。調査したログでは DNS 再注入の検査エラーや `ENOTFOUND`・`EAI_AGAIN` は見つかっていません。`mobile.events.data.microsoft.com`、`default.exp-tas.com`、Application Insights の宛先、`169.254.169.254:80` は宛先ルールで拒否されており、許可先は追加していません。プロキシ履歴は直近100件までのため、全期間の無障害を示す結果ではありません。
+
+このブラウザー接続は従来の SSH セッションを使用しています。接続元ループバックの新しい TCP 入口を使う別 SSH セッションでも MCP 初期化・DNS 中継・HTTPS を確認しましたが、このブラウザーインスタンスをその新セッションへ切り替えた検証ではありません。

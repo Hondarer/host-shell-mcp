@@ -24,6 +24,7 @@ Builds have no external C library dependencies and are always statically linked 
 | `make` | Runs `vet`, `test`, and `build` in order |
 | `make build` | Builds `dist/host-shell` for the host OS and architecture |
 | `make dist` | Builds the six distribution binaries (`dist/host-shell-{linux,windows,darwin}-{amd64,arm64}[.exe]`) and copies them to `bin/` of the `host-shell-connect` skill (macOS binaries are for local `host-shell bridge` only) |
+| `make dns-lib` | Builds the remote DNS adapter `dist/libhostshell_dns-linux-<arch>.so` for the host architecture (Linux only; fails if it requires glibc symbols newer than 2.17) |
 | `make release` | Builds Release archives in `dist/release/` ([Releases](#releases)) |
 | `make test` | Runs tests across all packages |
 | `make vet` | Runs `go vet` for Linux, Windows, and macOS |
@@ -152,7 +153,8 @@ GitHub Actions (`.github/workflows/ci.yml`) runs the following jobs on every pus
 | `test (ubuntu-latest)` | `go vet` (Linux, Windows, macOS), `go test`, and `sudo` password authentication tests |
 | `test (windows-latest)` | `go vet` and `go test` on Windows (including ConPTY, services, Event Log, and registry) |
 | `test (macos-latest)` | `go vet` and `go test` (verifying local `bridge` operation) |
-| `build` | Runs `make release` and retains `dist/release/` as an artifact for 14 days |
+| `dns-lib (amd64)`, `dns-lib (arm64)` | Runs `make dns-lib` in an AlmaLinux 8 (glibc 2.28) container and tests the result both there and on the runner's newer glibc (`.github/workflows/dns-lib.yml`) |
+| `build` | Places the `dns-lib` outputs in `dist/`, runs `make release`, and retains `dist/release/` as an artifact for 14 days |
 
 Table: CI jobs
 
@@ -173,12 +175,14 @@ Under `host-shell-mcp-<version>/`, each archive contains the `git archive` tree 
 
 | Path | Contents |
 |---|---|
-| `dist/` | Six executables produced by `make dist` |
-| `.agents/skills/host-shell-connect/bin/` | The same executables and `VERSION` (making the skill usable immediately after extraction) |
+| `dist/` | Six executables produced by `make dist` and the remote DNS adapters `libhostshell_dns-linux-{amd64,arm64}.so` |
+| `.agents/skills/host-shell-connect/bin/` | The same executables, adapters, and `VERSION` (making the skill usable immediately after extraction) |
 
 Table: Files added to release archives
 
-To build identical archives locally, run `make release VERSION=v1.0.0` (written to `dist/release/`).
+The release workflow builds and tests the adapters natively for each architecture with the same `dns-lib.yml` used by CI.
+
+To build identical archives locally, run `make release VERSION=v1.0.0` (written to `dist/release/`). Both adapters must be in `dist/` first: build the host architecture with `make dns-lib` and take the other from a CI artifact (`dns-lib-<arch>`).
 
 ## Dependencies
 

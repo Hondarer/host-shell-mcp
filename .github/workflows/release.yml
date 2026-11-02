@@ -1,7 +1,8 @@
 name: Release
 
 # Build the tagged revision and upload source+binary archives
-# (zip and tar.gz matching GitHub's source archive layout, including dist/ and skill bin/).
+# (zip and tar.gz matching GitHub's source archive layout, including dist/ and skill bin/,
+# with the remote DNS adapters built by dns-lib.yml).
 # Runs when a release is published or edited, and when an existing tag is moved.
 # A moved tag is a push whose before and after SHAs are both real commits.
 # GitHub leaves `forced` false for tag updates, so do not use it.
@@ -23,8 +24,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  dns-lib:
     if: github.event_name == 'release' || (github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000' && github.event.after != '0000000000000000000000000000000000000000')
+    uses: ./.github/workflows/dns-lib.yml
+    with:
+      ref: ${{ github.event.release.tag_name || github.ref_name }}
+
+  release:
+    needs: dns-lib
     runs-on: ubuntu-latest
     env:
       TAG: ${{ github.event.release.tag_name || github.ref_name }}
@@ -37,6 +44,11 @@ jobs:
           go-version-file: go.mod
       - name: Test
         run: go test -count=1 ./...
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: dns-lib-*
+          path: dist
+          merge-multiple: true
       - name: Build release files
         run: make release VERSION="$TAG"
       - name: Upload to the release

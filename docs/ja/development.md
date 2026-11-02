@@ -24,6 +24,7 @@ Table: 開発環境
 | `make` | `vet`、`test`、`build` を順に実行する |
 | `make build` | 開発機の OS・アーキテクチャー向けに `dist/host-shell` を生成する |
 | `make dist` | 配布用の 6 バイナリ (`dist/host-shell-{linux,windows,darwin}-{amd64,arm64}[.exe]`) を生成し、`host-shell-connect` スキルの `bin/` にも複製する (macOS 用はローカルの `host-shell bridge` 専用) |
+| `make dns-lib` | 開発機のアーキテクチャー向けに名前解決アダプター `dist/libhostshell_dns-linux-<arch>.so` を生成する (Linux のみ。glibc 2.17 より新しいシンボルを必要とする場合は失敗する) |
 | `make release` | Release 添付用アーカイブを `dist/release/` に生成する ([リリース](#リリース)) |
 | `make test` | 全パッケージのテストを実行する |
 | `make vet` | Linux、Windows、macOS 向けに `go vet` を実行する |
@@ -152,7 +153,8 @@ GitHub Actions (`.github/workflows/ci.yml`) は、`main` ブランチへの push
 | `test (ubuntu-latest)` | `go vet` (Linux、Windows、macOS 向け)、`go test`、`sudo` パスワード認証テスト |
 | `test (windows-latest)` | `go vet`、`go test` (ConPTY、サービス、イベント ログ、レジストリを含む Windows 実機テスト) |
 | `test (macos-latest)` | `go vet`、`go test` (ローカル側の `bridge` 動作の検証) |
-| `build` | `make release` を実行し、`dist/release/` をアーティファクトとして 14 日間保持する |
+| `dns-lib (amd64)`、`dns-lib (arm64)` | AlmaLinux 8 (glibc 2.28) のコンテナーで `make dns-lib` を実行し、そのコンテナーとランナー (新しい glibc) の両方で動作をテストする (`.github/workflows/dns-lib.yml`) |
+| `build` | `dns-lib` の生成物を `dist/` に置いて `make release` を実行し、`dist/release/` をアーティファクトとして 14 日間保持する |
 
 Table: CI のジョブ
 
@@ -173,12 +175,14 @@ Table: Release に添付するファイル
 
 | パス | 内容 |
 |---|---|
-| `dist/` | 6 種類の実行ファイル (`make dist` の生成物) |
-| `.agents/skills/host-shell-connect/bin/` | 同一の実行ファイル一式と `VERSION` (展開後すぐにスキルを使用可能) |
+| `dist/` | 6 種類の実行ファイル (`make dist` の生成物) と、名前解決アダプター `libhostshell_dns-linux-{amd64,arm64}.so` |
+| `.agents/skills/host-shell-connect/bin/` | 同一の実行ファイル・アダプター一式と `VERSION` (展開後すぐにスキルを使用可能) |
 
 Table: アーカイブに加えるもの
 
-ローカルで同一のアーカイブを生成する場合は `make release VERSION=v1.0.0` を実行します (`dist/release/` に出力されます)。
+アダプターは、リリースのワークフローでも CI と同じ `dns-lib.yml` で各アーキテクチャーの実機上でビルド・テストします。
+
+ローカルで同一のアーカイブを生成する場合は `make release VERSION=v1.0.0` を実行します (`dist/release/` に出力されます)。事前に両アーキテクチャーのアダプターを `dist/` に置く必要があります。開発機のアーキテクチャー分は `make dns-lib` で生成できます。もう一方は CI のアーティファクト (`dns-lib-<arch>`) から取得してください。
 
 ## 依存
 
