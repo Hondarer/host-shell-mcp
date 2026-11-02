@@ -28,6 +28,7 @@ Table: Comparison with client-side SSH MCP servers
 
 - **No port forwarding or SFTP required**: Operates solely over the standard input and output of an SSH session. Multi-hop routes work via nested `ssh` even when jump hosts set `AllowTcpForwarding no`.
 - **Persistent single session**: Maintains one SSH connection for the entire MCP session, avoiding per-call connection overhead even across multi-hop routes.
+- **Holds target resources only while connected**: When the connection ends, terminates the commands and jobs it started together with their descendants and closes forwarding and proxy listeners, leaving no resident process or listening port on the target (keeping services running after disconnection is out of scope).
 - **Cross-platform abstraction**: Normalizes shell, quoting, and path differences between Windows and Linux. PowerShell commands can be passed without extra quote escaping.
 - **Built-in agent primitives**: Provides string replacement (`fs_edit`), `**` globs, grep with context lines and match counts, file move/copy/delete, and input to interactive jobs.
 - **Pseudo-terminal (PTY) support**: Runs terminal-dependent programs (such as password-prompting `sudo`/`ssh` and REPLs) as `pty` jobs (Linux pty / Windows ConPTY), supporting regex match (`until`) and output-idle (`idle_ms`) waits.
@@ -147,6 +148,7 @@ Table: クライアント側の SSH 系 MCP との違い
 
 - **ポート転送・SFTP 不要**: SSH セッションの標準入出力だけで動作します。中継サーバーが `AllowTcpForwarding no` でも、`ssh` の入れ子で多段接続できます。
 - **単一セッションの維持**: MCP セッション中は 1 本の SSH 接続を維持するため、多段接続でもツール呼び出しごとの接続遅延が発生しません。
+- **接続中だけリソースを占有**: 接続が切れると、起動したコマンドやジョブを子孫プロセスごと終了し、ポート転送とプロキシの待ち受けも閉じます。常駐プロセスや待ち受けポートを接続先に残しません (切断後もサービスを動かし続ける使い方は対象外です)。
 - **Windows / Linux の差異吸収**: シェル、引用符、パスの違いを `host-shell` が吸収します。PowerShell コマンドも引用符の解釈を意識せずに渡せます。
 - **エージェント向け基本操作の網羅**: 文字列置換 (`fs_edit`)、`**` 対応 glob、前後行・件数付き grep、ファイル移動・コピー・削除、対話ジョブへの入力を備えます。
 - **疑似端末 (PTY) 対応**: パスワード入力を求める `sudo` や `ssh`、REPL など端末を要するプログラムを `pty` ジョブで実行できます (Linux pty / Windows ConPTY)。正規表現の一致 (`until`) や出力鎮静 (`idle_ms`) による待機にも対応します。

@@ -5,7 +5,7 @@
 3. When the job exits, `status.running` becomes `false` and `status.exit_code` is populated.
 4. `job_stop` terminates the job and its child processes. `job_list` lists active jobs and the 50 most recent finished jobs in the current session.
 
-All jobs and their child processes are terminated when the MCP session ends (when the SSH connection closes), even if host-shell is killed. To keep a process running across sessions, launch it detached outside host-shell (e.g. `systemd-run --user --unit=NAME ...` or `nohup ... &` on Linux; a Windows service or scheduled task via `schtasks` or `Register-ScheduledTask` on Windows) and inspect its log files.
+All jobs and their child processes are terminated when the MCP session ends (when the SSH connection closes), even if host-shell is killed, so host-shell holds target resources only while connected. Keeping processes or services running after the session ends is outside host-shell's scope: do not detach processes to outlive the session (`nohup`, `setsid`, `systemd-run`, scheduled tasks). Finish and check jobs while connected, and tell the user when a task would need a resident service. Managing existing services with `svc_control` remains available.
 
 Each job buffers the most recent output up to four times the server output limit. If a job produces output faster than it is read, older bytes are discarded and reported in `dropped`. `more: true` indicates additional buffered output is available after `next_offset`.
 

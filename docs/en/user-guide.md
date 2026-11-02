@@ -79,6 +79,24 @@ flowchart TB
 File contents stream directly between `bridge` and the target's `host-shell` without passing through the agent context, supporting large files and directory trees. When enabled on both ends, `bridge` also provides an [HTTP proxy through the client](client-proxy.md) and [port forwarding](port-forward.md) over the same SSH session.  
 `bridge` is a subcommand of the same `host-shell` binary; use the executable matching the client OS (Linux, Windows, or macOS).
 
+### Runs only while connected
+
+`host-shell` runs on the target only while the MCP session (the SSH connection) lasts. When the connection ends, it terminates the processes it started and closes the listeners it opened, as far as possible, before exiting.  
+Because it leaves no resident process or listening port behind, `host-shell` holds target resources (processes, memory, ports) only while you use it, and no path to operate the target through `host-shell` remains while it is not in use.
+
+| Cleaned up on disconnect | Details |
+|---|---|
+| Commands and jobs | Terminates processes started by `exec_run`, `exec_sudo`, and `job_start`, including their descendants |
+| Port forwarding | Closes remote forward listeners on the target, local forward and SOCKS5 listeners on `bridge`, and established connections |
+| HTTP proxy through the client | Closes the loopback listener on the target and relayed connections, and deletes the URL file that contains the credential |
+
+Table: Cleaned up on disconnect
+
+Even when `host-shell` itself is killed, OS facilities (the parent death signal on Linux, a Job Object on Windows) keep child processes from lingering. On Linux, however, processes that leave their process group on their own (for example with `setsid`) cannot be caught ([How processes are ended in the Reference](reference.md#how-processes-are-ended)).  
+After disconnection, only the deployed executable, the audit log, and files created or changed by tools remain on the target.
+
+Keeping processes or services running after disconnection (such as building resident services) is outside the scope of `host-shell`. Managing existing services with `svc_control` (starting, stopping, and so on) is in scope, but `host-shell` provides no means to keep what it started running after the session ends.
+
 ## Requirements
 
 | Location | Requirement |
@@ -431,7 +449,7 @@ job_read   {"id": "job-2", "wait_sec": 20, "idle_ms": 500}            -> {"outpu
 
 `job_stop` forcefully kills the job by default. On Linux, `signal` can send signals such as `interrupt` (in `pty` jobs, `interrupt` sends Ctrl-C on both Linux and Windows).
 
-All running jobs terminate when the SSH session disconnects. To keep processes running after disconnection, launch them via OS facilities such as `nohup`, `systemd-run`, or Windows Task Scheduler.
+All running jobs terminate when the SSH session disconnects ([Runs only while connected](#runs-only-while-connected)). Check that jobs complete while you are connected.
 
 ### Transferring files
 

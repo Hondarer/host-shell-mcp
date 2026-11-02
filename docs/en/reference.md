@@ -86,7 +86,7 @@ Passing an unknown flag or an invalid value type prints usage information to sta
 | Standard error | Writes diagnostic messages such as startup errors |
 | Working directory | Current working directory at startup (typically the user's home directory over SSH) |
 | Normal exit | When standard input closes (SSH disconnect) or upon receiving `SIGINT` or `SIGTERM` (exit code 0) |
-| Cleanup on exit | Terminates all running background jobs |
+| Cleanup on exit | Terminates all running jobs and commands and closes port forwarding and client proxy listeners (also deleting the proxy URL file) |
 
 Table: Input, output and exit
 
@@ -1662,7 +1662,7 @@ Even if `host-shell` itself is killed abruptly (`kill -9`, SSH disconnection, et
 
 Table: What happens to commands when host-shell exits
 
-Start daemons and services that must outlive the MCP session via `systemd-run`, a Windows service, or Task Scheduler rather than spawning them directly as child processes of `host-shell`.  
+`host-shell` provides no means to keep what it started running after the session ends. Building daemons or services that keep running after the session ends is out of scope ([Runs only while connected in the User Guide](user-guide.md#runs-only-while-connected)).  
 If descendant processes hold the output pipes open after the main command exits, `host-shell` waits up to 2 seconds before closing the pipes and returning the result.
 
 ## Audit log

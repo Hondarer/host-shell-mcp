@@ -33,6 +33,8 @@ In production, combine the following four layers.
 
 Table: Security layers
 
+`host-shell` runs only while connected and cleans up the processes and listeners it started when the connection ends ([Runs only while connected](user-guide.md#runs-only-while-connected)). `host-shell` itself neither listens on a port nor stays resident, so it leaves no path to reach the target and no resource-holding process behind while it is not in use.
+
 ## Dedicated user and key
 
 Create a dedicated OS user for the agent on the target with minimal privileges.

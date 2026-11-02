@@ -26,7 +26,7 @@ sequenceDiagram
 
 - The target never connects to the internet. Release archives and extensions are downloaded on the client, verified by SHA-256, and transferred to the target, where the same SHA-256 hashes are verified again before extraction and installation.
 - code-server listens only on `127.0.0.1` on the target, selecting the first free port in the range 8000–8079 ([Listening port](#listening-port)), and is accessed from the client through a local port forward. The client listening port is assigned automatically.
-- Both code-server and the port forward terminate when the MCP session ends.
+- Both code-server and the port forward terminate when the MCP session ends ([Runs only while connected](user-guide.md#runs-only-while-connected)).
 
 ## Supported targets
 
