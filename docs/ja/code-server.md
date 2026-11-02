@@ -7,6 +7,8 @@
 
 一連の手順は `host-shell-code-server` スキル (`.agents/skills/host-shell-code-server/`) にまとめられており、エージェントが MCP ツールを使って自動実行します。この文書では、事前の準備、導入される内容、および運用上の注意点を説明します。
 
+AI CLI を接続先へ配置してターミナルから利用する構成と検証状況は、[隔離環境の code-server から AI CLI を利用する](ai-cli.md) を参照してください。
+
 ## 概要
 
 ```mermaid

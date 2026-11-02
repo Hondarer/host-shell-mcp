@@ -110,6 +110,7 @@ See [`docs/`](docs/README.md). **The Japanese documents (`docs/ja/`) are the sin
 | [Development Guide](docs/en/development.md) | Building, source layout, design rules, adding tools, testing, releases |
 | [HTTP proxy through the client](docs/en/client-proxy.md) | Routing target HTTP/HTTPS traffic through the bridge's network |
 | [Port forwarding](docs/en/port-forward.md) | Local forwards, remote forwards, and SOCKS5 over SSH stdio |
+| [AI CLIs in code-server](docs/en/ai-cli.md) | Deploying AI CLIs and validating authentication and API access through the client proxy |
 | [Injecting code-server](docs/en/code-server.md) | Installing code-server with default settings and extensions on a closed-network target and opening it via a local forward |
 | [Connecting into containers](docs/en/container.md) | Deploying and registering `host-shell` inside a running Podman, Docker, or Kubernetes container via `exec -i` |
 
@@ -230,6 +231,7 @@ GitHub Release には、タグ名の先頭の `v` を残したアーカイブ (`
 | [開発ガイド](docs/ja/development.md) | ビルド、ソース構成、設計規約、ツールの追加手順、テスト、リリース |
 | [クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |
 | [ポート転送](docs/ja/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
+| [code-server での AI CLI 利用](docs/ja/ai-cli.md) | AI CLI の配置とクライアント経由プロキシによる認証・API 通信の検証 |
 | [code-server の導入](docs/ja/code-server.md) | 閉鎖環境の接続先への code-server・既定設定・拡張機能の導入とローカル転送での利用 |
 | [コンテナーへの接続](docs/ja/container.md) | 稼働中の Podman、Docker、Kubernetes コンテナー内への `exec -i` による `host-shell` の配置と登録 |
 

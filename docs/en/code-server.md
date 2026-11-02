@@ -7,6 +7,8 @@ This guide explains how to install and start [code-server](https://github.com/co
 
 The workflow is packaged in the `host-shell-code-server` skill (`.agents/skills/host-shell-code-server/`), which the agent executes automatically using MCP tools. This document covers the required preparation, what gets installed, and operational caveats.
 
+For deploying AI CLIs and running them in the terminal, see [Using AI CLIs from code-server in an isolated environment](ai-cli.md) for the architecture and validation status.
+
 ## Overview
 
 ```mermaid
