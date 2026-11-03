@@ -83,6 +83,10 @@ sequenceDiagram
 
 デバイスコード認証では手元のブラウザーを利用できますが、接続先の CLI 自身も認証サーバーへ通信できる必要があります。ブラウザー認証が `localhost` へ戻る方式では、手元のブラウザーの localhost と接続先の localhost は別です。対応するデバイス認証を使うか、コールバックのポートを別途ローカル転送します。
 
+Copilot CLI では `/login` でアカウント (`GitHub.com`) を選び、`Sign in with a device code` を選びます。`Sign in with your browser` は接続先の localhost へ戻る方式のため使用しません。
+
+キーチェーンなどの安全な保存先がない接続先 (コンテナーや最小構成の Linux) では、認証後に `System vault not available` と表示され、トークンを設定ファイルへ平文で保存するかを問われます。拒否するとサインインは取り消されます。検証用の使い捨て環境では `1. Yes, store in plain text (insecure)` を選びます。トークンは接続先ユーザーの `~/.copilot/config.json` (パーミッション 600) に保存され、そのユーザーと root が読めます。環境を破棄すると設定ファイルも消えますが、GitHub 側の承認は GitHub の設定 (Applications) から別途取り消せます。共有の接続先や長期間使う接続先では、平文保存の可否を利用者と決めてください。
+
 認証は利用者が行い、API キーやトークンをドキュメント、ツール引数、会話履歴、検証ログへ貼り付けないでください。認証ファイルを含むホームディレクトリ全体の複製は避けます。同じ接続先ユーザーでは CLI の認証情報や会話履歴も共有され得るため、別アカウントを併用する場合は CLI が正式に対応する設定領域の分離方法を確認します。
 
 公式資料: [Copilot の導入](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli)、[Copilot の認証](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli)、[Claude Code の導入](https://code.claude.com/docs/en/setup)、[Claude Code のネットワーク設定](https://code.claude.com/docs/en/network-config)、[Codex の認証](https://learn.chatgpt.com/docs/auth?surface=cli)。agy と Grok の配布元は、検証対象の確定時に追記します。
@@ -111,7 +115,7 @@ Copilot CLI の内蔵 Web Fetch も接続前に名前解決を行うため、`We
 | --- | --- | --- |
 | ログイン、API、推論 | `github.com:443`、`api.github.com:443`、`*.githubcopilot.com:443`、`copilot-proxy.githubusercontent.com:443` | この組み合わせで認証と対話応答を確認済み |
 | Copilot Chat の BYOK モデル一覧 (`https://main.vscode-cdn.net/extensions/copilotChat.json`) | `main.vscode-cdn.net:443` | 許可後の取得を確認済み |
-| 追加配布物の取得 | `release-assets.githubusercontent.com:443` | どの機能で使用されるかは未確認 |
+| Copilot CLI の自動更新 | `release-assets.githubusercontent.com:443` | 未許可では起動時に `Error auto updating: TypeError: fetch failed` と表示され、プロキシ履歴にこの宛先の拒否が記録される。CLI の利用には影響しない |
 
 Table: Copilot の許可先
 
@@ -145,7 +149,7 @@ Table: コピーの方法
 
 ### Copilot CLI
 
-Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz`、[github/copilot-cli の v1.0.83](https://github.com/github/copilot-cli/releases/tag/v1.0.83)、SHA-256 `ffbe1c429664b8a05efed67ecdb467123e40fcaa3c6c14ef9a98ba74da4687b7`) と code-server 4.144.0 で確認しました。接続先は Oracle Linux 10.2 / x86_64 / glibc 2.39 の Podman コンテナーです。`--network none` で起動し、外部へのルートはありません。SSH は `ProxyCommand` (`podman exec -i` による標準入出力中継) でコンテナー内の sshd に接続しており、通常の TCP による SSH 接続はこの確認に含みません。
+Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz`、[github/copilot-cli の v1.0.83](https://github.com/github/copilot-cli/releases/tag/v1.0.83)、SHA-256 `ffbe1c429664b8a05efed67ecdb467123e40fcaa3c6c14ef9a98ba74da4687b7`) と code-server 4.144.0 で確認しました。接続先は Oracle Linux 10.2 / x86_64 / glibc 2.39 の Podman コンテナーです。`--network none` で起動し、外部へのルートはありません。SSH は `ProxyCommand` (`podman exec -i` による標準入出力中継) でコンテナー内の sshd に接続しており、通常の TCP による SSH 接続はこの確認に含みません。操作段階は、同じ構成のコンテナーに bridge から `podman exec -i` で直接接続し、[remote-dns](remote-dns.md) の専用コピーモードで起動した code-server のターミナルで確認しました。
 
 | 段階 | 合格条件 | 状態 |
 | --- | --- | --- |
@@ -156,7 +160,7 @@ Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz`、[github/copilot-cli の v1.0.83
 | 認証 | 選択した方式でログインが成功 | デバイスコード方式 (表示コードを別ブラウザーに入力) で成功。有効期限後の認証維持は未検証 |
 | 推論 | 接続先の直接通信を遮断し、bridge 経由だけで応答を取得 | 成功 |
 | 内蔵 Web Fetch | 接続先に DNS がない状態で取得が成功 | [remote-dns](remote-dns.md) の併用で成功 |
-| 操作 | 検証用ファイルの編集と小さなコマンドの実行が成功 | 未検証 |
+| 操作 | 検証用ファイルの編集と小さなコマンドの実行が成功 | 成功。ファイルの作成と編集は、それぞれ承認 (`1. Yes`) 後に実行された。`wc -c` の結果は接続先での確認と一致した。この読み取りのみのコマンドは承認の確認なしで実行された |
 | 終了 | MCP 切断後、code-server・CLI・補助プロセス・待ち受けを確認 | 未検証 |
 | 複数接続 | 別接続の起動・認証状態・切断の影響を確認 | 未検証 |
 
@@ -179,4 +183,4 @@ Codex は読み取り専用ファイルシステムでは、PATH 用エイリア
 
 ### 検証の記録
 
-新しく検証するときは、OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、成功段階と失敗理由を記録します。経緯の記録は `docs/prompts/past/` に置き、この文書には結果だけを反映します。これまでの経緯は [CLI 型 AI コーディングエージェントの検証記録](../prompts/past/261102-coding-agents-validation.md) にあります。
+新しく検証するときは、OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、成功段階と失敗理由を記録します。経緯の記録は `docs/prompts/past/` に置き、この文書には結果だけを反映します。これまでの経緯は [CLI 型 AI コーディングエージェントの検証記録](../prompts/past/261102-coding-agents-validation.md) と [Copilot CLI の操作段階の検証記録](../prompts/past/261103-copilot-cli-operation-validation.md) にあります。

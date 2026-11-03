@@ -83,6 +83,10 @@ sequenceDiagram
 
 Device code authentication can use the local browser, but the remote CLI must also reach the authentication server. With browser login returning to `localhost`, the browser's localhost and the target's localhost are different machines. Use a supported device flow or a separate local forward for the callback port.
 
+For Copilot CLI, run `/login`, choose the account (`GitHub.com`), and choose `Sign in with a device code`. Do not use `Sign in with your browser`, which returns to the target's localhost.
+
+On targets without secure storage such as a keychain (containers and minimal Linux), the CLI shows `System vault not available` after authentication and asks whether to store the token in a plain-text config file. Declining cancels the sign-in. In disposable validation environments, choose `1. Yes, store in plain text (insecure)`. The token is stored in the target user's `~/.copilot/config.json` (mode 600), readable by that user and root. Discarding the environment removes the file, but the authorization on GitHub can be revoked separately in GitHub settings (Applications). On shared or long-lived targets, decide with the user whether plain-text storage is acceptable.
+
 The user performs authentication. Keep API keys and tokens out of documentation, tool arguments, conversations, and validation logs. Avoid copying an entire home directory containing credentials. CLIs running as the same target user may share credentials and conversation history. For separate accounts, check the CLI's supported configuration isolation mechanism.
 
 Official references: [Copilot installation](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli), [Copilot authentication](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/authenticate-copilot-cli), [Claude Code setup](https://code.claude.com/docs/en/setup), [Claude Code networking](https://code.claude.com/docs/en/network-config), and [Codex authentication](https://learn.chatgpt.com/docs/auth?surface=cli). Add agy and Grok distribution sources once the validation targets are confirmed.
@@ -111,7 +115,7 @@ Copilot CLI's built-in Web Fetch also resolves names before connecting, failing 
 | --- | --- | --- |
 | Login, API, and inference | `github.com:443`, `api.github.com:443`, `*.githubcopilot.com:443`, `copilot-proxy.githubusercontent.com:443` | Authentication and conversational responses verified with this set |
 | Copilot Chat BYOK model catalog (`https://main.vscode-cdn.net/extensions/copilotChat.json`) | `main.vscode-cdn.net:443` | Retrieval verified after allowing it |
-| Additional downloads | `release-assets.githubusercontent.com:443` | Which feature uses this destination is unconfirmed |
+| Copilot CLI auto-update | `release-assets.githubusercontent.com:443` | When not allowed, the CLI shows `Error auto updating: TypeError: fetch failed` at startup and the proxy history records a denial of this destination. CLI use is unaffected |
 
 Table: Copilot destinations
 
@@ -145,7 +149,7 @@ If copying also fails in an ordinary terminal, the cause is different; check the
 
 ### Copilot CLI
 
-Verified with Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz` from [github/copilot-cli v1.0.83](https://github.com/github/copilot-cli/releases/tag/v1.0.83), SHA-256 `ffbe1c429664b8a05efed67ecdb467123e40fcaa3c6c14ef9a98ba74da4687b7`) and code-server 4.144.0. The target is an Oracle Linux 10.2 / x86_64 / glibc 2.39 Podman container started with `--network none` and no external route. SSH reaches an in-container sshd through `ProxyCommand` (`podman exec -i` stdio relay); SSH connections over ordinary TCP are not covered.
+Verified with Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz` from [github/copilot-cli v1.0.83](https://github.com/github/copilot-cli/releases/tag/v1.0.83), SHA-256 `ffbe1c429664b8a05efed67ecdb467123e40fcaa3c6c14ef9a98ba74da4687b7`) and code-server 4.144.0. The target is an Oracle Linux 10.2 / x86_64 / glibc 2.39 Podman container started with `--network none` and no external route. SSH reaches an in-container sshd through `ProxyCommand` (`podman exec -i` stdio relay); SSH connections over ordinary TCP are not covered. The operations stage was verified in a container with the same configuration, connected directly from the bridge through `podman exec -i`, in the terminal of code-server started in the [remote-dns](remote-dns.md) patched-copy mode.
 
 | Stage | Pass criterion | Status |
 | --- | --- | --- |
@@ -156,7 +160,7 @@ Verified with Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz` from [github/copilo
 | Authentication | Login succeeds with the chosen method | Passed with device code (entering the displayed code in a separate browser). Behavior after credential expiry is unverified |
 | Inference | Responses arrive only through the bridge with direct target egress blocked | Passed |
 | Built-in Web Fetch | Fetching succeeds on a target without DNS | Passed together with [remote-dns](remote-dns.md) |
-| Operations | Editing a test file and running a small command succeed | Unverified |
+| Operations | Editing a test file and running a small command succeed | Passed. Creating and editing the file each ran after approval (`1. Yes`). The `wc -c` result matched a check on the target. This read-only command ran without an approval prompt |
 | Shutdown | After MCP disconnect, check code-server, CLI, helper processes, and listeners | Unverified |
 | Multiple connections | Startup, authentication state, and disconnect effects across connections | Unverified |
 
@@ -179,4 +183,4 @@ On a read-only file system, Codex warns that it cannot create its PATH alias. Ve
 
 ### Recording validation
 
-For new validation, record OS, CPU, and libc; CLI, code-server, and host-shell versions; source and hash; authentication method (without secrets); allowed destinations; and passed stages with failure causes. Keep the history in `docs/prompts/past/` (Japanese only) and reflect only the results here. Past history is in [261102-coding-agents-validation.md](../prompts/past/261102-coding-agents-validation.md).
+For new validation, record OS, CPU, and libc; CLI, code-server, and host-shell versions; source and hash; authentication method (without secrets); allowed destinations; and passed stages with failure causes. Keep the history in `docs/prompts/past/` (Japanese only) and reflect only the results here. Past history is in [261102-coding-agents-validation.md](../prompts/past/261102-coding-agents-validation.md) and [261103-copilot-cli-operation-validation.md](../prompts/past/261103-copilot-cli-operation-validation.md).
