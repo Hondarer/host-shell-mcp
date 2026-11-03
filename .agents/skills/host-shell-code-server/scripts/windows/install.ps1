@@ -1,11 +1,14 @@
 # Install code-server from the kit on this (target) machine, create its configuration, and on the
 # first install inject the default settings and extensions. It never connects to the network:
 # the release archive and extensions come from packages\ in the kit (see download.ps1 or download.sh).
-# Usage: install.ps1 [-Extension FILE.vsix|ID]
+# Usage: install.ps1 [-Extension FILE.vsix|ID] [-Locale LOCALE]
+# -Locale sets the display language (for example ja); without it the existing setting is kept,
+# and a new installation starts in English.
 
 [CmdletBinding()]
 param(
-    [string]$Extension
+    [string]$Extension,
+    [string]$Locale
 )
 
 Set-StrictMode -Version 2.0
@@ -90,15 +93,15 @@ else {
 }
 
 # Default settings are placed only where no file exists, so changes made in code-server survive.
-foreach ($scope in @("User", "Machine")) {
-    $target = Join-Path $config.UserDataDir "$scope\settings.json"
+foreach ($file in @("User\settings.json", "Machine\settings.json")) {
+    $target = Join-Path $config.UserDataDir $file
     if (Test-Path -LiteralPath $target) {
-        Write-Output "keeping existing $scope\settings.json"
+        Write-Output "keeping existing $file"
     }
     else {
         New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
-        Copy-Item -LiteralPath (Join-Path $config.DefaultsDir "$scope\settings.json") -Destination $target
-        Write-Output "installed default $scope\settings.json"
+        Copy-Item -LiteralPath (Join-Path $config.DefaultsDir $file) -Destination $target
+        Write-Output "installed default $file"
     }
 }
 
@@ -147,6 +150,18 @@ else {
 
 if ($Extension) {
     Invoke-HscsCli -Config $config -Arguments @("--install-extension", $Extension, "--force")
+}
+
+# Extensions installed with the CLI are not registered as language packs, so switching the display
+# language would need a marketplace reinstall (network access). Register them on every run; with
+# -Locale, also set the display language in User\argv.json.
+$lpArgs = @((Join-Path $config.Root "scripts\lib\language-packs.mjs"), $config.UserDataDir, $config.ExtensionsDir)
+if ($Locale) {
+    $lpArgs += @("--locale", $Locale)
+}
+& $config.NodeExe @lpArgs
+if ($LASTEXITCODE -ne 0) {
+    throw "failed to register language packs"
 }
 
 Write-Output "configuration: $($config.ConfigFile)"

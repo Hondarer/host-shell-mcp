@@ -134,6 +134,39 @@ Table: 既定の設定と拡張機能
 
 Table: 同梱されている設定
 
+### 表示言語
+
+既定の表示言語は英語です。日本語などで使う場合は、`install` に `--locale <言語>` (Windows では `-Locale <言語>`) を指定します。例: `install.sh --locale ja`。指定した言語は `User/argv.json` の `locale` に書き込まれ、初回の起動からその言語で表示されます。翻訳は導入済みの Language Pack から接続先で生成するため、接続先とクライアントのどちらにもネットワーク接続は必要ありません。
+
+| 項目 | 内容 |
+| --- | --- |
+| 指定できる言語 | `en` と、導入済みの Language Pack がある言語。既定の拡張機能には日本語 Language Pack (`MS-CEINTL.vscode-language-pack-ja`) が含まれる。ほかの言語は、その Language Pack を `defaults/extensions.txt` に加えて `download` からやり直す |
+| Language Pack がない言語を指定した場合 | `no language pack for <言語> is installed` で停止し、表示言語は変わらない |
+| 指定しない場合 | 既存の設定を変えない。新規の導入では英語 |
+| 英語に戻す | `--locale en` を指定するか、`User/argv.json` を削除する |
+
+Table: 表示言語の指定
+
+- `install` は実行のたびに、導入済みの Language Pack を code-server の言語パック一覧 (ユーザー データの `languagepacks.json`) に登録します。code-server は、CLI (`--install-extension`) で導入した Language Pack をこの一覧に登録せず、一覧にない言語は表示に使いません。登録がないと、言語を切り替えるにはマーケットプレースからの再導入 (ネットワーク接続) が必要になります。
+- 導入後は、コマンド パレットの「Configure Display Language」(日本語表示では「表示言語を構成する」) でも切り替えられます。`User/argv.json` の `locale` が書き換わり (ファイルがなければ作成され)、code-server の再起動の確認後に反映されます。導入済みの言語の間は、オフラインのまま切り替えられます。
+- この一覧では、実際の表示言語にかかわらず「English (Current)」と表示されます。「(Current)」は code-server のサーバー プロセスが自身の言語 (常に英語) と比べて付けるためです。設定では変更できず、修正には code-server の配布物の変更が必要なため、対処していません。選択した言語には正しく切り替わります。
+- ログイン画面は code-server 本体の画面であり、表示言語の設定にかかわらず英語で表示されます。Welcome ページの code-server 独自の欄 (Next Up) も英語です。
+- 日本語 Language Pack (1.131.0) は VS Code 1.144.0 より古いため、新しい機能の一部の文言は英語のまま表示されます。
+
+| 確認内容 | 方法・環境 | 状態 |
+| --- | --- | --- |
+| 言語を指定しない導入で英語で起動し、「Configure Display Language」で日本語へ切り替えられる (`User/argv.json` がない状態から) | Oracle Linux 10.2 / x86_64 の Podman コンテナー (`--network none`、クライアント経由プロキシなし)、code-server 4.144.0、Chrome for Testing 148 (`127.0.0.1` 以外への通信を遮断) | 検証済 |
+| `--locale ja` の導入で、初回の起動から日本語で表示される (ワークベンチと、Git など組み込み拡張機能のコマンド) | 同上 | 検証済 |
+| 日本語と英語をオフラインのまま相互に切り替えられる | 同上 | 検証済 |
+| Language Pack がない言語の指定で停止する | 同上 (`--locale fr`) | 検証済 |
+| 言語パック一覧の生成と `argv.json` の書き込み (コメントとほかの項目の保持、地域付きの言語タグ、不正な指定の拒否) | 自動テスト (`tests/language-packs.test.mjs`) | 検証済 |
+| Windows 接続先 (`install.ps1`) | Windows PowerShell 5.1 での構文検査のみ | 未検証 |
+| Linux arm64 の接続先 | なし | 未検証 |
+
+Table: 表示言語の検証状況
+
+経緯は [code-server の表示言語のオフライン化の検証記録](../prompts/past/261103-code-server-offline-locale-validation.md) にあります。
+
 ### 拡張機能の取得
 
 `extensions.txt` には 1 行に 1 件ずつ `publisher.name` または `publisher.name@version` を記述します (`#` 以降はコメント)。クライアント側の `download` スクリプトが、接続先のアーキテクチャーごとに Open VSX から拡張機能を取得します。

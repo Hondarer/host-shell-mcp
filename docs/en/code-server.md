@@ -134,6 +134,39 @@ The main bundled settings and their prerequisites are listed below (if a prerequ
 
 Table: Bundled settings
 
+### Display language
+
+The default display language is English. To use Japanese or another language, pass `--locale <language>` to `install` (Windows: `-Locale <language>`), for example `install.sh --locale ja`. The language is written to `locale` in `User/argv.json`, and code-server shows it from the first start. Translations are generated on the target from the installed Language Pack, so neither the target nor the client needs network access.
+
+| Item | Behavior |
+| --- | --- |
+| Languages you can specify | `en` and languages with an installed Language Pack. The default extensions include the Japanese Language Pack (`MS-CEINTL.vscode-language-pack-ja`). For other languages, add their Language Pack to `defaults/extensions.txt` and start again from `download` |
+| A language without a Language Pack | Stops with `no language pack for <language> is installed`; the display language is unchanged |
+| Not specified | Leaves the existing setting unchanged; a new installation starts in English |
+| Back to English | Pass `--locale en` or delete `User/argv.json` |
+
+Table: Specifying the display language
+
+- Each `install` run registers the installed Language Packs in code-server's language pack list (`languagepacks.json` in the user data). code-server does not register Language Packs installed with the CLI (`--install-extension`) and does not use unregistered languages for display. Without registration, switching the language requires reinstalling the pack from the marketplace (network access).
+- After installation, "Configure Display Language" in the Command Palette also switches the language. It rewrites `locale` in `User/argv.json` (creating the file if needed) and takes effect after code-server confirms a restart. Installed languages can be switched offline.
+- The list shows "English (Current)" regardless of the actual display language. The code-server server process adds "(Current)" by comparing with its own language, which is always English. No setting changes this, and fixing it would require modifying the code-server distribution, so it is left as is. Selecting a language switches to it correctly.
+- The login page belongs to code-server itself and is shown in English regardless of the display language. code-server's own section of the Welcome page (Next Up) is also in English.
+- The Japanese Language Pack (1.131.0) is older than VS Code 1.144.0, so some strings of newer features remain in English.
+
+| Verified behavior | Method and environment | Status |
+| --- | --- | --- |
+| An installation without a language starts in English and switches to Japanese with "Configure Display Language" (starting without `User/argv.json`) | Oracle Linux 10.2 / x86_64 Podman container (`--network none`, no client proxy), code-server 4.144.0, Chrome for Testing 148 (requests other than to `127.0.0.1` blocked) | Verified |
+| An installation with `--locale ja` shows Japanese from the first start (workbench and commands of built-in extensions such as Git) | Same as above | Verified |
+| Switching between Japanese and English offline | Same as above | Verified |
+| Stopping for a language without a Language Pack | Same as above (`--locale fr`) | Verified |
+| Generating the language pack list and writing `argv.json` (keeping comments and other properties, regional tags, rejecting malformed input) | Automated tests (`tests/language-packs.test.mjs`) | Verified |
+| Windows targets (`install.ps1`) | Syntax check with Windows PowerShell 5.1 only | Unverified |
+| Linux arm64 targets | None | Unverified |
+
+Table: Display language verification status
+
+The validation history is in [261103-code-server-offline-locale-validation.md](../prompts/past/261103-code-server-offline-locale-validation.md) (Japanese only).
+
 ### Fetching extensions
 
 `extensions.txt` lists one extension per line as `publisher.name` or `publisher.name@version` (text after `#` is treated as a comment). On the client, the `download` script fetches extensions from Open VSX for the target platform:

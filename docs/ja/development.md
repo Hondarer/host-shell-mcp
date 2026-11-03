@@ -250,8 +250,11 @@ flowchart TB
 - ツール結果がエージェントとの会話履歴に残らないよう、パスワードの標準出力への表示を抑止
 - 導入ディレクトリ名を `host-shell-code-server` とし、`code-server-launcher` の環境と分離
 - 初回導入時における既定設定と拡張機能の適用 (`defaults/` の内容は `code-server-container` の既定値と共通)
+- 導入済み Language Pack の言語パック一覧への登録と、`install --locale` による表示言語の設定 (`scripts/lib/language-packs.mjs`)。オフラインでも初回起動から指定の表示言語で表示するため
 
 スクリプトのコメントと出力はすべて英語とし、ファイル内容は ASCII 文字のみで構成します (Windows PowerShell 5.1 が UTF-8 BOM なしファイルを誤読しないようにするため)。
+
+スキルの自動テストは `node --test .agents/skills/host-shell-code-server/tests/*.test.mjs` で実行します (Node.js が必要)。
 
 code-server のバージョンを更新する手順は次のとおりです。
 

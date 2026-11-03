@@ -82,7 +82,8 @@ The kit directory on the target is `<home>/.local/share/host-shell-code-server/k
 |---|---|
 | `$SKILL/version.env` | `<kit>/version.env` |
 | `$SKILL/defaults` | `<kit>/defaults` |
-| `$SKILL/scripts/linux` and `$SKILL/scripts/lib` (Linux targets) or `$SKILL/scripts/windows` (Windows targets) | `<kit>/scripts/linux`, `<kit>/scripts/lib`, or `<kit>/scripts/windows` |
+| `$SKILL/scripts/lib` (all targets; `install` uses `language-packs.mjs`) | `<kit>/scripts/lib` |
+| `$SKILL/scripts/linux` (Linux targets) or `$SKILL/scripts/windows` (Windows targets) | `<kit>/scripts/linux` or `<kit>/scripts/windows` |
 | `$SKILL/packages/code-server-<version>-TYPE.tar.gz` | `<kit>/packages/` |
 | `$SKILL/packages/extensions/TYPE` | `<kit>/packages/extensions/TYPE` |
 
@@ -96,6 +97,8 @@ Run with `exec_run` and `timeout_sec: 900`:
 
 - Linux: `argv: ["bash", "<kit>/scripts/linux/install.sh"]`
 - Windows: `argv: ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "<kit>\\scripts\\windows\\install.ps1"]`
+
+The display language defaults to English. Use another language only when the user asks for it; if the user has not said which language to use, ask once before installing and keep English unless they choose one. For a requested language, append `--locale <language>` (Windows: `-Locale <language>`), for example `--locale ja` for Japanese. The kit includes the Japanese Language Pack; for other languages, add their Language Pack to `defaults/extensions.txt` and fetch again before sending the kit. The script stops with `no language pack for <language> is installed` when none is available. The language works offline from the first start because `install` registers installed Language Packs (`languagepacks.json`) on every run. To change it later, rerun `install` with `--locale` (it takes effect when code-server restarts) or use "Configure Display Language" in code-server; do not open marketplace access for this. That list always marks English as "(Current)"; this is a code-server display issue and the selection still works.
 
 The script verifies and extracts the archive, creates the configuration file with a newly generated password (never printed), and on the first install copies default settings (only for files that do not yet exist) and installs default extensions (while the marker file is absent). Before extracting, it checks that `CODE_SERVER_INSTALL_MIB` (768 MiB, in `version.env`) is free and exits without extracting anything if not. Relay any errors—such as missing utilities (`tar`, `gzip`, `sha256sum`, `od`, `df`), `not enough disk space`, missing glibc, or an unwritable `HOME`—directly to the user.
 

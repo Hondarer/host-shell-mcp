@@ -250,8 +250,11 @@ The scripts in `.agents/skills/host-shell-code-server/` are adapted from `downlo
 - Suppressed printing the password to standard output so it never enters the agent conversation history
 - Renamed the installation directory to `host-shell-code-server` to avoid colliding with `code-server-launcher`
 - Applied default settings and extensions on the initial install (`defaults/` matches the defaults in `code-server-container`)
+- Registered installed Language Packs in the language pack list and set the display language with `install --locale` (`scripts/lib/language-packs.mjs`), so code-server shows the chosen language from the first start even offline
 
 Keep script comments and output in English using ASCII characters only so Windows PowerShell 5.1 can read the scripts without a UTF-8 BOM.
+
+Run the skill's automated tests with `node --test .agents/skills/host-shell-code-server/tests/*.test.mjs` (Node.js required).
 
 To update the bundled code-server version:
 

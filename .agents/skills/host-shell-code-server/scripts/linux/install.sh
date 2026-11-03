@@ -2,7 +2,9 @@
 # Install code-server from the kit on this (target) machine, create its configuration, and on the
 # first install inject the default settings and extensions. It never connects to the network:
 # the release archive and extensions come from packages/ in the kit (see download.sh).
-# Usage: install.sh [--extension FILE.vsix|ID]
+# Usage: install.sh [--extension FILE.vsix|ID] [--locale LOCALE]
+# --locale sets the display language (for example ja); without it the existing setting is kept,
+# and a new installation starts in English.
 
 set -euo pipefail
 # Every location is under HOME; inside containers it may be unset or read-only for the exec user.
@@ -13,15 +15,24 @@ fi
 # shellcheck source=../lib/common.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/common.sh"
 
+usage="usage: $0 [--extension FILE.vsix|ID] [--locale LOCALE]"
 extension=""
-case "${1:-}" in
-  "") ;;
-  --extension)
-    [[ $# -eq 2 ]] || die "usage: $0 [--extension FILE.vsix|ID]"
-    extension="$2"
-    ;;
-  *) die "usage: $0 [--extension FILE.vsix|ID]" ;;
-esac
+locale=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --extension)
+      [[ $# -ge 2 && -z "${extension}" ]] || die "${usage}"
+      extension="$2"
+      shift 2
+      ;;
+    --locale)
+      [[ $# -ge 2 && -z "${locale}" ]] || die "${usage}"
+      locale="$2"
+      shift 2
+      ;;
+    *) die "${usage}" ;;
+  esac
+done
 
 # python3, openssl and ss are deliberately not required: minimal closed environments often lack them.
 require_cmd tar gzip sha256sum od uname tr df tail cut
@@ -81,14 +92,14 @@ else
 fi
 
 # Default settings are placed only where no file exists, so changes made in code-server survive.
-for scope in User Machine; do
-  target="${HSCS_USER_DATA_DIR}/${scope}/settings.json"
+for file in User/settings.json Machine/settings.json; do
+  target="${HSCS_USER_DATA_DIR}/${file}"
   if [[ -e "${target}" ]]; then
-    echo "keeping existing ${scope}/settings.json"
+    echo "keeping existing ${file}"
   else
-    mkdir -p "${HSCS_USER_DATA_DIR}/${scope}"
-    cp "${HSCS_DEFAULTS_DIR}/${scope}/settings.json" "${target}"
-    echo "installed default ${scope}/settings.json"
+    mkdir -p "$(dirname "${target}")"
+    cp "${HSCS_DEFAULTS_DIR}/${file}" "${target}"
+    echo "installed default ${file}"
   fi
 done
 
@@ -125,6 +136,14 @@ fi
 if [[ -n "${extension}" ]]; then
   code_server_cli --install-extension "${extension}" --force
 fi
+
+# Extensions installed with the CLI are not registered as language packs, so switching the display
+# language would need a marketplace reinstall (network access). Register them on every run; with
+# --locale, also set the display language in User/argv.json.
+lp_args=("${HSCS_USER_DATA_DIR}" "${HSCS_EXTENSIONS_DIR}")
+[[ -z "${locale}" ]] || lp_args+=(--locale "${locale}")
+"${HSCS_INSTALL_DIR}/lib/node" "${HSCS_ROOT}/scripts/lib/language-packs.mjs" "${lp_args[@]}" ||
+  die "failed to register language packs"
 
 echo "configuration: ${HSCS_CONFIG_FILE}"
 echo "version: $(code_server_cli --version | head -n 1)"
