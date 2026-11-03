@@ -94,6 +94,7 @@ The result is `$SKILL/packages/COMMIT-ARCH/` (about 226 MiB for x64). A folder t
 3. `forward_open` with `direction: "local"`, `listen_port: LISTEN_PORT`, `host: "127.0.0.1"`, `port: 2222`. If `LISTEN_PORT` is in use on the client, pick another, rerun step 4.3, and ask the user to update the block.
 4. Ask the user to connect to `host-shell-vscode-NAME` in VS Code ("Remote-SSH: Connect to Host..."). If a window was connected before, VS Code shows "Cannot reconnect. Please reload the window."; the user chooses "Reload Window".
 5. After the user connects, run `exec_run` `argv: ["sh", "<kit>/scripts/linux/status.sh"]`. Exit status 0 with `running server: Stable-COMMIT` means the client's version runs pinned. Report any `WARNING:` lines; they mean a server was downloaded or runs a commit other than its client's.
+6. On the first connection after placing a fresh `~/.vscode-server` through the proxy, the server installs the client's language pack after the extension host started, so extension strings stay in English. If the user's VS Code is not in English, restart the `start.sh` job (`job_stop`, `job_start`) and ask the user to reload the window once.
 
 ### 6. Client access through the relay proxy (optional)
 
@@ -126,5 +127,5 @@ When the client cannot fetch distributions but the target may use the relay prox
 
 - The inner `sshd` has no `Subsystem sftp`, so `sftp` and scp in SFTP mode are refused. Legacy scp (`scp -O`) runs through the shell and cannot be blocked while the `sshd` offers a shell.
 - The agent host pin relies on the internal environment variable `VSCODE_CLI_INITIAL_AH_VERSION`. If a VS Code release stops honoring it, `status.sh` warns that a server runs another commit or has no CLI.
-- `cleanup.sh` matches processes whose command line starts with this user's `~/.vscode-server` (and terminal shells started from it), and removes `code-*` and `vscode-*` entries owned by the user in `TMPDIR` (default `/tmp`) only when none of those processes remain.
+- `cleanup.sh` matches processes whose command line starts with this user's `~/.vscode-server` (and terminal shells started from it), and removes `code-*` and `vscode-*` entries owned by the user in `TMPDIR` (default `/tmp`) only when none of those processes remain. It leaves `/tmp/mcp-<random>/mcp.sock` (Copilot Chat's socket for Copilot CLI integration) alone because the name does not identify VS Code; do not delete such directories without asking the user.
 - Use of the VS Code Server is subject to the license terms of the VS Code Server and Remote - SSH.

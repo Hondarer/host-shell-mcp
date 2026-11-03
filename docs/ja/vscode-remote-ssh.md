@@ -199,22 +199,33 @@ Table: 拡張機能の導入方法
 
 - サーバーの表示言語は、クライアントの表示言語に従います。
 - VS Code の画面から導入・更新した言語パックは、`~/.vscode-server/data/languagepacks.json` に自動で登録されます。新しい版の翻訳は、サーバーを止めて再接続したあとに使われます。
+- プロキシ経由で最初に接続すると、サーバーはクライアントの表示言語の言語パックを Marketplace から自動で導入します。導入は拡張機能ホストの起動後に行われるため、その接続では、接続先の拡張機能の文言 (Git のビューなど) が英語のままです。サーバーを止めて (`start.sh` の起動し直し、または `cleanup.sh`) 再接続すると、表示言語が適用されます。
 - `--install-extension` で導入した言語パックは登録されず、英語で表示されます。code-server スキルの `scripts/lib/language-packs.mjs` を、サーバー同梱の `node` で `language-packs.mjs ~/.vscode-server/data ~/.vscode-server/extensions` と実行すると登録されます。
 
 ## ターミナルと Copilot
 
 - VS Code のターミナルは、接続先のシェルで動作します。プロキシを使う場合、ターミナルにも `HTTPS_PROXY` と `NO_PROXY` が渡ります。
+- ターミナルや Copilot CLI に表示される時刻は、接続先の時刻帯 (`/etc/localtime` または `TZ`) に従います。スキルは `TZ` を渡しません。
 - Copilot Chat は、接続先の agent host の下の `copilot-runtime` で動作し、認証はクライアントのサインインを使います。接続先の `~/.copilot` にトークンのファイルは作られません。
 - Copilot CLI をターミナルで使う場合は、[CLI 型 AI コーディングエージェントの導入](coding-agents.md) の手順で `~/.local/bin/copilot` に配置します。VS Code 1.144 のターミナルの PATH には、npm から Copilot CLI を導入しようとする `copilot` (`server/bin/copilot-shim`) が加わるため、PATH でそれより先に見つかる場所に置きます。Copilot CLI の認証情報 (`~/.copilot/config.json`) は、サーバーの版を更新しても引き継がれます。
 
 ## 終了と削除
 
-host-shell のセッションを終えると、host-shell、内側の sshd、SSH のセッション、転送は止まります。一方、VS Code Server、agent host、`copilot-runtime`、ターミナルのシェル、そこで起動したプログラム (Copilot CLI など) は、init の子として残ります。Remote - SSH の再接続の待ち時間 (`remote.SSH.reconnectionGraceTime`) は、既定で 3 時間です。
+host-shell のセッションを終えると、host-shell、内側の sshd、SSH のセッション、転送は止まります。一方、VS Code Server、agent host、`copilot-runtime`、ターミナルのシェル、そこで起動したプログラム (Copilot CLI など) は、init の子として残ります。
+
+残ったプロセスは、次の順に終了します。
+
+1. Remote - SSH の再接続の待ち時間 (`remote.SSH.reconnectionGraceTime`、既定は 10800 秒 = 3 時間) が過ぎると、拡張機能ホストが終了し、管理用の接続が破棄されます。
+2. その約 5 分後に、サーバー (`ServerLifetime: all consumers inactive, shutting down`) と agent host のサーバーが終了します。ターミナルのシェルと `copilot-runtime` も一緒に終了します。
+3. agent host の supervisor (`code-<COMMIT> ... agent host`) は残ります。
+
+待ち時間は、サーバーの起動時に引数 (`--reconnection-grace-time`) で渡されます。設定を変えたあとは、サーバーを止めてから接続し直します。
 
 - **セッションの終了時:** セッションを終える前に `cleanup.sh` を実行します。`start.sh` も、起動時に前のセッションの VS Code Server を止めます。
 - **`cleanup.sh` の対象:**
   - コマンドラインが `$HOME/.vscode-server` で始まるプロセスと、そこから起動したターミナルのシェル。TERM を送り、残ったものに KILL を送ります。同じ利用者の別の VS Code (別の HOME の Remote - WSL など) は対象外です。
   - 一時ディレクトリー (`TMPDIR`、既定は `/tmp`) の、利用者が所有する `code-*` と `vscode-*`。対象のプロセスが残っていないときだけ削除します。
+  - Copilot Chat の拡張機能が Copilot CLI との連携用に作る `/tmp/mcp-<ランダム>/mcp.sock` は削除しません。名前で、MCP を使うほかのソフトウェアと区別できないためです。接続を繰り返すと増えるので、必要に応じて手で削除します。
 - **削除:** `cleanup.sh --purge` は、`~/.vscode-server` (配置した版、拡張機能、利用者データ) と `~/.local/share/host-shell-vscode-remote-ssh` (キット、sshd の設定と鍵) も削除します。Copilot CLI と共有する `~/.copilot` は残します。VS Code を動かすマシンでは、利用者が Host ブロックと `~/.ssh/host-shell-vscode-NAME_ed25519`、`.pub`、`_known_hosts` を削除します。
 
 ## 検証済みの範囲
@@ -238,12 +249,14 @@ host-shell のセッションを終えると、host-shell、内側の sshd、SSH
 | 表示言語 | 検証済 | 日本語。画面からの言語パックの更新は自動で登録された。`--install-extension` の場合は登録が必要だった |
 | Copilot Chat | 検証済 | プロキシ経由で、チャット、ファイルの読み取り、ターミナルでのコマンド実行が動作した |
 | Copilot Chat の Web Fetch | 検証済 (制限) | `failed to lookup address information` で失敗することを確認した |
-| Copilot CLI | 検証済 | 配置、起動、認証、推論、操作、Copilot Chat との併用。Ctrl-C、リサイズ、Web Fetch は未検証 |
+| Copilot CLI | 検証済 | 配置、起動、認証、推論、操作、Ctrl-C、リサイズ、Copilot Chat との併用 |
+| Copilot CLI の Web Fetch | 検証済 (制限) | `failed to lookup address information` で失敗することを確認した。プロキシへの接続は行われなかった |
+| Remote - SSH の接続 | 検証済 | scp と sftp を使わずに接続した。Remote - SSH のログに scp の記録はなかった |
 | sftp と SFTP 方式の scp | 検証済 | `subsystem request failed` で拒否された |
-| 従来方式の scp (`scp -O`) | 未検証 | シェルを経由するため、拒否できない |
+| 従来方式の scp (`scp -O`) | 検証済 (制限) | 送信と受信の両方が成功した。シェルを経由するため、拒否できない |
 | 終了後に残るプロセス | 検証済 | セッションの終了後も VS Code Server などが残り、`cleanup.sh` で止まった |
-| `cleanup.sh --purge` | 未検証 | 自動試験でのみ確認 |
-| `remote.SSH.reconnectionGraceTime` の効果、待ち時間のあとのサーバーの終了 | 未検証 | |
+| `cleanup.sh --purge` と最初からの導入 | 検証済 | `--purge` で `~/.vscode-server` とスキルのデータが削除され、`~/.copilot` は残った。そのあと、エージェントが `SKILL.md` の手順に従って最初から導入し、接続できた |
+| 待ち時間のあとのサーバーの終了 | 検証済 | `remote.SSH.reconnectionGraceTime` を 60 秒にして確認した。既定の 3 時間では未検証 |
 | `fetch.sh` | 検証済 (WSL) | macOS は未検証 |
 | `fetch.ps1` | 検証済 | Windows PowerShell 5.1。結果は `fetch.sh` とバイト単位で一致した |
 | `ssh-key.ps1` | 検証済 | Windows PowerShell 5.1。空のパスフレーズの鍵、known_hosts、Host ブロック |
@@ -262,6 +275,6 @@ Table: 検証済みの範囲
 - 内側の sshd での操作には、`host-shell` の制限と操作ログが適用されません。
 - 版の固定は、公開されていない環境変数 `VSCODE_CLI_INITIAL_AH_VERSION` に依存します。
 - 接続先での名前解決を使わないため、接続先で名前を解決する機能 (Web Fetch など) は動作しません。
-- VS Code Server は、host-shell のセッションを終えても残ります。`cleanup.sh` で止めます。
+- VS Code Server は、host-shell のセッションを終えても、再接続の待ち時間と約 5 分のあいだ残ります。agent host の supervisor は、そのあとも残ります。`cleanup.sh` で止めます。
 - 接続先は Linux (glibc) だけが対象です。Windows の接続先と musl の環境は対象外です。
 - VS Code Server と Remote - SSH の利用には、それぞれのライセンス条項が適用されます。配布物は変更せずに配置します。

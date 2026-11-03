@@ -197,22 +197,33 @@ Table: Ways to install extensions
 
 - The server's display language follows the client's display language.
 - Language packs installed or updated from the VS Code UI are registered in `~/.vscode-server/data/languagepacks.json` automatically. A new translation is used after the server is stopped and the client reconnects.
+- On the first connection through the proxy, the server installs the language pack for the client's display language from the Marketplace automatically. Because this happens after the extension host starts, strings of extensions on the target (such as the Git view) stay in English during that connection. Stop the server (restart `start.sh` or run `cleanup.sh`) and reconnect to apply the display language.
 - Language packs installed with `--install-extension` are not registered, and the UI stays in English. Running `language-packs.mjs ~/.vscode-server/data ~/.vscode-server/extensions` (`scripts/lib/language-packs.mjs` of the code-server skill) with the `node` bundled with the server registers them.
 
 ## Terminal and Copilot
 
 - The VS Code terminal runs the target's shell. When the proxy is used, the terminal also receives `HTTPS_PROXY` and `NO_PROXY`.
+- Times shown in the terminal and Copilot CLI follow the target's time zone (`/etc/localtime` or `TZ`). The skill does not pass `TZ`.
 - Copilot Chat runs in `copilot-runtime` under the agent host on the target and uses the client's sign-in. No token file is created in `~/.copilot` on the target.
 - To use Copilot CLI in the terminal, place it at `~/.local/bin/copilot` as described in [Deploying CLI coding agents](coding-agents.md). The terminal PATH in VS Code 1.144 includes a `copilot` (`server/bin/copilot-shim`) that tries to install Copilot CLI from npm, so place the real one where PATH finds it first. Copilot CLI's credentials (`~/.copilot/config.json`) carry over when the server version is updated.
 
 ## Ending and removal
 
-When the host-shell session ends, host-shell, the inner sshd, the SSH session, and the forward stop. The VS Code Server, the agent host, `copilot-runtime`, terminal shells, and programs started in them (such as Copilot CLI) keep running as children of init. The Remote - SSH reconnection grace time (`remote.SSH.reconnectionGraceTime`) is 3 hours by default.
+When the host-shell session ends, host-shell, the inner sshd, the SSH session, and the forward stop. The VS Code Server, the agent host, `copilot-runtime`, terminal shells, and programs started in them (such as Copilot CLI) keep running as children of init.
+
+The remaining processes end in this order:
+
+1. When the Remote - SSH reconnection grace time (`remote.SSH.reconnectionGraceTime`, default 10800 seconds = 3 hours) expires, the extension host exits and the management connection is disposed.
+2. About 5 minutes later, the server (`ServerLifetime: all consumers inactive, shutting down`) and the agent host's server exit, together with terminal shells and `copilot-runtime`.
+3. The agent host supervisor (`code-<COMMIT> ... agent host`) keeps running.
+
+The grace time is passed to the server as an argument (`--reconnection-grace-time`) when it starts. After changing the setting, stop the server and reconnect.
 
 - **At the end of a session:** run `cleanup.sh` before the session ends. `start.sh` also stops the VS Code Server of the previous session when it starts.
 - **What `cleanup.sh` affects:**
   - Processes whose command line starts with `$HOME/.vscode-server` and the terminal shells started from them. It sends TERM, then KILL to those that remain. Other VS Code installations of the same user (such as a Remote - WSL server with another HOME) are not affected.
   - `code-*` and `vscode-*` entries owned by the user in the temporary directory (`TMPDIR`, default `/tmp`). They are removed only when none of those processes remain.
+  - `/tmp/mcp-<random>/mcp.sock`, which the Copilot Chat extension creates for Copilot CLI integration, is not removed, because its name cannot be told apart from other software that uses MCP. They accumulate over repeated connections; remove them by hand when needed.
 - **Removal:** `cleanup.sh --purge` also deletes `~/.vscode-server` (placed versions, extensions, user data) and `~/.local/share/host-shell-vscode-remote-ssh` (kit, sshd configuration and keys). `~/.copilot`, which Copilot CLI shares, is kept. On the machine running VS Code, the user removes the Host block and `~/.ssh/host-shell-vscode-NAME_ed25519`, `.pub`, and `_known_hosts`.
 
 ## Verified scope
@@ -236,12 +247,14 @@ Verified in this environment:
 | Display language | Verified | Japanese. A language pack update from the UI was registered automatically; `--install-extension` needed registration |
 | Copilot Chat | Verified | Chat, reading files, and running commands in the terminal worked through the proxy |
 | Copilot Chat Web Fetch | Verified (limitation) | Confirmed to fail with `failed to lookup address information` |
-| Copilot CLI | Verified | Deployment, startup, authentication, inference, operations, and use alongside Copilot Chat. Ctrl-C, resizing, and Web Fetch are unverified |
+| Copilot CLI | Verified | Deployment, startup, authentication, inference, operations, Ctrl-C, resizing, and use alongside Copilot Chat |
+| Copilot CLI Web Fetch | Verified (limitation) | Confirmed to fail with `failed to lookup address information`; no connection to the proxy was made |
+| Remote - SSH connection | Verified | Connected without scp or sftp; the Remote - SSH log had no scp entries |
 | sftp and scp in SFTP mode | Verified | Refused with `subsystem request failed` |
-| Legacy scp (`scp -O`) | Unverified | It goes through the shell and cannot be refused |
+| Legacy scp (`scp -O`) | Verified (limitation) | Both upload and download succeeded. It goes through the shell and cannot be refused |
 | Processes left after the session | Verified | The VS Code Server and others remained after the session ended and stopped with `cleanup.sh` |
-| `cleanup.sh --purge` | Unverified | Covered by automated tests only |
-| Effect of `remote.SSH.reconnectionGraceTime`, server exit after the grace time | Unverified | |
+| `cleanup.sh --purge` and installation from scratch | Verified | `--purge` deleted `~/.vscode-server` and the skill data and kept `~/.copilot`. The agent then installed from scratch following `SKILL.md` and connected |
+| Server exit after the grace time | Verified | Confirmed with `remote.SSH.reconnectionGraceTime` set to 60 seconds; unverified with the default of 3 hours |
 | `fetch.sh` | Verified (WSL) | macOS is unverified |
 | `fetch.ps1` | Verified | Windows PowerShell 5.1. Its output was byte-identical to that of `fetch.sh` |
 | `ssh-key.ps1` | Verified | Windows PowerShell 5.1: key with an empty passphrase, known_hosts, Host block |
@@ -260,6 +273,6 @@ The validation records are in the [validation record](../prompts/past/261103-vsc
 - `host-shell` restrictions and the audit log do not apply to actions through the inner sshd.
 - Version pinning relies on the undocumented environment variable `VSCODE_CLI_INITIAL_AH_VERSION`.
 - Name resolution on the target is not used, so features that resolve names on the target (such as Web Fetch) do not work.
-- The VS Code Server keeps running after the host-shell session ends; stop it with `cleanup.sh`.
+- The VS Code Server keeps running for the reconnection grace time plus about 5 minutes after the host-shell session ends, and the agent host supervisor keeps running after that. Stop them with `cleanup.sh`.
 - Only Linux (glibc) targets are supported. Windows targets and musl environments are not.
 - Use of the VS Code Server and Remote - SSH is subject to their respective license terms. The distributions are placed without modification.

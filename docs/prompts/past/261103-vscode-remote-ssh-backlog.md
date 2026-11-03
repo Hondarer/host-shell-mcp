@@ -12,14 +12,14 @@
 
 | 課題 ID | 題名 | 優先度 | 状態 |
 | --- | --- | --- | --- |
-| BL-001 | ターミナルで起動する Copilot CLI を B-2 で検証していない | 高 | 検証済 (Ctrl-C・リサイズ・Web Fetch は未検証) |
+| BL-001 | ターミナルで起動する Copilot CLI を B-2 で検証していない | 高 | 検証済 (Web Fetch は失敗することを確認) |
 | BL-002 | agent host の版の固定が手作業で、内部の環境変数に依存している | 高 | 検証済 (ラッパー方式。内部の環境変数への依存は容認) |
 | BL-003 | 新しい版への更新手順が整っておらず、検証していない | 高 | 検証済 (オフラインとプロキシ経由での切り替え、古い版の削除。接続中の更新要求は未検証) |
 | BL-004 | 準備と後片付けの手順が、スクラッチのスクリプトのままである | 中 | 検証済 (スキル `host-shell-vscode-remote-ssh`。arm64 と macOS の手元は未検証) |
-| BL-005 | セッションを終えても VS Code Server が残る | 中 | 一部検証済 |
-| BL-006 | 従来方式の scp (`scp -O`) が塞がれていない | 低 | 未着手 |
+| BL-005 | セッションを終えても VS Code Server が残る | 中 | 検証済 (既定の 3 時間での動作は未検証) |
+| BL-006 | 従来方式の scp (`scp -O`) が塞がれていない | 低 | 検証済 (塞げないことを制限として文書化) |
 | BL-007 | B-2 の仕様の文書がない | 中 | 対処済 (`docs/ja/vscode-remote-ssh.md` と英訳) |
-| BL-008 | 検証用にクライアントへ加えた設定が残っている | 低 | 未着手 |
+| BL-008 | 検証用にクライアントへ加えた設定が残っている | 低 | 作業中 (古い鍵を削除。Host ブロックと remotePlatform は検証中のため残す) |
 
 ## BL-001 ターミナルで起動する Copilot CLI を B-2 で検証していない
 
@@ -37,6 +37,11 @@
   - 置き場所は、`~/.local/bin/copilot` に直接置く方式とした。VS Code の `copilot` (npm から導入しようとする) より先に見つかるようにするためである。
   - セッションを終えても、Copilot CLI は VS Code Server と一緒に残った。後片付けのスクリプトで VS Code Server を止めると、Copilot CLI も終了した。
   - 未検証: Ctrl-C、リサイズ、Web Fetch (失敗すると予想)
+  - **残りの確認 (1.144.1、プロキシ経由、スキルの手順で接続):**
+    - Ctrl-C: 長い応答の途中で押すと、応答が止まって入力に戻った。
+    - リサイズ: パネルの大きさの変更と最大化で、表示は崩れなかった。
+    - Web Fetch: `WebFetchBlockedUrlError: failed to lookup address information: Name or service not known` で失敗した。プロキシの履歴に `example.com` はなく、接続先での名前解決の段階で失敗した。
+    - 表示された時刻は UTC だった。検証用のコンテナーの `/etc/localtime` が UTC で、`TZ` も未設定のためである。スキルの不具合ではないので、文書に「接続先の時刻帯に従う」と書いた。
 
 ## BL-002 agent host の版の固定が手作業で、内部の環境変数に依存している
 
@@ -218,6 +223,30 @@
   - `--purge` によるファイルの削除
   - `remote.SSH.reconnectionGraceTime` を短くしたときの効果
   - 待ち時間が過ぎたあと、サーバーが自分で終了するか
+- **経緯と対処 (2026-11-03): 待ち時間の効果**
+  - 利用者が `"remote.SSH.reconnectionGraceTime": 60` を設定した。`start.sh` を起動し直してサーバーを止め、再接続した。サーバーは `--reconnection-grace-time=60` で起動し、拡張機能ホストは `VSCODE_RECONNECTION_GRACE_TIME=60000ms` を読んだ。
+  - bridge を止めて (12:00:06 UTC)、`podman exec` でプロセスを観察した。
+    - 12:00:33: `The client has disconnected, will wait for reconnection 1m before disposing...`
+    - 12:01:03: 拡張機能ホストが終了した (code 0)。
+    - 12:01:33: `The reconnection grace time of 1m has expired, so the connection will be disposed.`
+    - 12:06:03: `ServerLifetime: all consumers inactive, shutting down`。サーバー本体、ptyHost、ターミナルの bash が終了した。
+    - 12:06:33: agent host のサーバーも同じ理由で終了し、`copilot-runtime` も終了した。CLI は `Server process exited: Ok(...)` を記録した。
+    - 12:12:58 (約 13 分後) の時点でも、agent host の supervisor (`host-shell-cli/code-<C> --cli-data-dir ... agent host`、親は init) は残っていた。
+  - 新しいセッションで `start.sh` を起動すると、残っていた supervisor は後片付けで止まった (残り 0)。
+  - 既定の 3 時間での動作は確認していない。文書には、この順序と、supervisor が残ることを書いた。
+- **経緯と対処 (2026-11-03): `--purge` と最初からの導入**
+  - sshd のジョブを止めてから、`cleanup.sh --purge` を実行した。`~/.vscode-server` (701M) と `~/.local/share/host-shell-vscode-remote-ssh` (68K) が削除され、`~/.copilot` は残った。
+  - エージェントが `SKILL.md` の手順 1〜5 に従って、最初から導入した。
+    - 前提の確認では、`restrictions` に `Secrets in output: redacted` があった。検証環境での利用は承認済みとして進めた。
+    - `fetch.sh` は、スキルの `packages/` に取得した (226M)。
+    - 転送は約 16 秒だった。`place.sh` は新しく展開した。
+    - 既存のクライアントの鍵を `authorize.sh` で登録した。新しいホスト鍵で、`ssh-key.ps1 trust` が known_hosts を作り直した。
+  - 利用者が接続すると、`status.sh` は警告を出さず、override は 1.144.1 だった。Copilot Chat は応答した。プロキシの履歴に `update.code.visualstudio.com` はなかった。
+  - 表示言語:
+    - サーバーは、ja の言語パック (1.131.2026090407) を Marketplace から自動で導入した。署名の検証は `Success`、CRL・OCSP は拒否された。GitHub Pull Requests も自動で入った。
+    - 拡張機能ホストは言語パックの導入の 3 秒前に `en` で起動していた。このため、Git のビューの文言 (「You can clone a repository locally.」など) は英語だった。
+    - `start.sh` を起動し直して再接続すると、`clp/<hash>.ja` が作られ、拡張機能ホストは `ja` で起動した。表示はすべて日本語になった。
+    - この手当てを、`SKILL.md` の手順 5.6 と文書に書いた。
 - **あるべき姿:** セッションの開始時と終了時の後片付けを、手順として固定する。
 
 ## BL-006 従来方式の scp (`scp -O`) が塞がれていない
@@ -228,6 +257,14 @@
 - **扱い:**
   - 内側の sshd はシェルを提供するので、ファイルの転送を完全に防ぐことはできない。
   - 「scp を使わずに接続できる」ことの確認と、「scp を禁止できる」ことの保証は、分けて文書に書く。
+- **経緯と対処 (2026-11-03):**
+  - Windows の VS Code の Remote - SSH のログ (このセッションのすべての接続) を調べた。scp と sftp の記録はなく、`didLocalDownload==0` だった。Remote - SSH は scp を使わずに接続した。
+  - Windows の OpenSSH から、内側の sshd へ次を試した。
+    - `sftp`: `subsystem request failed on channel 0` で失敗した。
+    - `scp` (既定の SFTP 方式): 同じく失敗した。
+    - `scp -O` (従来方式): 送信 (接続先の `/tmp` へ) と受信 (`/etc/os-release`) の両方が成功した。
+  - 従来方式の scp は、接続先で `scp -t` / `scp -f` をシェルから実行する。`ForceCommand` などで `scp` のコマンドだけを拒否することはできるが、シェルを提供する以上、`cat` などでファイルを読み書きできる。このため、塞ぐ対策は入れず、文書の「検証済みの範囲」と「制限」に、拒否できないことを書いた。
+  - 試験で作った接続先と Windows の一時ファイルは削除した。
 
 ## BL-007 B-2 の仕様の文書がない
 
@@ -254,3 +291,9 @@ Windows 側に、次のものが残っている。
 - VS Code の設定 `remote.SSH.remotePlatform` に追加された `hs-vscode-ol10`
 
 検証が終わったら撤去する。
+
+- **経緯と対処 (2026-11-03):**
+  - `~/.ssh/config` の `Host hs-vscode-ol10` のブロックは、利用者がスキルの鍵 (`host-shell-vscode-ol10_ed25519`) と known_hosts (`host-shell-vscode-ol10_known_hosts`) を使うように書き換えた。VS Code は、この名前で接続している。
+  - 使われなくなった古い鍵 `hs_vscode_ed25519`、`hs_vscode_ed25519.pub` と、known_hosts の `hs_vscode_known_hosts` を削除した。
+  - Host ブロック、スキルの鍵と known_hosts、`remote.SSH.remotePlatform` の `hs-vscode-ol10` は、検証を続ける間は残す。
+  - 接続先の検証用のファイル (ホームのスクラッチのスクリプト、`cli-check`、`~/.cache/vscode-dist`) も削除した。`~/work`、`~/.local/bin/copilot`、`~/.copilot` は残している。
