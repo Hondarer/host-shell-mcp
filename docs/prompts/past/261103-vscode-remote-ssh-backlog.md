@@ -13,9 +13,9 @@
 | 課題 ID | 題名 | 優先度 | 状態 |
 | --- | --- | --- | --- |
 | BL-001 | ターミナルで起動する Copilot CLI を B-2 で検証していない | 高 | 検証済 (Ctrl-C・リサイズ・Web Fetch は未検証) |
-| BL-002 | agent host の版の固定が手作業で、内部の環境変数に依存している | 高 | 未着手 |
-| BL-003 | 新しい版への更新手順が整っておらず、検証していない | 高 | 未着手 |
-| BL-004 | 準備と後片付けの手順が、スクラッチのスクリプトのままである | 中 | 未着手 |
+| BL-002 | agent host の版の固定が手作業で、内部の環境変数に依存している | 高 | 検証済 (ラッパー方式。内部の環境変数への依存は容認) |
+| BL-003 | 新しい版への更新手順が整っておらず、検証していない | 高 | 検証済 (オフラインとプロキシ経由での切り替え、古い版の削除。接続中の更新要求は未検証) |
+| BL-004 | 準備と後片付けの手順が、スクラッチのスクリプトのままである | 中 | 作業中 (スクリプトを作り直した。スキル化は未着手) |
 | BL-005 | セッションを終えても VS Code Server が残る | 中 | 一部検証済 |
 | BL-006 | 従来方式の scp (`scp -O`) が塞がれていない | 低 | 未着手 |
 | BL-007 | B-2 の仕様の文書がない | 中 | 未着手 |
@@ -50,6 +50,40 @@
 - **あるべき姿:**
   - クライアントの commit を 1 つ渡すだけで、配置と固定がそろうこと。
   - 固定が効かなくなったときに気付けること。たとえば、`Stable-*` が増えたことを後片付けのときに報告する。
+- **経緯と対処 (2026-11-03):**
+  - **版を上げる経路の調査:** VS Code 1.144.0 の配布物のコードを調べた。agent host が版を上げるのは、クライアントが接続したときにプロトコルの版が合わない (`incompatible`) 場合だけである。このときサーバーが `vscodeUpgradeMethod` を提示し、クライアントがそれを呼ぶと、agent host の管理用ソケットに `POST /upgrade` が送られる。固定した版がクライアントの commit と同じなら、この経路は使われない。実際に版の更新が要求されたときの動作は未検証である。
+  - **スクリプトの作り直し:**
+    - `vscode-fetch.sh COMMIT [x64|arm64] [OUT_DIR]` (手元): 公式 API (`/api/versions/commit:<C>/<種別>/stable`) から取得先と SHA-256 を得て、取得と照合を行う。結果として `SHA256SUMS` と `COMMIT` を書く。
+    - `vscode-place.sh DIST_DIR` (接続先): 照合して配置し、`lru.json` の先頭に追加する。
+    - `vscode-place.sh --prune COMMIT` (接続先): 古い版を削除する。
+    - `sshd-setup.sh`: `--commit` を省くと、`lru.json` の先頭の版に固定する。
+    - `vscode-status.sh`: 固定と異なる `Stable-*` や、動いているサーバーがあれば警告する。
+  - **確認の結果:**
+    - `~/.vscode-server/cli` と `code-*` を削除してから、1.144.0 を新しいスクリプトで配置し直した。
+    - `--commit` を付けずに sshd の設定を作ると、固定の版は `lru.json` の先頭から決まった。
+    - プロキシ経由で再接続すると、agent host は `Using initial agent host version override` を記録して 1.144.0 で起動した。
+    - プロキシの履歴に `update.code.visualstudio.com` への接続はなかった。固定すると、最新版の確認そのものが行われない。
+  - **その他:** 後片付けのスクリプトのプロセスの判定は、呼び出し元の `sh -c` の引数に含まれるパスにも一致していた。このため、実行ファイルが `~/.vscode-server/` の下にあるものと、VS Code のターミナルの bash だけに一致するように絞った。
+  - **容認した事項:** 内部の環境変数 `VSCODE_CLI_INITIAL_AH_VERSION` に依存する点は容認する。将来の版で効かなくなった場合は、`vscode-status.sh` の警告で気付ける。
+  - **ラッパー方式への変更:**
+    - **変更の理由:** `lru.json` の先頭から固定の版を決める方式では、新しい版を先に配置すると、更新前のクライアントに対して agent host だけが新しい版になる。固定の版は、接続してきたクライアントの commit に合わせる必要がある。
+    - **仕組み:**
+      - Remote - SSH の導入用スクリプトは、`~/.vscode-server/code-<C>` があればそれを `command-shell` で起動し、`kill -0` で PID の生存だけを確認する。
+      - そこで `vscode-place.sh` は、本体を `~/.vscode-server/hs-cli/code-<C>` に置き、`code-<C>` を次のラッパーにした。
+        ```sh
+        VSCODE_CLI_INITIAL_AH_VERSION=<C> exec <本体> "$@"
+        ```
+      - `sshd-setup.sh` は、既定では版を固定しない。`--commit` は、接続先が自分で CLI を取得する構成のための予備として残した。
+      - `vscode-status.sh` は、次の場合に警告する。
+        - ラッパーのない `Stable-*` がある。
+        - 動いているサーバーに、ラッパーがない。
+        - supervisor のプロセス グループのサーバーが、supervisor 自身の commit と異なる。
+    - **確認の結果:**
+      - 1.144.0、1.144.1 の順に配置し、`lru.json` の先頭を 1.144.1 にした。sshd の設定には版の固定もない。この状態で、プロキシ経由で 1.144.0 のクライアントが接続した。
+      - agent host は `Using initial agent host version override: 2c33b50b…` を記録し、1.144.0 のサーバーを動かした。
+      - CLI と supervisor は、ラッパーから exec された `hs-cli/code-<C>` として動いた。
+      - Copilot Chat は応答した。プロキシの履歴に、`update.code.visualstudio.com` への接続はなかった。
+      - agent host は、使った版が先頭になるように `lru.json` を書き換えた。
 
 ## BL-003 新しい版への更新手順が整っておらず、検証していない
 
@@ -69,7 +103,59 @@
   - オフラインの構成では、クライアントが先に自動更新されると接続できなくなる。
   - 対策の候補は 2 つある。クライアントの自動更新を止める (`update.mode`)。または、接続先を先に更新する。
 - **検証の案:** クライアントを 1.144.0 から 1.144.1 (commit `261c84cb1eddf11235f9e2c921425e9663fbe556`) へ更新し、オフラインで上記の手順を確認する。
-- **未確認:** 導入済みの拡張機能と言語パックの登録を、新しい版でもそのまま使えるか。
+- **未確認:** 導入済みの拡張機能と言語パックの登録を、新しい版でもそのまま使えるか。(確認の結果は「経緯と対処」にある)
+- **経緯と対処 (2026-11-03):**
+  - **配布物の取得:** `vscode-fetch.sh` で、1.144.1 の配布物を手元で取得して照合した。SHA-256 は、CLI が `a8f2213541c1b706ef482babbc168287d3f554e252fd14946fced1ed83988cff`、サーバーが `f97933958b8598ccde982342938b99e0e40cecf2c9373b510764e137f16fee02`。転送は約 15 秒だった。
+  - **事前配置:** 1.144.0 のクライアントで接続している間に、1.144.1 を配置した。動いているサーバーには影響しなかった。ラッパー方式の確認 (BL-002) で、新しい版を配置したあとも、更新前のクライアントは 1.144.0 のサーバーと agent host でそのまま使えた。
+  - **クライアントの更新の制約:** VS Code は、すべてのウィンドウを閉じたときにしか、取得済みの更新を適用しない。Claude Code を動かしている VS Code があるため、Claude Code をいったん終了し、更新してから再開する。
+  - **再読み込みのダイアログ:** サーバーを止めたあとの再接続は失敗し、「再接続できません。ウィンドウを再読み込みしてください。」のダイアログが出た。「キャンセル」で閉じられる。
+- **クライアントの切り替えの確認 (オフライン):**
+  - **前提:**
+    - クライアントを 1.144.1 (`261c84cb1eddf11235f9e2c921425e9663fbe556`) に更新した。
+    - bridge はプロキシなしで起動し直した。
+    - 接続先には、1.144.0 と 1.144.1 の両方をラッパー付きで配置していた。
+    - `lru.json` の先頭は 1.144.0 だった。1.144.0 での前回の接続で、agent host が書き換えたためである。sshd の設定には、版の固定もプロキシもない。
+  - **準備:** 後片付けのスクリプトで、更新前の VS Code Server を止めた。止めたプロセスは 0 件で、`/tmp` から 7 件を削除した。そのあと sshd の設定を作り直し、sshd と転送を開いた。
+  - **1.144.1 で接続した結果:**
+    - `vscode-status.sh` は警告を出さなかった。supervisor と、動いているサーバーは、どちらも 1.144.1 だった。
+    - agent host は `Using initial agent host version override: 261c84cb…` を記録した。`lru.json` の先頭が古い版でも、ラッパーによってクライアントの commit が選ばれた。そのあと agent host は、`lru.json` の先頭を 1.144.1 に書き換えた。
+    - CLI と agent host は、ラッパーから exec された `hs-cli/code-261c84…` として動いた。
+    - 取得は起きなかった。`Stable-*` は増えず、CLI のログにも取得の記録はなかった。
+    - 表示は日本語だった。1.144.0 のときに登録した `languagepacks.json` (言語パック 1.131.0) を、そのまま使えた。
+    - 拡張機能ビューの「SSH: hs-vscode-ol10 - インストール済み」に、Hex Editor、C/C++ Themes、言語パック、GitHub Pull Requests が表示された。
+    - 言語パックには「更新」のボタンが表示された。クライアントが Marketplace で新しい版を見つけたためと考えられる。
+  - **古い版の削除:**
+    - 後片付けのあと (止めたプロセスは 0 件、`/tmp` から 8 件を削除)、`vscode-place.sh --prune 261c84…` を実行した。
+    - `Stable-2c33b50b…`、`code-2c33b50b…`、`hs-cli/code-2c33b50b…` が削除された。`lru.json` は 1.144.1 だけになり、サーバーの領域は 641M になった。
+    - VS Code に「再接続できません」のダイアログが出た。ウィンドウを再読み込みすると、再接続できた。
+    - 再接続したあとも、override は 1.144.1 で、取得は起きず、`vscode-status.sh` は警告を出さなかった。
+- **言語パックの更新 (オフライン):**
+  - 「更新」を押すと、サーバーはまず Marketplace から直接取得しようとして、`getaddrinfo ENOTFOUND` で失敗した。そのあと、クライアントが取得した VSIX が `CachedExtensionVSIXs` に届き、`ms-ceintl.vscode-language-pack-ja-1.131.2026090407` が導入された。
+  - `languagepacks.json` の `ja` は、新しい版 (hash `c504…`) を指すように自動で書き換わった。CLI で導入したときと違い、登録の手当ては要らない。
+  - 古い版の 1.131.0 は `.obsolete` に記録された。ウィンドウを閉じて開き直しても、サーバー本体は動き続ける。このため、拡張機能ホストは古い hash の翻訳 (`clp/3460….ja`) を使い続けた。
+  - 後片付けのスクリプトでサーバーを止めて再接続すると、次のようになった。
+    - `clp/c504….ja` が作られ、拡張機能ホストはそれを参照した (`resolvedLanguage: ja`)。表示は日本語だった。
+    - 1.131.0 のファイルと `.obsolete` は削除された。古い `clp/3460….ja` は残った。
+- **プロキシ経由での確認:**
+  - 段階 4 と同じ許可先で bridge を起動し直し、後片付けのあと、sshd の設定を作り直した。設定には `SetEnv` でプロキシを渡し、版の固定は書かない。
+  - 再接続すると、agent host は override を 1.144.1 として記録した。`Stable-*` は増えず、`vscode-status.sh` は警告を出さなかった。
+  - Copilot Chat は応答した。`copilot-runtime` の環境には `HTTPS_PROXY` があった。
+  - Copilot CLI (1.0.83) は、ターミナルからログインなしで起動して応答した。環境には `HTTPS_PROXY`、`NO_PROXY`、`TERM_PROGRAM=vscode` があった。起動時の `Error auto updating: TypeError: fetch failed` (`release-assets.githubusercontent.com` の拒否) は、BL-001 と同じである。入力欄の下には `still waiting on ide` が表示されていた。
+  - **プロキシの履歴 (このセッション全体):**
+    - 許可された宛先: `api.github.com`、`github.com`、`api.githubcopilot.com`、`api.individual.githubcopilot.com`、`exp.individual.githubcopilot.com`、`telemetry.individual.githubcopilot.com`、`main.vscode-cdn.net`
+    - 拒否された宛先: `mobile.events.data.microsoft.com`、`default.exp-tas.com`、`release-assets.githubusercontent.com`、`169.254.169.254`、`metadata.google.internal`
+    - `update.code.visualstudio.com` への接続は 0 件だった。プロキシ経由でも、固定すると最新版の確認は行われない。
+- **未検証:**
+  - 接続中に版の更新が要求されたときの動作 (BL-002)
+  - Copilot CLI の `still waiting on ide` が解消するか (VS Code との連携)
+- **手順として固まったもの (BL-004 でスキル化する):**
+  1. 手元で `vscode-fetch.sh <新しい commit>` を実行し、接続先へ転送する。
+  2. 接続先で `vscode-place.sh <配布物>` を実行する。古いクライアントで接続したままでもよい。
+  3. クライアントを更新する。
+  4. 後片付けのスクリプトを実行し、sshd の設定を作り直して、再接続する。
+     言語パックを更新したときも、新しい版の翻訳を使わせるには、同じようにサーバーを止める。
+  5. 動作を確認したら、後片付けのあとに `vscode-place.sh --prune <新しい commit>` を実行する。
+- スクリプトは、手元のスクラッチ (`vsc2/`) と接続先の `~/hs-vscode/` にある。配布物は、手元の `vscode-dist2/` と接続先の `~/.cache/vscode-dist/` にある。
 
 ## BL-004 準備と後片付けの手順が、スクラッチのスクリプトのままである
 
