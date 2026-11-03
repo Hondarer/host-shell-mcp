@@ -129,14 +129,14 @@ If `proxy_rules_update` is available, read the current `rules_revision` and comp
 
 ## Clipboard copying fails only inside Copilot CLI
 
-Use this when copying works in an ordinary terminal, but inside Copilot CLI's interactive screen `Copied` appears without updating the clipboard. Verified with Copilot CLI 1.0.83, code-server 4.144.0, and Microsoft Edge.
+Use this when copying works in an ordinary terminal, but inside Copilot CLI's interactive screen `Copied` appears without updating the clipboard. Verified with Copilot CLI 1.0.83, code-server 4.144.0, and Microsoft Edge. The copied range was verified by copying from Chrome for Testing 148 (WSLg) to the Windows clipboard.
 
 While mouse support is enabled, Copilot receives mouse input, so dragging cannot create a code-server selection. Shift+drag or `Ctrl+Shift+C` does not copy either.
 
 | Method | Steps | Limitations |
 | --- | --- | --- |
-| Copy everything from the Command Palette (recommended) | Press `Ctrl+Shift+P`, run `Terminal: Select All`, then `Terminal: Copy Selection`. Paste into an editor outside the browser and trim it | Copies the whole terminal; partial selection is impossible. Whether output above the visible area is included is unconfirmed. Bind keys to both commands for frequent use |
-| Save with `/share` | Save the conversation to a file, open it in the editor, and copy | Suits partial selection and long output |
+| Copy the visible area from the Command Palette (recommended) | Press `Ctrl+Shift+P`, run `Terminal: Select All`, then `Terminal: Copy Selection`. Paste into an editor outside the browser and trim it | In Copilot CLI, only the area currently shown on screen (including frames and status lines) is copied; conversation outside the screen is not. Scroll with the wheel first to copy that view. Partial selection is impossible. Bind keys to both commands for frequent use |
+| Save with `/share` | Save the conversation to a file, open it in the editor, and copy | Suits partial selection and long output that does not fit on the screen |
 | Disable mouse handling | Resume with `copilot --continue --no-mouse` and select with the mouse | Wheel scrolling and other interactions degrade |
 
 Table: Copy methods
