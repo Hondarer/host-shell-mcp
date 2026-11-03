@@ -4,7 +4,7 @@
 
 案件名: VS Code Remote - SSH (B-2 構成) の評価検証 (261103-vscode-remote-ssh)  
 作成日: 2026-11-03  
-整理状態: 随時追記中
+整理状態: 完了 (BL-002 の「接続中の版の更新要求」は未検証のまま閉じた)
 
 [検証記録](261103-vscode-remote-ssh-validation.md) の段階 1 から 5 の結果をもとに、残った課題をまとめています。作業中は、各項目の状態と「経緯と対処」を更新します。項目は削除しません。
 
@@ -19,7 +19,7 @@
 | BL-005 | セッションを終えても VS Code Server が残る | 中 | 検証済 (既定の 3 時間での動作は未検証) |
 | BL-006 | 従来方式の scp (`scp -O`) が塞がれていない | 低 | 検証済 (塞げないことを制限として文書化) |
 | BL-007 | B-2 の仕様の文書がない | 中 | 対処済 (`docs/ja/vscode-remote-ssh.md` と英訳) |
-| BL-008 | 検証用にクライアントへ加えた設定が残っている | 低 | 作業中 (古い鍵を削除。Host ブロックと remotePlatform は検証中のため残す) |
+| BL-008 | 検証用にクライアントへ加えた設定が残っている | 低 | 対処済 |
 
 ## BL-001 ターミナルで起動する Copilot CLI を B-2 で検証していない
 
@@ -297,3 +297,7 @@ Windows 側に、次のものが残っている。
   - 使われなくなった古い鍵 `hs_vscode_ed25519`、`hs_vscode_ed25519.pub` と、known_hosts の `hs_vscode_known_hosts` を削除した。
   - Host ブロック、スキルの鍵と known_hosts、`remote.SSH.remotePlatform` の `hs-vscode-ol10` は、検証を続ける間は残す。
   - 接続先の検証用のファイル (ホームのスクラッチのスクリプト、`cli-check`、`~/.cache/vscode-dist`) も削除した。`~/work`、`~/.local/bin/copilot`、`~/.copilot` は残している。
+- **検証の終了時の撤去:**
+  - 接続先: sshd と転送を止め、`cleanup.sh --purge` を実行した。続けて、`~/.copilot` (認証情報を含む)、`~/.cache/copilot`、`~/.local/bin/copilot`、`~/.local/state/gh`、`~/.config/Code`、`~/.cache/Microsoft`、`/tmp/mcp-*`、`/tmp/node-compile-cache` を削除した。そのあと、検証用のコンテナー `hs-vsc-ol10` を削除した (再生成できるため)。
+  - Windows: スキルの鍵と known_hosts を削除した。利用者が `~/.ssh/config` の Host ブロックと、`remote.SSH.remotePlatform` の `hs-vscode-ol10` を削除した。
+  - 手元: bridge を止め、スキルの `packages/` の配布物を削除した。
