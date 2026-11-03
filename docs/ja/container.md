@@ -14,13 +14,13 @@ flowchart LR
 
 この文書では、コンテナー環境に固有のバイナリ配置、登録手順、および注意点を説明します。SSH 接続先と共通の仕様については [利用ガイド](user-guide.md) を参照してください。
 
-## 対象と確認状況
+## 対象と検証状況
 
-| 実行環境 | 確認状況 |
+| 実行環境 | 検証状況 |
 | --- | --- |
-| Podman | 動作確認済み (Podman 4.9.4、rootless) |
-| Docker | Podman の Docker 互換コマンド (`docker`) で確認済み (Docker Engine では未確認) |
-| `kubectl` (Kubernetes) | 未確認 (生成されるコマンドの構文のみ確認済み) |
+| Podman | 検証済 (Podman 4.9.4、rootless) |
+| Docker | Podman の Docker 互換コマンド (`docker`) で検証済 (Docker Engine では未検証) |
+| `kubectl` (Kubernetes) | 未検証 (生成されるコマンドの構文のみ検証済) |
 
 Table: 対象の実行環境
 
@@ -78,7 +78,7 @@ claude mcp add host-shell-web -- ~/.local/bin/host-shell bridge -- ssh -T -o Bat
 
 - **実行ユーザー**: `host-shell` は `exec` の既定ユーザー (イメージの `USER`、多くの場合は `root`) の権限で動作します。権限を絞る場合は `--user` (`kubectl` ではコンテナーの `securityContext`) を指定してください。
 - **プロセスの寿命**: MCP セッションが終了すると、コンテナー内の `host-shell` および `job_start` で起動した子プロセスも終了し、コンテナー内には残りません。
-- **Pod のネットワークと名前空間**: 同一 Pod 内のコンテナーはネットワーク名前空間を共有するため、`forward_open` で `127.0.0.1:<port>` へ転送すると同じ Pod 内の別コンテナーのサービスにも到達できます (Podman の Pod で確認済み)。一方、PID 名前空間は共有されないため、別コンテナーのプロセスは `proc_list` には表示されません。
+- **Pod のネットワークと名前空間**: 同一 Pod 内のコンテナーはネットワーク名前空間を共有するため、`forward_open` で `127.0.0.1:<port>` へ転送すると同じ Pod 内の別コンテナーのサービスにも到達できます (Podman の Pod で検証済)。一方、PID 名前空間は共有されないため、別コンテナーのプロセスは `proc_list` には表示されません。
 - **操作ログ**: 既定の操作ログはコンテナー内 (`~/.local/state/host-shell/`) に出力されるため、コンテナーを再作成すると失われます。永続化する場合は `--log-file` でボリューム上のパスを指定してください。
 - **権限の範囲**: `podman exec` 等を実行できる利用者は、もともとコンテナー内で任意のコマンドを実行できる権限を持っています。`host-shell` によって新たな権限が付与されることはありません。
 
@@ -110,8 +110,8 @@ Table: コンテナー内で code-server を使用する条件
 
 | イメージ | 検証結果 |
 | --- | --- |
-| Oracle Linux 9 | 導入、起動、ポート転送、ログイン、および既定設定・拡張機能の反映を確認済み |
-| `debian:stable-slim` | 必要なコマンドが標準でそろっており、同様に動作確認済み |
+| Oracle Linux 9 | 導入、起動、ポート転送、ログイン、および既定設定・拡張機能の反映を検証済 |
+| `debian:stable-slim` | 必要なコマンドが標準でそろっており、同様に検証済 |
 | `alpine:3.22` | `bash` がないため `install` を起動できない。`bash` を追加しても glibc がないため展開前に停止する |
 
 Table: 検証したコンテナー イメージ

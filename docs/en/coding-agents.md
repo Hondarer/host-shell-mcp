@@ -97,7 +97,7 @@ The isolation boundary is the target OS, container, and file permissions. File o
 
 Prompts and code may be sent to external services. Execution inside an isolated environment does not imply that data stays there. A CLI's own sandbox may also depend on kernel features or container configuration unavailable on the target.
 
-When the MCP connection ends, code-server, the proxy, and forwards are stopped. Verify CLI and helper process termination on the target. Unix descendants that enter separate process groups or sessions may survive; do not assume every terminal process is reclaimed. Installed binaries, credentials, and history are not deleted on disconnect.
+When the MCP connection ends, code-server, the proxy, and forwards are stopped. A CLI running interactively in a code-server terminal ends when the terminal closes, even though the terminal shell runs in a session separate from host-shell (see the verified scope). Descendants detached from the terminal, for example with `nohup` or `setsid`, may survive; do not assume every process is reclaimed. Installed binaries, credentials, history, and work files are not deleted on disconnect.
 
 ## Built-in tools that need name resolution
 
@@ -153,15 +153,15 @@ Verified with Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz` from [github/copilo
 
 | Stage | Pass criterion | Status |
 | --- | --- | --- |
-| Deployment | Transfer, hash verification, and dependency checks on the target | Passed |
-| Startup | `--version` and `--help` succeed on the target | Passed |
-| Terminal | Rendering, input, Ctrl-C, and resizing work in code-server | Passed |
-| Clipboard | Copy from the terminal to outside the browser | Passed with the [Command Palette method](#clipboard-copying-fails-only-inside-copilot-cli) |
-| Authentication | Login succeeds with the chosen method | Passed with device code (entering the displayed code in a separate browser). Behavior after credential expiry is unverified |
-| Inference | Responses arrive only through the bridge with direct target egress blocked | Passed |
-| Built-in Web Fetch | Fetching succeeds on a target without DNS | Passed together with [remote-dns](remote-dns.md) |
-| Operations | Editing a test file and running a small command succeed | Passed. Creating and editing the file each ran after approval (`1. Yes`). The `wc -c` result matched a check on the target. This read-only command ran without an approval prompt |
-| Shutdown | After MCP disconnect, check code-server, CLI, helper processes, and listeners | Unverified |
+| Deployment | Transfer, hash verification, and dependency checks on the target | Verified |
+| Startup | `--version` and `--help` succeed on the target | Verified |
+| Terminal | Rendering, input, Ctrl-C, and resizing work in code-server | Verified |
+| Clipboard | Copy from the terminal to outside the browser | Verified with the [Command Palette method](#clipboard-copying-fails-only-inside-copilot-cli) |
+| Authentication | Login succeeds with the chosen method | Verified with device code (entering the displayed code in a separate browser). Behavior after credential expiry is unverified |
+| Inference | Responses arrive only through the bridge with direct target egress blocked | Verified |
+| Built-in Web Fetch | Fetching succeeds on a target without DNS | Verified together with [remote-dns](remote-dns.md) |
+| Operations | Editing a test file and running a small command succeed | Verified. Creating and editing the file each ran after approval (`1. Yes`). The `wc -c` result matched a check on the target. This read-only command ran without an approval prompt |
+| Shutdown | After MCP disconnect, check code-server, CLI, helper processes, and listeners | Verified. When the bridge disconnects because the MCP client exits, the target host-shell, the whole code-server tree (including `copilot-runtime`), and the terminal shells and Copilot CLI (in a session separate from host-shell) all exit; the target listeners (code-server, proxy), the local forward port, and the DNS and proxy temporary directories are removed. Installed files, credentials, and work files remain |
 | Multiple connections | Startup, authentication state, and disconnect effects across connections | Unverified |
 
 Table: Copilot CLI validation stages
@@ -183,4 +183,4 @@ On a read-only file system, Codex warns that it cannot create its PATH alias. Ve
 
 ### Recording validation
 
-For new validation, record OS, CPU, and libc; CLI, code-server, and host-shell versions; source and hash; authentication method (without secrets); allowed destinations; and passed stages with failure causes. Keep the history in `docs/prompts/past/` (Japanese only) and reflect only the results here. Past history is in [261102-coding-agents-validation.md](../prompts/past/261102-coding-agents-validation.md) and [261103-copilot-cli-operation-validation.md](../prompts/past/261103-copilot-cli-operation-validation.md).
+For new validation, record OS, CPU, and libc; CLI, code-server, and host-shell versions; source and hash; authentication method (without secrets); allowed destinations; and verified stages with failure causes. Keep the history in `docs/prompts/past/` (Japanese only) and reflect only the results here. Past history is in [261102-coding-agents-validation.md](../prompts/past/261102-coding-agents-validation.md), [261103-copilot-cli-operation-validation.md](../prompts/past/261103-copilot-cli-operation-validation.md), [261103-copilot-cli-copy-scope-validation.md](../prompts/past/261103-copilot-cli-copy-scope-validation.md), and [261103-coding-agents-shutdown-validation.md](../prompts/past/261103-coding-agents-shutdown-validation.md).

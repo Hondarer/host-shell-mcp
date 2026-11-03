@@ -35,7 +35,7 @@ sequenceDiagram
 | Target | Verification status |
 | --- | --- |
 | Linux x86_64 | Verified on a target machine |
-| Linux arm64 (aarch64) | Verified archive download, hash check, and selection only (not tested on a physical/VM arm64 target) |
+| Linux arm64 (aarch64) | Verified archive download, hash check, and selection only (unverified on a physical/VM arm64 target) |
 | Windows amd64 | Verified on a target machine |
 
 Table: Supported targets

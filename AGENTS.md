@@ -12,7 +12,7 @@ This applies to `docs/ja/`, `docs/en/`, `README.md`, `docs/README.md`, and every
 
 - **Use cases**: what the feature is for and when to use it.
 - **Procedures**: the steps, options, and commands to use it now.
-- **Verified scope**: what has been verified, with the method (automated test, CI, container, real machine) and the environment (OS, CPU, libc, product versions). List unverified items explicitly.
+- **Verified scope**: what has been verified, with the method (automated test, CI, container, real machine) and the environment (OS, CPU, libc, product versions). List unverified items explicitly. Write the status as 検証済 / 未検証 (Verified / Unverified), not 成功 or Passed.
 - **Limitations**: what is out of scope and known constraints.
 
 ### What documents do not contain

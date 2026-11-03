@@ -5,7 +5,7 @@ description: Prepare deployment and validation of CLI coding agents such as Copi
 
 # CLI coding agents on host-shell targets
 
-This is an initial workflow scaffold, not a verified installer. No CLI archives or provider-specific installation scripts are bundled. Only Copilot CLI has been validated on a target (an isolated Linux x86_64 container with code-server); other CLIs have only local version checks. See the guide's verified scope for passed and unverified stages, and report stages separately.
+This is an initial workflow scaffold, not a verified installer. No CLI archives or provider-specific installation scripts are bundled. Only Copilot CLI has been validated on a target (an isolated Linux x86_64 container with code-server); other CLIs have only local version checks. See the guide's verified scope for verified and unverified stages, and report stages separately.
 
 The target needs an SSH stdio route (or container exec), and the client needs access to the authentication and AI services. Direct target internet access is optional. Do not change target service configuration for this workflow.
 
@@ -46,10 +46,10 @@ Have the user complete a supported remote authentication flow. For Copilot CLI, 
 3. After user authentication, run a small inference request in a dedicated test workspace. Claim proxy-only operation only after verifying direct target egress is blocked and observing the bridge route.
 4. When requested, check a small file edit and command execution in that workspace with normal CLI approval handling.
 5. For long-term validation, check authentication maintenance across expiry when applicable; do not assume every authentication method uses refresh tokens. When relevant, check multiple MCP connections under the same target user. Record shared credentials, history, and helpers instead of assuming isolation.
-6. In a disposable validation session, record PIDs and listeners, close that session, and inspect shutdown through another connection. Do not disconnect unrelated sessions or kill by executable name alone. Unix descendants that leave their process group or session may survive.
+6. In a disposable validation session, record PIDs and listeners, close that session, and inspect shutdown through another connection. Do not disconnect unrelated sessions or kill by executable name alone. An interactive CLI in a code-server terminal exits with the terminal even though the terminal shell has its own session; descendants detached from the terminal (for example `nohup` or `setsid`) may survive. In containers whose PID 1 does not reap children (such as `sleep infinity`), exited processes remain as `<defunct>` entries; do not report them as running.
 
-If a stage fails, retain previous passing evidence and report the failed stage and cause. Do not disable CLI sandboxes or approvals merely to obtain a pass. Files, credentials, and history persist after disconnect; remove them only within the requested scope.
+If a stage fails, retain evidence for previously verified stages and report the failed stage and cause. Do not disable CLI sandboxes or approvals merely to obtain a pass. Files, credentials, and history persist after disconnect; remove them only within the requested scope.
 
 ## Report
 
-Record route, OS/CPU/libc, host-shell and code-server versions, CLI source/version/hash, destination, authentication method without secrets, allowed destinations, passed stages, and failures. Clearly identify pending remote verification. Add provider-specific recipes after observing them work on the stated platform. When updating documents, follow `AGENTS.md`: put results in the guide's verified scope and the history in `docs/prompts/past/`.
+Record route, OS/CPU/libc, host-shell and code-server versions, CLI source/version/hash, destination, authentication method without secrets, allowed destinations, verified stages, and failures. Clearly identify pending remote verification. Add provider-specific recipes after observing them work on the stated platform. When updating documents, follow `AGENTS.md`: put results in the guide's verified scope and the history in `docs/prompts/past/`.

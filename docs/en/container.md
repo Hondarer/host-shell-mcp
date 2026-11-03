@@ -19,8 +19,8 @@ This guide covers binary deployment, agent registration, and caveats specific to
 | Runtime | Verification status |
 | --- | --- |
 | Podman | Verified (Podman 4.9.4, rootless) |
-| Docker | Verified via Podman's Docker-compatible CLI (`docker`); not tested against Docker Engine directly |
-| `kubectl` (Kubernetes) | Not tested against a cluster (verified generated command syntax only) |
+| Docker | Verified via Podman's Docker-compatible CLI (`docker`); unverified with Docker Engine directly |
+| `kubectl` (Kubernetes) | Unverified against a cluster (generated command syntax only verified) |
 
 Table: Supported container runtimes
 

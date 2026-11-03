@@ -32,11 +32,11 @@ sequenceDiagram
 
 ## 対象環境
 
-| 接続先 | 確認状況 |
+| 接続先 | 検証状況 |
 | --- | --- |
-| Linux x86_64 | 実機で確認済み |
-| Linux arm64 (aarch64) | 配布物の取得・照合・選択のみ確認済み (実機では未確認) |
-| Windows amd64 | 実機で確認済み |
+| Linux x86_64 | 実機で検証済 |
+| Linux arm64 (aarch64) | 配布物の取得・照合・選択のみ検証済 (実機では未検証) |
+| Windows amd64 | 実機で検証済 |
 
 Table: 対象の接続先
 
@@ -154,7 +154,7 @@ Table: 同梱されている設定
 閉鎖環境の code-server は、そのままでは拡張機能マーケットプレース (Open VSX) へ接続できません。追加の拡張機能を導入する場合は、次のいずれかの方法を使用します。
 
 - **`.vsix` ファイルの転送**: クライアント側に用意した `.vsix` ファイルをエージェントが接続先へ転送し、`install --extension <ファイル>` で導入します。
-- **[クライアント経由 HTTP プロキシ](client-proxy.md) の利用**: 接続先の `--client-proxy` と `bridge` の `--proxy` を有効にし、`--proxy-allow-host open-vsx.org:443` と `--proxy-allow-host openvsx.eclipsecontent.org:443` を指定します (`--proxy-allow-host` はカンマ区切り非対応のため宛先ごとに指定します)。code-server は `HTTPS_PROXY` 経由でマーケットプレースに接続するため、`install --extension <ID>` でもブラウザー上の拡張機能ビューからでも導入できます (いずれも動作確認済み)。
+- **[クライアント経由 HTTP プロキシ](client-proxy.md) の利用**: 接続先の `--client-proxy` と `bridge` の `--proxy` を有効にし、`--proxy-allow-host open-vsx.org:443` と `--proxy-allow-host openvsx.eclipsecontent.org:443` を指定します (`--proxy-allow-host` はカンマ区切り非対応のため宛先ごとに指定します)。code-server は `HTTPS_PROXY` 経由でマーケットプレースに接続するため、`install --extension <ID>` でもブラウザー上の拡張機能ビューからでも導入できます (いずれも検証済)。
 
 ブラウザーの拡張機能ビューを使用する場合、操作によって通信元が異なります。
 

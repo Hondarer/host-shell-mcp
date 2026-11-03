@@ -97,7 +97,7 @@ Copilot CLI では `/login` でアカウント (`GitHub.com`) を選び、`Sign 
 
 外部サービスへの通信では、プロンプトやコードが送信されます。隔離環境内で実行することと、データを外部へ送らないことは別の条件です。CLI 独自のサンドボックスも、接続先のカーネル機能やコンテナー設定によって動作しない場合があります。
 
-MCP 接続終了時には code-server とプロキシ・転送を停止します。CLI とその補助プロセスの終了は実機で確認してください。Unix の別プロセスグループやセッションへ離脱した子孫は残る可能性があるため、ターミナル内の全プロセスが必ず回収されるとは扱いません。配置したバイナリ、認証情報、履歴は切断だけでは削除されません。
+MCP 接続終了時には code-server とプロキシ・転送を停止します。code-server のターミナルで対話実行していた CLI は、ターミナルのシェルが host-shell とは別のセッションにあっても、ターミナルが閉じることで終了します (検証済みの範囲を参照)。`nohup` や `setsid` などでターミナルから切り離して起動した子孫は残る可能性があるため、全プロセスが必ず回収されるとは扱いません。配置したバイナリ、認証情報、履歴、作業ファイルは切断だけでは削除されません。
 
 ## 名前解決が必要な内蔵ツール
 
@@ -113,8 +113,8 @@ Copilot CLI の内蔵 Web Fetch も接続前に名前解決を行うため、`We
 
 | 用途 | 許可先 | 状態 |
 | --- | --- | --- |
-| ログイン、API、推論 | `github.com:443`、`api.github.com:443`、`*.githubcopilot.com:443`、`copilot-proxy.githubusercontent.com:443` | この組み合わせで認証と対話応答を確認済み |
-| Copilot Chat の BYOK モデル一覧 (`https://main.vscode-cdn.net/extensions/copilotChat.json`) | `main.vscode-cdn.net:443` | 許可後の取得を確認済み |
+| ログイン、API、推論 | `github.com:443`、`api.github.com:443`、`*.githubcopilot.com:443`、`copilot-proxy.githubusercontent.com:443` | この組み合わせで認証と対話応答を検証済 |
+| Copilot Chat の BYOK モデル一覧 (`https://main.vscode-cdn.net/extensions/copilotChat.json`) | `main.vscode-cdn.net:443` | 許可後の取得を検証済 |
 | Copilot CLI の自動更新 | `release-assets.githubusercontent.com:443` | 未許可では起動時に `Error auto updating: TypeError: fetch failed` と表示され、プロキシ履歴にこの宛先の拒否が記録される。CLI の利用には影響しない |
 
 Table: Copilot の許可先
@@ -153,15 +153,15 @@ Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz`、[github/copilot-cli の v1.0.83
 
 | 段階 | 合格条件 | 状態 |
 | --- | --- | --- |
-| 配置 | 対象への転送・ハッシュ照合・依存物確認 | 成功 |
-| 起動 | 対象で `--version`・`--help` が成功 | 成功 |
-| ターミナル | code-server 内で描画・入力・Ctrl-C・リサイズが動作 | 成功 |
-| クリップボード | ターミナルからブラウザー外へコピーできる | [コマンド パレットの方法](#copilot-cli-のコピーが動作しない場合) で成功 |
-| 認証 | 選択した方式でログインが成功 | デバイスコード方式 (表示コードを別ブラウザーに入力) で成功。有効期限後の認証維持は未検証 |
-| 推論 | 接続先の直接通信を遮断し、bridge 経由だけで応答を取得 | 成功 |
-| 内蔵 Web Fetch | 接続先に DNS がない状態で取得が成功 | [remote-dns](remote-dns.md) の併用で成功 |
-| 操作 | 検証用ファイルの編集と小さなコマンドの実行が成功 | 成功。ファイルの作成と編集は、それぞれ承認 (`1. Yes`) 後に実行された。`wc -c` の結果は接続先での確認と一致した。この読み取りのみのコマンドは承認の確認なしで実行された |
-| 終了 | MCP 切断後、code-server・CLI・補助プロセス・待ち受けを確認 | 未検証 |
+| 配置 | 対象への転送・ハッシュ照合・依存物確認 | 検証済 |
+| 起動 | 対象で `--version`・`--help` が成功 | 検証済 |
+| ターミナル | code-server 内で描画・入力・Ctrl-C・リサイズが動作 | 検証済 |
+| クリップボード | ターミナルからブラウザー外へコピーできる | [コマンド パレットの方法](#copilot-cli-のコピーが動作しない場合) で検証済 |
+| 認証 | 選択した方式でログインが成功 | デバイスコード方式 (表示コードを別ブラウザーに入力) で検証済。有効期限後の認証維持は未検証 |
+| 推論 | 接続先の直接通信を遮断し、bridge 経由だけで応答を取得 | 検証済 |
+| 内蔵 Web Fetch | 接続先に DNS がない状態で取得が成功 | [remote-dns](remote-dns.md) の併用で検証済 |
+| 操作 | 検証用ファイルの編集と小さなコマンドの実行が成功 | 検証済。ファイルの作成と編集は、それぞれ承認 (`1. Yes`) 後に実行された。`wc -c` の結果は接続先での確認と一致した。この読み取りのみのコマンドは承認の確認なしで実行された |
+| 終了 | MCP 切断後、code-server・CLI・補助プロセス・待ち受けを確認 | 検証済。MCP クライアントの終了で bridge が切断されると、接続先の host-shell、code-server 一式 (`copilot-runtime` を含む)、ターミナルのシェルと Copilot CLI (host-shell とは別セッション) がすべて終了し、接続先の待ち受け (code-server、プロキシ) と手元の転送ポート、DNS・プロキシの一時ディレクトリーが削除された。配置物、認証情報、作業ファイルは残る |
 | 複数接続 | 別接続の起動・認証状態・切断の影響を確認 | 未検証 |
 
 Table: Copilot CLI の検証段階
@@ -183,4 +183,4 @@ Codex は読み取り専用ファイルシステムでは、PATH 用エイリア
 
 ### 検証の記録
 
-新しく検証するときは、OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、成功段階と失敗理由を記録します。経緯の記録は `docs/prompts/past/` に置き、この文書には結果だけを反映します。これまでの経緯は [CLI 型 AI コーディングエージェントの検証記録](../prompts/past/261102-coding-agents-validation.md) と [Copilot CLI の操作段階の検証記録](../prompts/past/261103-copilot-cli-operation-validation.md) にあります。
+新しく検証するときは、OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、検証済みの段階と失敗理由を記録します。経緯の記録は `docs/prompts/past/` に置き、この文書には結果だけを反映します。これまでの経緯は [CLI 型 AI コーディングエージェントの検証記録](../prompts/past/261102-coding-agents-validation.md) 、[Copilot CLI の操作段階の検証記録](../prompts/past/261103-copilot-cli-operation-validation.md)、[Copilot CLI のコピー範囲の検証記録](../prompts/past/261103-copilot-cli-copy-scope-validation.md)、[終了段階の検証記録](../prompts/past/261103-coding-agents-shutdown-validation.md) にあります。
