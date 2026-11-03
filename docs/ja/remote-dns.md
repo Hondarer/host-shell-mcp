@@ -129,7 +129,7 @@ flowchart LR
 | HTTP 403、`CONNECT tunnel failed, response 403` | プロキシの宛先拒否であり、DNS 障害ではない。`proxy_status` で拒否理由を確認する |
 | `a transport-level failure (DNS, connection, or TLS handshake)` などの曖昧な表示 | この表示だけで DNS 障害と判断せず、`proxy_status` で実際の拒否理由を確認する |
 | プロセスがアダプターを読み込んでいるか | 対象 PID の環境変数と `/proc/<pid>/maps` に `libhostshell_dns` があるかを確認する |
-| フックを通った問い合わせ | 起動時に `HOST_SHELL_DNS_TRACE=1` を設定すると、ホスト名とアドレスファミリーを標準エラーへ記録する |
+| フックを通った問い合わせ | 起動時に `HOST_SHELL_DNS_TRACE=1` を設定すると、ホスト名とアドレスファミリーを標準エラーへ記録する。code-server の専用コピーモードでは、`copilot-runtime` の記録が code-server の出力に `[CLI subprocess] host-shell-dns: getaddrinfo <host> family=<n>` として現れる (エージェントホストの中継分と合わせ、1 件の問い合わせが 2 行になる)。記録に時刻はないため、操作の前後で出力の差分を取って対応付ける |
 
 Table: 診断の観点
 
@@ -153,16 +153,18 @@ Table: 診断の観点
 | Node.js | `dns.lookup()` は成功する。`dns.resolve4()` は対象外 (ECONNREFUSED) | OL10 コンテナー |
 | code-server の専用コピーモード | 元ファイルの保持、変更済みファイルの拒否、構文エラー時の後片付け、無効時の既存動作、2セッションの分離、危険な権限・リンク・期限切れソケットの拒否 | 自動テスト |
 | 専用コピーモードの動作 | 拡張ホスト・エージェントホスト・同梱 `copilot-runtime` へのアダプターの読み込み、Chat が起動した Node 子プロセスの名前解決、ターミナルの Copilot CLI の Web Fetch、画面内 Copilot Chat の応答 | OL10 コンテナー、code-server 4.144.0 |
+| 画面内 Copilot Chat の Copilot ハーネス (Copilot SDK) | 内蔵 `web_fetch` の実行時に、エージェントホストの子プロセス `copilot-runtime` がフックを通して宛先を名前解決し、HTTPS はプロキシ経由で成功する。取得 1 回につきトレースが 1 件増えることを確認 | OL10 コンテナー、code-server 4.144.0、Chrome for Testing 148 からの画面操作 |
+| 画面内 Copilot Chat の Local ハーネス | code-server では Web ページ取得ツールが提供されない (`web` グループは `githubRepo` と `githubTextSearch` のみ)。拡張ホストの通信は HTTP プロキシ経由で、フックを通る問い合わせは観測されない | 同上 |
 
 Table: 検証済みの範囲
 
 未検証の範囲:
 
-- Copilot Chat・Copilot SDK の内部から直接行う名前解決と、画面内 Chat の内蔵 Web Fetch
+- Copilot SDK の `web_fetch` 以外の内部処理と、拡張ホスト上の拡張機能が直接行う名前解決
 - 専用コピーモードの arm64 での動作 (アーカイブの検査のみ)
 - ブラウザー内の Web 拡張
 
-検証の経緯は [remote-dns の検証記録](../prompts/past/261102-remote-dns-validation.md) にあります。
+検証の経緯は [remote-dns の検証記録](../prompts/past/261102-remote-dns-validation.md) と [画面内 Copilot Chat の検証記録](../prompts/past/261103-copilot-chat-remote-dns-validation.md) にあります。
 
 開発時の検証コマンド (Linux、Node.js が必要):
 

@@ -129,7 +129,7 @@ Check name resolution, environment inheritance, and HTTP proxy destination rules
 | HTTP 403, `CONNECT tunnel failed, response 403` | A proxy destination denial, not a DNS failure. Check the reason with `proxy_status` |
 | Ambiguous messages such as `a transport-level failure (DNS, connection, or TLS handshake)` | Do not conclude DNS failure from the message alone; check the actual denial reason with `proxy_status` |
 | Whether a process loaded the adapter | Check the PID's environment and whether `/proc/<pid>/maps` contains `libhostshell_dns` |
-| Queries passing through the hook | Setting `HOST_SHELL_DNS_TRACE=1` at startup logs host names and address families to standard error |
+| Queries passing through the hook | Setting `HOST_SHELL_DNS_TRACE=1` at startup logs host names and address families to standard error. In code-server patched-copy mode, entries from `copilot-runtime` appear in the code-server output as `[CLI subprocess] host-shell-dns: getaddrinfo <host> family=<n>` (with the copy relayed by the agent host, one query produces two lines). Entries carry no time, so match them to an action by comparing the output before and after it |
 
 Table: Diagnostic checks
 
@@ -153,16 +153,18 @@ Use the same allowed URL (for example `https://api.github.com/zen`) to separate 
 | Node.js | `dns.lookup()` succeeds; `dns.resolve4()` is out of scope (ECONNREFUSED) | OL10 container |
 | code-server patched-copy mode | Original files retained, modified files rejected, cleanup after syntax errors, unchanged behavior when disabled, two-session isolation, rejection of unsafe permissions, links, and stale sockets | Automated tests |
 | Patched-copy mode in operation | Adapter loaded into the extension host, agent host, and bundled `copilot-runtime`; resolution in a Chat-launched Node child; terminal Copilot CLI Web Fetch; in-editor Copilot Chat responses | OL10 container, code-server 4.144.0 |
+| In-editor Copilot Chat, Copilot harness (Copilot SDK) | When the built-in `web_fetch` runs, `copilot-runtime`, a child of the agent host, resolves the destination through the hook, and HTTPS succeeds through the proxy. Each fetch adds exactly one trace entry | OL10 container, code-server 4.144.0, UI driven from Chrome for Testing 148 |
+| In-editor Copilot Chat, Local harness | code-server provides no web page fetch tool (the `web` group contains only `githubRepo` and `githubTextSearch`). Extension host traffic goes through the HTTP proxy, and no queries through the hook are observed | Same as above |
 
 Table: Verified scope
 
 Unverified:
 
-- Name resolution performed directly inside Copilot Chat or the Copilot SDK, and the in-editor Chat's built-in Web Fetch
+- Name resolution by Copilot SDK internals other than `web_fetch`, and by extensions in the extension host directly
 - Patched-copy mode on arm64 (archive inspection only)
 - Browser Web extensions
 
-The validation history is in [261102-remote-dns-validation.md](../prompts/past/261102-remote-dns-validation.md) (Japanese only).
+The validation history is in [261102-remote-dns-validation.md](../prompts/past/261102-remote-dns-validation.md) and [261103-copilot-chat-remote-dns-validation.md](../prompts/past/261103-copilot-chat-remote-dns-validation.md) (Japanese only).
 
 Development validation commands (Linux, Node.js required):
 

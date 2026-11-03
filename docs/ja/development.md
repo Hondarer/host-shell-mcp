@@ -258,3 +258,49 @@ code-server のバージョンを更新する手順は次のとおりです。
 1. `version.env` の `CODE_SERVER_VERSION`、`CODE_SERVER_VSCODE_VERSION` (リリース ノートの `Code` のバージョン)、および 3 種類の配布アーカイブ (`linux-amd64`、`linux-arm64`、`windows-amd64`) の SHA-256 (GitHub Releases の digest) を更新します。
 2. Linux と Windows の接続先で、取得 (`download`)、転送 (`transfer_push`)、導入 (`install`)、起動 (`start`)、ポート転送、およびブラウザーからのログインを確認します (Windows 版 code-server は上流の CI で自動テストされていないため、バージョン更新ごとに実機確認が必要です)。
 3. `docs/ja/code-server.md` と `docs/en/code-server.md` に記載されているバージョン番号を更新します。
+
+### ブラウザーでの画面確認 (WSL の Chrome for Testing)
+
+WSL2 の開発環境では、WSLg に Chrome for Testing を表示し、利用者と同じ画面を見ながら code-server を確認できます。
+
+1. ポート転送 (`forward_open`) で得た `http://127.0.0.1:<転送ポート>/` を開き、CDP の待ち受けを付けて Chrome for Testing を起動します。
+
+   ```bash
+   chrome --ozone-platform=x11 --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 \
+     --user-data-dir=<作業用ディレクトリ>/cft-profile --no-first-run --no-default-browser-check \
+     --window-size=1400,900 --window-position=40,40 http://127.0.0.1:<転送ポート>/
+   ```
+
+2. code-server のパスワードと GitHub の認証は、利用者がこのウィンドウに直接入力します。エージェントはパスワードを読みません。
+3. エージェントは `playwright-core` の `chromium.connectOverCDP('http://127.0.0.1:9222')` で同じブラウザーに接続し、ページ単位のスクリーンショット (`page.screenshot`) で画面を確認します。
+4. 確認が終わったら Chrome を終了し、`--user-data-dir` に指定したプロファイルを削除します (GitHub のログイン情報が残るため)。
+
+注意点は次のとおりです。
+
+- CDP のスクリーンショットは、ウィンドウが Windows 側に表示されていなくても撮れます。表示できていることの確認には使えません。
+- Windows のデスクトップ全体のスクリーンショットは撮りません。手前に開いているファイル (code-server の `config.yaml` など) の秘密情報が写ります。Windows 側の表示は、次に示すウィンドウ一覧で確認します。
+- Chrome はプロセスタイトルを書き換えるため、`/proc/<pid>/environ` から `DISPLAY` の有無は判断できません。X サーバーへの接続は `ss -xp` で `/tmp/.X11-unix/X0` の接続相手を確認します。
+
+#### WSLg のウィンドウが表示されない場合
+
+開発機の Windows にリモートデスクトップ (mstsc) で接続している場合、切断・再接続のあとで WSLg がウィンドウを表示しなくなることがあります。このとき、次の状態になります。
+
+- X サーバーは応答する (`xrandr` が画面サイズを返す) が、新しい X11 ウィンドウは画面外の座標 (`-32730,-32709` など) に置かれたままになる
+- Windows 側の WSLg 用 RDP クライアント (`C:\Program Files\WSL\msrdc.exe`) は動作しているが、表示中のウィンドウを持たない
+- クリップボードの連携は動作し続ける
+
+Windows 側の表示中のウィンドウは、PowerShell で `msrdc.exe` のプロセスが持つウィンドウを `EnumWindows` で列挙し、`IsWindowVisible` とタイトルで確認します。WSLg のウィンドウのタイトルには、ディストリビューション名が付きます (例: `code-server login - Google Chrome for Testing (OracleLinux8-Dev)`)。
+
+回復するには、WSLg 用の `msrdc.exe` を強制終了します。
+
+```bash
+taskkill.exe /F /PID <msrdc.exe の PID>
+```
+
+- PID は `tasklist.exe /FI "IMAGENAME eq msrdc.exe"` で確認します。複数ある場合は、パスが `C:\Program Files\WSL\msrdc.exe` で、起動引数に `/wslg` を含むものを選びます。
+- `/F` を付けない終了要求は無視されます。
+- WSLg は数秒で `msrdc.exe` を起動し直し、既存の X11 クライアント (Chrome など) のウィンドウが表示されます。
+- 終了しても、mstsc の接続、WSL のプロセス、コンテナーには影響しません。
+- この方法で回復しない場合は、Windows 側で `wsl --shutdown` を実行します。WSL 上のすべてのプロセスとコンテナーが停止します。
+
+確認環境: Windows (mstsc で接続)、WSLg 1.0.71、Oracle Linux 8 (WSL2)、Chrome for Testing 148.0.7778.97。

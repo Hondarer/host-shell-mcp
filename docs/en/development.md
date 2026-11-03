@@ -259,3 +259,49 @@ To update the bundled code-server version:
 2. Verify downloading (`download`), uploading (`transfer_push`), installing (`install`), starting (`start`), port forwarding, and logging in on both Linux and Windows targets (because upstream CI does not test the Windows build of code-server automatically, verify it on Windows for every release).
 3. Update the version numbers documented in `docs/ja/code-server.md` and `docs/en/code-server.md`.
 
+
+### Checking the UI in a browser (Chrome for Testing on WSL)
+
+On a WSL2 development machine, you can show Chrome for Testing through WSLg and check code-server while seeing the same screen as the user.
+
+1. Start Chrome for Testing with a CDP listener, opening `http://127.0.0.1:<forwarded port>/` obtained from port forwarding (`forward_open`).
+
+   ```bash
+   chrome --ozone-platform=x11 --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 \
+     --user-data-dir=<working directory>/cft-profile --no-first-run --no-default-browser-check \
+     --window-size=1400,900 --window-position=40,40 http://127.0.0.1:<forwarded port>/
+   ```
+
+2. The user types the code-server password and completes GitHub authentication directly in this window. The agent does not read the password.
+3. The agent attaches to the same browser with `chromium.connectOverCDP('http://127.0.0.1:9222')` from `playwright-core` and checks the screen with page screenshots (`page.screenshot`).
+4. When finished, close Chrome and delete the profile given in `--user-data-dir`, because it keeps the GitHub sign-in.
+
+Notes:
+
+- CDP screenshots work even when the window is not shown on Windows. They do not prove that the window is visible.
+- Do not take screenshots of the whole Windows desktop. They capture secrets in files open in front, such as the code-server `config.yaml`. Check visibility on Windows with the window list described below.
+- Chrome rewrites its process title, so `/proc/<pid>/environ` cannot tell whether `DISPLAY` is set. Check the connection to the X server with `ss -xp`, looking for peers of `/tmp/.X11-unix/X0`.
+
+#### When WSLg windows do not appear
+
+When you connect to the development machine's Windows through Remote Desktop (mstsc), WSLg can stop showing windows after a disconnect and reconnect. In that state:
+
+- The X server responds (`xrandr` returns the screen size), but new X11 windows stay at off-screen coordinates such as `-32730,-32709`.
+- The WSLg RDP client on Windows (`C:\Program Files\WSL\msrdc.exe`) is running but has no visible window.
+- Clipboard sharing keeps working.
+
+To check visible windows on Windows, enumerate the windows of the `msrdc.exe` process with `EnumWindows` in PowerShell and check `IsWindowVisible` and the title. WSLg window titles carry the distribution name (for example, `code-server login - Google Chrome for Testing (OracleLinux8-Dev)`).
+
+To recover, force-stop the WSLg `msrdc.exe`.
+
+```bash
+taskkill.exe /F /PID <PID of msrdc.exe>
+```
+
+- Find the PID with `tasklist.exe /FI "IMAGENAME eq msrdc.exe"`. If there are several, choose the one whose path is `C:\Program Files\WSL\msrdc.exe` and whose arguments include `/wslg`.
+- A stop request without `/F` is ignored.
+- WSLg restarts `msrdc.exe` within a few seconds, and the windows of running X11 clients (such as Chrome) appear.
+- Stopping it does not affect the mstsc connection, WSL processes, or containers.
+- If this does not recover the display, run `wsl --shutdown` on Windows. This stops every process and container in WSL.
+
+Verified environment: Windows (connected through mstsc), WSLg 1.0.71, Oracle Linux 8 (WSL2), Chrome for Testing 148.0.7778.97.
