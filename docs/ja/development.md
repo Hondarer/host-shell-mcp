@@ -86,6 +86,8 @@ internal/version/      バージョン情報
                        接続先へのバイナリ配置・起動確認スキル (bin/ は make dist で生成、Git 管理外)
 .agents/skills/host-shell-code-server/
                        接続先への code-server 導入スキル (packages/ は download で取得、Git 管理外)
+.agents/skills/host-shell-vscode-remote-ssh/
+                       接続先への VS Code Remote - SSH 接続スキル (packages/ は fetch で取得、Git 管理外)
 docs/ja/               文書の日本語版 (正本)
 docs/en/               文書の英語版 (docs/ja/ の英訳)
 ```
@@ -307,3 +309,19 @@ taskkill.exe /F /PID <msrdc.exe の PID>
 - この方法で回復しない場合は、Windows 側で `wsl --shutdown` を実行します。WSL 上のすべてのプロセスとコンテナーが停止します。
 
 確認環境: Windows (mstsc で接続)、WSLg 1.0.71、Oracle Linux 8 (WSL2)、Chrome for Testing 148.0.7778.97。
+
+## VS Code Remote - SSH 接続スキルの保守
+
+`.agents/skills/host-shell-vscode-remote-ssh/` のスクリプトは、手元用 (`scripts/client/`、sh と PowerShell) と接続先用 (`scripts/linux/`、POSIX sh) に分かれます。コメントと出力は英語とし、ファイル内容は ASCII 文字のみで構成します。
+
+- 接続先の `cleanup.sh` は、コマンドラインが `$HOME/.vscode-server` で始まるプロセスと、そこから起動したターミナルのシェルを停止します。一時ディレクトリー (`TMPDIR`、既定は `/tmp`) の `code-*` と `vscode-*` は、それらのプロセスが残っていないときだけ削除します。同じ利用者の別の VS Code (Remote - WSL など) を巻き込まないよう、この範囲を広げないでください。
+- 版の固定は、`place.sh` が書くラッパー `~/.vscode-server/code-<commit>` の環境変数 `VSCODE_CLI_INITIAL_AH_VERSION` に依存します。VS Code の更新で効かなくなった場合は、`status.sh` が警告します。
+
+スキルの自動テストは、偽の配布物と偽の sshd を使い、ネットワークを使いません。`cleanup.sh` がプロセスを停止するため、使い捨てのコンテナーで実行します。
+
+```sh
+podman run --rm --network none --user 1000:1000 --entrypoint sh \
+  -v "$PWD/.agents/skills/host-shell-vscode-remote-ssh:/skill:ro,Z" IMAGE /skill/tests/scripts.test.sh
+```
+
+`IMAGE` には、`sh`、`tar`、`gzip`、`sha256sum`、`pgrep`、`ssh-keygen` を含む Linux のイメージを指定します。Oracle Linux 8 と 10 のイメージで検証済です。

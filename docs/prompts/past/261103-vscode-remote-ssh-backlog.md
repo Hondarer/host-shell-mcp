@@ -15,7 +15,7 @@
 | BL-001 | ターミナルで起動する Copilot CLI を B-2 で検証していない | 高 | 検証済 (Ctrl-C・リサイズ・Web Fetch は未検証) |
 | BL-002 | agent host の版の固定が手作業で、内部の環境変数に依存している | 高 | 検証済 (ラッパー方式。内部の環境変数への依存は容認) |
 | BL-003 | 新しい版への更新手順が整っておらず、検証していない | 高 | 検証済 (オフラインとプロキシ経由での切り替え、古い版の削除。接続中の更新要求は未検証) |
-| BL-004 | 準備と後片付けの手順が、スクラッチのスクリプトのままである | 中 | 作業中 (スクリプトを作り直した。スキル化は未着手) |
+| BL-004 | 準備と後片付けの手順が、スクラッチのスクリプトのままである | 中 | 検証済 (スキル `host-shell-vscode-remote-ssh`。arm64 と macOS の手元は未検証) |
 | BL-005 | セッションを終えても VS Code Server が残る | 中 | 一部検証済 |
 | BL-006 | 従来方式の scp (`scp -O`) が塞がれていない | 低 | 未着手 |
 | BL-007 | B-2 の仕様の文書がない | 中 | 未着手 |
@@ -169,6 +169,44 @@
     2. 内側の sshd の設定を作り直す。
     3. sshd を起動する。
     4. 転送を開く。
+- **経緯と対処 (2026-11-03):**
+  - **方針 (利用者と決めたこと):**
+    - クライアントの SSH の設定は、専用の鍵と known_hosts だけをスクリプトで作る。`~/.ssh/config` の Host ブロックは表示し、追記は利用者に任せる。
+    - 手元での取得のスクリプトは、sh と PowerShell の両方を用意する。
+    - Remote - SSH が接続先で自分で取得する経路 (`--commit` で版を固定) は、予備として残す。
+    - 文書の正本とスキルには、構成の案の呼び名 (B-2 など) を書かない。
+  - **スキルの構成:** `.agents/skills/host-shell-vscode-remote-ssh/` に置いた。
+    - 手元: `scripts/client/fetch.sh`、`fetch.ps1` (取得と照合)、`ssh-key.sh`、`ssh-key.ps1` (鍵、known_hosts、Host ブロック)
+    - 接続先: `scripts/linux/place.sh`、`authorize.sh`、`start.sh`、`cleanup.sh`、`status.sh`
+    - 接続先の置き場所: キットと sshd の設定は `~/.local/share/host-shell-vscode-remote-ssh/{kit,sshd}`、CLI の本体は `~/.vscode-server/host-shell-cli/code-<C>`
+    - Host の別名と鍵の名前: `host-shell-vscode-<NAME>`
+  - **毎回の手順:** `start.sh` を `job_start` で起動する。`start.sh` は、後片付け、sshd の設定の作り直し、sshd の起動 (前面) を順に行う。そのあと `forward_open` で転送を開く。手順は 2 回の操作になった。
+  - **スクラッチ版からの変更:**
+    - **後片付けの範囲:** 停止の対象を、コマンドラインが `$HOME/.vscode-server` で始まるプロセスに限った。一時ファイルは `${TMPDIR:-/tmp}` だけを対象とし、プロセスが残っていないときだけ削除する。手元で試験を動かそうとしたとき、自動の安全確認で止められた。スクラッチ版の判定では、手元の WSL の VS Code (Remote - WSL) も対象になるためである。
+    - **`place.sh` の再配置:** 配置済みの版を配置し直すときは、サーバーを残し、ラッパーと CLI だけを書き換える。サーバーの領域が不完全で、しかも使用中のときは止める。空き容量の確認 (768 MiB) は、展開するときだけ行う。
+    - **`cleanup.sh --purge`:** `~/.copilot` は削除しない。Copilot CLI と共有しているためである。
+    - **`authorize.sh`:** 公開鍵の形式を検査する。
+    - **sshd の設定:** `UsePAM no` を削除した。OL10 の sshd は PAM なしでビルドされており、接続のたびに `'UsePAM no' is not supported in this build` という警告が出たためである。既定値はもともと `no` である。
+  - **確認の結果:**
+    - **自動試験 (`tests/scripts.test.sh`):** 偽の配布物と偽の sshd を使う 62 項目。使い捨てのコンテナー (`--network none`) で実行し、Oracle Linux 10 と 8 のイメージの両方で全項目が成功した。
+    - **`fetch.sh` (WSL):** 1.144.1 を取得した (約 18 秒、226M)。SHA-256 は BL-003 の値と一致し、再実行では取得を省いた。
+    - **`fetch.ps1` (Windows PowerShell 5.1):** 取得できた。`SHA256SUMS` と `COMMIT` は、`fetch.sh` の結果とバイト単位で一致した。
+    - **`ssh-key.ps1 key`:** 鍵を作った。パスフレーズが空であることを確かめた。再実行では既存の鍵を使った。
+    - **`ssh-key.ps1 trust`:** known_hosts (`[127.0.0.1]:42222`、末尾は LF) と Host ブロックが作られた。
+    - **接続先での配置:** 1.144.1 のサーバーが動いている状態で `place.sh` を実行した。サーバーは残り、ラッパーは `host-shell-cli/` を指すように変わった。
+    - **新しい手順での接続:**
+      - `job_start` で `start.sh` を起動すると、後片付け (止めたプロセスは 0 件、`/tmp` から 7 件を削除)、設定の作り直し、`Server listening on 127.0.0.1 port 2222.` の順に進んだ。
+      - 利用者が Host ブロックを追加したあと、`host-shell-vscode-ol10` で接続できた。sshd のログには、新しい鍵の指紋が記録された。
+      - `status.sh` は警告を出さなかった。override は 1.144.1 だった。CLI と agent host は、`host-shell-cli/code-261c84…` として動いた。
+      - 表示は日本語で、Copilot Chat は応答した。
+      - プロキシの履歴に `update.code.visualstudio.com` への接続はなかった。
+    - **古いファイルの撤去:** 接続先の検証用の古いファイル (`~/.vscode-server/hs-cli`、`~/hs-vscode`、`~/.local/share/hs-vscode-sshd`) と、キットの配布物を削除した。
+  - **未検証:**
+    - arm64 の接続先
+    - macOS の手元 (`fetch.sh` の `shasum` と `ssh-key.sh`)
+    - Linux の VS Code での `ssh-key.sh`。`ssh-key.sh` は、自動試験でだけ確認した。
+    - スキルの手順書 (`SKILL.md`) にエージェントが従って、最初から最後まで行う導入
+  - **開発者向けの文書:** `docs/ja/development.md` と `docs/en/development.md` に、ソースの構成と保守の説明 (試験の実行方法を含む) を追加した。
 
 ## BL-005 セッションを終えても VS Code Server が残る
 
