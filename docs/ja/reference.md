@@ -88,7 +88,7 @@ Table: 起動オプション
 | 標準エラー | 起動失敗などの診断メッセージを出力する |
 | 作業ディレクトリ | 起動時のカレント ディレクトリ (SSH 経由時は通常ユーザーのホーム ディレクトリ) |
 | 正常終了 | 標準入力のクローズ (SSH 切断) または SIGINT・SIGTERM 受信時 (終了コード 0) |
-| 終了時処理 | 実行中の全ジョブとコマンドを停止し、ポート転送とクライアント経由 HTTP プロキシの待ち受けを閉じる (プロキシの URL ファイルも削除する) |
+| 終了時処理 | 実行中の全ジョブとコマンドを停止し、ポート転送・クライアント経由 HTTP プロキシ・名前解決 (`remote-dns`) の待ち受けを閉じる (プロキシの URL ファイルおよび `remote-dns` の一時ディレクトリも削除する) |
 
 Table: 入出力と終了
 
@@ -429,6 +429,7 @@ Table: 文字コードの変換の対象
 | 手元との転送 | [`transfer_push`](#transfer_push) | ローカルから接続先へファイルを転送する (`bridge` 経由時のみ) |
 | | [`transfer_pull`](#transfer_pull) | 接続先からローカルへファイルを転送する (`bridge` 経由時のみ) |
 | クライアント経由プロキシ | [`proxy_status`](client-proxy.md#proxy_status-bridge) | クライアント経由 HTTP プロキシの状態と接続履歴を返す (`bridge` で `--proxy` 指定時のみ) |
+| | [`proxy_rules_update`](client-proxy.md#proxy_rules_update-bridge) | クライアント経由 HTTP プロキシの許可・拒否ルールを更新する (`bridge` で `--proxy --proxy-allow-rule-updates` 指定時のみ) |
 | ポート転送 | [`forward_status`](port-forward.md#ツール-bridge) | 転送の一覧と接続結果の履歴を返す (`bridge` で転送の指定がある場合のみ) |
 | | [`forward_open`](port-forward.md#ツール-bridge) | ポート転送を作成する (`bridge` で許可規則がある場合のみ) |
 | | [`forward_close`](port-forward.md#ツール-bridge) | `forward_open` で作成した転送を閉じる (`bridge` で許可規則がある場合のみ) |
@@ -462,7 +463,7 @@ Table: help の引数
 | `transfer` | `transfer_push`、`transfer_pull`、および `bridge` なしでの分割転送 |
 | `encoding` | 文字コードと改行コードの扱い |
 | `windows` | Windows 接続先での注意点 |
-| `policy` | 制限オプションとエージェント動作への影響 (先頭に接続先サマリーを付与) |
+| `policy` | 制限オプションとエージェント動作への影響 |
 | `limits` | 出力上限、タイムアウト、エラー処理、操作ログ (先頭に接続先サマリーを付与) |
 
 Table: help の topic
@@ -1574,12 +1575,13 @@ Table: transfer_push と transfer_pull の出力
 
 接続先のファイルまたはディレクトリをローカルへ転送します。引数と出力は [`transfer_push`](#transfer_push) と同一です (`local_path` が転送先になります)。接続先の `fs_manifest` で SHA-256 を確認し、未変更ファイルを除いて `fs_read` (`base64`) で 1 MiB 単位に `<ローカル転送先>.host-shell-part` へ読み出し、SHA-256 照合と権限反映の後にリネームします。
 
-### クライアント経由 HTTP プロキシとポート転送
+### クライアント経由 HTTP プロキシ・ポート転送・名前解決
 
-`bridge` と接続先の双方で対応するオプションを有効にした場合、既存の SSH セッションの標準入出力上で HTTP / HTTPS プロキシおよび TCP ポート転送を行います。
+`bridge` と接続先の双方で対応するオプションを有効にした場合、既存の SSH セッションの標準入出力上で HTTP / HTTPS プロキシ、TCP ポート転送、および接続元を使う名前解決を行います。
 
-- **クライアント経由 HTTP プロキシ**: 起動オプション (`--proxy`、`--proxy-allow-host`、`--client-proxy`)、`proxy_status` ツール、環境変数の優先順位、および上限については [クライアント経由 HTTP プロキシ](client-proxy.md) を参照してください。
+- **クライアント経由 HTTP プロキシ**: 起動オプション (`--proxy`、`--proxy-allow-host`、`--proxy-allow-rule-updates`、`--client-proxy`)、`proxy_status`・`proxy_rules_update` ツール、環境変数の優先順位、および上限については [クライアント経由 HTTP プロキシ](client-proxy.md) を参照してください。
 - **ポート転送**: ローカル転送、リモート転送、SOCKS5 の起動オプション、要求と許可の照合、`forward_open`・`forward_close`・`forward_status` ツール、および上限については [SSH stdio 経由のポート転送](port-forward.md) を参照してください。
+- **接続元を使う名前解決 (`remote-dns`)**: Linux/glibc 接続先での `getaddrinfo` 中継、両端の `--remote-dns` と接続先の `--remote-dns-library`、および制約については [接続元を使う名前解決 (remote-dns)](remote-dns.md) を参照してください。
 
 ## プロセスの起動と終了
 
@@ -1734,5 +1736,3 @@ Table: 操作ログで置き換える値
 - `net_list_listeners`、`svc_list`、`svc_control`、`log_query`、`disk_list` は Linux と Windows のみ対応です (Linux のサービス・ログ操作は systemd 環境を前提とします)。
 - 起動オプションによる制限 (ポリシー) はツール引数の検査であり、OS の権限境界ではありません ([制限の限界](#制限の限界) を参照)。
 - 対応 OS は Go 1.26 の要件に基づき Windows 10 / Windows Server 2016 以降 (`pty` は Windows 10 1809 / Windows Server 2019 以降)、Linux カーネル 3.2 以降、macOS 12 以降 (`bridge` のみ) です。
-
-名前解決を接続元へ中継する任意機能: [remote-dns](remote-dns.md)。両端の `--remote-dns` と、接続先の `--remote-dns-library PATH`（事前ビルド版を使う場合）を参照してください。

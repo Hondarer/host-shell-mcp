@@ -97,8 +97,9 @@ Table: 制限のオプションの例
 - `--deny-command` はコマンド ライン文字列の正規表現照合であり、表記を変えると回避できるため、誤操作防止の補助として使用しセキュリティ境界にはしないでください。
 - `--confirm` はクライアントが MCP の elicitation に対応している必要があります (非対応クライアントでは対象ツールがすべてエラーになります)。
 - `--redact` は既知パターンの機密情報のみを伏せ字化します。読み取らせたくない機密ファイルは OS のファイル権限で保護してください。
-- `--read-only` と `--tools` は MCP ツールの公開範囲のみを制御し、[クライアント経由 HTTP プロキシ](client-proxy.md) や [ポート転送](port-forward.md) の通信は制限しません。これらを有効にする場合は、`bridge` 側の宛先許可規則 (`--proxy-allow-host`、`--forward-allow-local`、`--forward-allow-remote`)、接続先の発信先制限 (`--allow-host`)、およびリモート転送の待ち受けポート制限 (`--allow-forward-remote-port`) を組み合わせて範囲を絞ってください。
+- `--read-only` と `--tools` は MCP ツールの公開範囲のみを制御し、[クライアント経由 HTTP プロキシ](client-proxy.md)、[ポート転送](port-forward.md)、[接続元を使う名前解決 (remote-dns)](remote-dns.md) の通信は制限しません。これらを有効にする場合は、`bridge` 側の宛先許可規則 (`--proxy-allow-host`、`--forward-allow-local`、`--forward-allow-remote`)、接続先の発信先制限 (`--allow-host`)、およびリモート転送の待ち受けポート制限 (`--allow-forward-remote-port`) を組み合わせて範囲を絞ってください (`--remote-dns` は宛先制限を持たず任意のホスト名を解決できるため、必要な場合のみ指定します)。
 - 指定したオプションを利用者やエージェントが解除できないよう、[起動するコマンドの固定](#起動するコマンドの固定) に従って接続先の `authorized_keys` 等で固定します。
+- `--allow-path` や `--allow-command` で範囲を絞る場合は、接続先のディレクトリ構成、用意されている調査用コマンド、および照合用のソースコードを手元のワークスペースにも用意しておくと、エージェントが制限内で迷わず調査できます ([手元に用意しておくと効果的な情報と資材](user-guide.md#手元に用意しておくと効果的な情報と資材))。
 
 ## 起動するコマンドの固定
 
@@ -106,7 +107,7 @@ Table: 制限のオプションの例
 万一鍵が漏洩しても、`host-shell` を介さない対話ログインやポート転送を防ぎ、全操作を操作ログに記録できます。
 
 > [!IMPORTANT]
-> `host-shell` の [クライアント経由 HTTP プロキシ](client-proxy.md) と [ポート転送](port-forward.md) は `sshd` の転送機能を使用しないため、`no-port-forwarding` や `AllowTcpForwarding no` では制限されません。これらは接続先で `--client-proxy`、`--allow-forward-local`、`--allow-forward-remote` を指定した場合にのみ有効になります。許可しない場合は `command=` にこれらのオプションを含めないでください。
+> `host-shell` の [クライアント経由 HTTP プロキシ](client-proxy.md)、[ポート転送](port-forward.md)、[接続元を使う名前解決 (remote-dns)](remote-dns.md) は `sshd` の転送機能を使用しないため、`no-port-forwarding` や `AllowTcpForwarding no` では制限されません。これらは接続先で `--client-proxy`、`--allow-forward-local`、`--allow-forward-remote`、`--remote-dns` を指定した場合にのみ有効になります。許可しない場合は `command=` にこれらのオプションを含めないでください。
 
 ```{.text caption="~hsagent/.ssh/authorized_keys (Linux の接続先)"}
 command="/opt/host-shell/host-shell --mcp",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding ssh-ed25519 AAAA... host-shell agent

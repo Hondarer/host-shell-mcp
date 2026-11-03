@@ -85,7 +85,7 @@ sequenceDiagram
 
 Copilot CLI では `/login` でアカウント (`GitHub.com`) を選び、`Sign in with a device code` を選びます。`Sign in with your browser` は接続先の localhost へ戻る方式のため使用しません。
 
-キーチェーンなどの安全な保存先がない接続先 (コンテナーや最小構成の Linux) では、認証後に `System vault not available` と表示され、トークンを設定ファイルへ平文で保存するかを問われます。拒否するとサインインは取り消されます。検証用の使い捨て環境では `1. Yes, store in plain text (insecure)` を選びます。トークンは接続先ユーザーの `~/.copilot/config.json` (パーミッション 600) に保存され、そのユーザーと root が読めます。環境を破棄すると設定ファイルも消えますが、GitHub 側の承認は GitHub の設定 (Applications) から別途取り消せます。共有の接続先や長期間使う接続先では、平文保存の可否を利用者と決めてください。
+キーチェーンなどの安全な保存先がない接続先 (コンテナーや最小構成の Linux) では、認証後に `System vault not available` と表示され、トークンを `~/.copilot/config.json` (パーミッション 600) へ平文保存するかを問われます (拒否するとサインインは取り消されます)。使い捨ての検証環境では `1. Yes, store in plain text (insecure)` を選択できますが、共有環境や長期間使用する接続先では平文保存の可否を利用者と確認してください (GitHub 側の認可は GitHub の設定の Applications から別途取り消せます)。
 
 認証は利用者が行い、API キーやトークンをドキュメント、ツール引数、会話履歴、検証ログへ貼り付けないでください。認証ファイルを含むホームディレクトリ全体の複製は避けます。同じ接続先ユーザーでは CLI の認証情報や会話履歴も共有され得るため、別アカウントを併用する場合は CLI が正式に対応する設定領域の分離方法を確認します。
 
@@ -119,13 +119,7 @@ Copilot CLI の内蔵 Web Fetch も接続前に名前解決を行うため、`We
 
 Table: Copilot の許可先
 
-画面内の Copilot Chat は、起動時に BYOK (利用者自身の API キーなどを使う外部モデル) の既知モデル一覧を `main.vscode-cdn.net` から取得します ([取得処理の実装](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts))。GitHub・Copilot API の許可だけでは取得できず、モデル一覧の更新失敗 (`Failed to update known models list`) が記録されます。取得を許可する場合は、既存の許可先に次を追加します。
-
-```text
---proxy-allow-host main.vscode-cdn.net:443
-```
-
-`proxy_rules_update` が利用できる場合は、現在の `rules_revision` と許可・拒否の全リストを読み、上記 1 件を許可先に加えて更新します。実行中セッションの更新は再起動不要ですが、セッション終了後は保持されないため、次回の起動オプションにも追加してください。テレメトリーや実験用の宛先 (`mobile.events.data.microsoft.com`、`default.exp-tas.com` など) は、モデル一覧の取得には不要です。
+画面内の Copilot Chat は、起動時に BYOK (利用者自身の API キーなどを使う外部モデル) の既知モデル一覧を `main.vscode-cdn.net` から取得します ([取得処理の実装](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts))。未許可の場合は `Failed to update known models list` が記録されます。取得を許可する場合は `--proxy-allow-host main.vscode-cdn.net:443` を追加します (実行中セッションでは [`proxy_rules_update`](client-proxy.md#proxy_rules_update-bridge) でも反映できます)。テレメトリーや実験用の宛先 (`mobile.events.data.microsoft.com`、`default.exp-tas.com` など) は不要です。
 
 ## Copilot CLI のコピーが動作しない場合
 
@@ -160,8 +154,8 @@ Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz`、[github/copilot-cli の v1.0.83
 | 認証 | 選択した方式でログインが成功 | デバイスコード方式 (表示コードを別ブラウザーに入力) で検証済。有効期限後の認証維持は未検証 |
 | 推論 | 接続先の直接通信を遮断し、bridge 経由だけで応答を取得 | 検証済 |
 | 内蔵 Web Fetch | 接続先に DNS がない状態で取得が成功 | [remote-dns](remote-dns.md) の併用で検証済 |
-| 操作 | 検証用ファイルの編集と小さなコマンドの実行が成功 | 検証済。ファイルの作成と編集は、それぞれ承認 (`1. Yes`) 後に実行された。`wc -c` の結果は接続先での確認と一致した。この読み取りのみのコマンドは承認の確認なしで実行された |
-| 終了 | MCP 切断後、code-server・CLI・補助プロセス・待ち受けを確認 | 検証済。MCP クライアントの終了で bridge が切断されると、接続先の host-shell、code-server 一式 (`copilot-runtime` を含む)、ターミナルのシェルと Copilot CLI (host-shell とは別セッション) がすべて終了し、接続先の待ち受け (code-server、プロキシ) と手元の転送ポート、DNS・プロキシの一時ディレクトリーが削除された。配置物、認証情報、作業ファイルは残る |
+| 操作 | 検証用ファイルの編集と小さなコマンドの実行が成功 | 検証済 (承認後のファイル作成・編集、および読み取り専用コマンドの実行を確認) |
+| 終了 | MCP 切断後、code-server・CLI・補助プロセス・待ち受けを確認 | 検証済 (MCP 切断により接続先の `host-shell`、code-server 一式、ターミナルのシェル・Copilot CLI、待ち受けポート、DNS・プロキシの一時ディレクトリがすべて終了・削除されることを確認。配置物・認証情報・作業ファイルは残る) |
 | 複数接続 | 別接続の起動・認証状態・切断の影響を確認 | 未検証 |
 
 Table: Copilot CLI の検証段階

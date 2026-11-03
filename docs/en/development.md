@@ -66,6 +66,8 @@ internal/bridge/       host-shell bridge (local relay, transfer_push, transfer_p
 internal/channel/      Multiplexed channel over SSH stdio (feature negotiation, bidirectional streams, flow control) and parts shared by the features on top of it (answering and relaying connections, mapping failure codes to reasons, status-tool history and output types)
 internal/clientproxy/  HTTP proxy through the client (bridge-side destination checks and upstream connections, target-side authenticated proxy)
 internal/forward/      Port forwarding (persistent forward syntax, bridge listeners, SOCKS5 and forward_*, target-side connections and listeners)
+internal/remotedns/    Name resolution through the client (bridge-side resolver, target-side UNIX socket listener and adapter placement)
+  assets/preload.c     LD_PRELOAD remote DNS adapter (source for libhostshell_dns-linux-<arch>.so)
 internal/proc/         Child process spawning, OS shell execution, process tree termination, signal delivery, liveness checks
   proc_unix.go         Linux (process groups, SIGKILL, signal name table)
   proc_windows.go      Windows (cmd command lines, taskkill /T)
@@ -88,6 +90,8 @@ internal/version/      Version metadata
                        Skill for injecting code-server into a target (packages/ is fetched by download and ignored by Git)
 .agents/skills/host-shell-vscode-remote-ssh/
                        Skill for connecting VS Code Remote - SSH to a target (packages/ is fetched by fetch and ignored by Git)
+.agents/skills/host-shell-coding-agents/
+                       Skill for deploying and validating CLI coding agents on a target
 docs/ja/               Japanese documentation (SSOT)
 docs/en/               English documentation (translations of docs/ja/)
 ```
@@ -102,7 +106,7 @@ Follow these rules when modifying the codebase.
 - **Redact sensitive arguments in audit logs**: For arguments that must not be logged in full (such as written file content or standard input), implement `AuditArgs() any` (`audit.Redactor`) on the input type.
 - **Convert encodings inside tools**: Tool inputs and outputs are always UTF-8. Use the `textenc` package for target encoding conversion and `textenc.ParseAuto` (arguments that allow detection) or `textenc.ParseFixed` (arguments with a default encoding) for encoding arguments, and avoid splitting multibyte characters across chunk boundaries.
 - **Reuse shared helpers**: Do not reimplement the same processing in each tool. Use `internal/tools/args.go` (`readCharset`, `writeCharset`, `decodeData`, `compileUntil`, `clampMax`) for arguments, `textenc.Choice.Detect` for BOM and UTF-16 detection, `Encoding.DecodeUnlessUTF8` for decoding non-UTF-8 data, `d.redact` and `d.mask` for output redaction and masking the proxy credential, and `proc.Alive` for process liveness.
-- **Separate settings from runtime components**: `config.Config` holds startup option values only. Components created at runtime (the client proxy and the target side of port forwarding) reach `tools.Deps` through `server.Session`. Build the policy once with `server.NewPolicy` and share it between the tools and port forwarding.
+- **Separate settings from runtime components**: `config.Config` holds startup option values only. Components created at runtime (the target side of the client proxy, port forwarding, and remote DNS) reach `tools.Deps` through `server.Session`. Build the policy once with `server.NewPolicy` and share it between the tools and port forwarding.
 - **Keep the bridge independent of the target tools**: `internal/bridge` does not import `internal/tools`. The client name, transfer chunk size and manifest types both use live in `internal/wire`.
 - **Avoid flag parameters in APIs**: Do not add bool parameters that switch behavior. Split the function (`CheckRead` and `CheckWrite`, `Signal` and `SignalGroup`, `ParseAuto` and `ParseFixed`) or take a struct with named fields (`forward.TargetOptions`, `policy.Tool`).
 - **Use consistent names**: Name error variables `err` and options struct parameters `opt`, and do not name variables after builtins (`max`, `min`, ...). Use the same name for the same kind of value (`connID` for connection IDs, `conn` for a `*channel.Conn`), write HTTP statuses with the `net/http` constants, call the outcome of one attempt (connection events, per-file transfer results) `result` and an ongoing condition (session, process, service) `state` in output fields (`status` is reserved for job status snapshots and HTTP status codes), and do not export identifiers that are not used outside their package.
@@ -216,9 +220,9 @@ Table: Supported operating systems
 Older OS versions are unsupported (see [Go MinimumRequirements](https://go.dev/wiki/MinimumRequirements)).  
 On Windows, antivirus software may falsely flag unsigned Go binaries; consider code signing when distributing executables.
 
-## Multiplexed channel, proxy, and port forwarding architecture
+## Multiplexed channel, proxy, port forwarding, and remote DNS architecture
 
-For user-facing specifications, see [HTTP proxy through the client](client-proxy.md) and [Port forwarding over SSH stdio](port-forward.md).
+For user-facing specifications, see [HTTP proxy through the client](client-proxy.md), [Port forwarding over SSH stdio](port-forward.md), and [Client-side name resolution (remote-dns)](remote-dns.md).
 
 Arrows show the main dependency directions. The bridge and target tools do not depend on each other; both use shared components built on the channel.
 
@@ -226,22 +230,27 @@ Arrows show the main dependency directions. The bridge and target tools do not d
 flowchart TB
     Bridge["internal/bridge"] --> Proxy["internal/clientproxy"]
     Bridge --> Forward["internal/forward"]
+    Bridge --> DNS["internal/remotedns"]
     Server["internal/server"] --> Tools["internal/tools"]
     Server --> Proxy
     Server --> Forward
+    Server --> DNS
     Tools --> Proxy
     Tools --> Forward
+    Tools --> DNS
     Tools --> Jobs["internal/jobs"]
     Tools --> Proc["internal/proc"]
     Jobs --> Proc
     Proxy --> Channel["internal/channel"]
     Forward --> Channel
+    DNS --> Channel
 ```
 
-- **`internal/channel/`**: Wraps `mcp.Connection` on both `bridge` and the target to intercept `host-shell/channel/*` notifications before they reach the MCP layer. During startup negotiation, `hello` frames exchange the features requested by `bridge` (`http_proxy`, `forward_local`, `forward_remote`) and permitted by the target; persistent remote forward listeners are registered via `listen` frames before `ready` proceeds to standard MCP initialization. Even when no permission flags are set on the target, it inspects the first incoming message and passes standard MCP traffic through unchanged. Either peer can open data streams (`bridge` uses odd connection IDs and the target uses even IDs), but the target can only open incoming connections for remote forwards registered by `bridge` via `listen`—it cannot specify arbitrary destinations or cause `bridge` to dial out to unapproved hosts.
+- **`internal/channel/`**: Wraps `mcp.Connection` on both `bridge` and the target to intercept `host-shell/channel/*` notifications before they reach the MCP layer. During startup negotiation, `hello` frames exchange the features requested by `bridge` (`http_proxy`, `forward_local`, `forward_remote`, `remote_dns`) and permitted by the target; persistent remote forward listeners are registered via `listen` frames before `ready` proceeds to standard MCP initialization. Even when no permission flags are set on the target, it inspects the first incoming message and passes standard MCP traffic through unchanged. Either peer can open data streams (`bridge` uses odd connection IDs and the target uses even IDs). Streams opened from the target side are restricted to negotiated features: port forwarding (`forward`) accepts only incoming connections for remote forwards registered by `bridge` via `listen`, proxy streams (`http`, `connect`) accept only destinations allowed by `bridge`'s `--proxy-allow-host` / `--proxy-deny-host` rules, and name resolution streams (`dns`) perform only name resolution via `bridge`'s resolver.
 - **Shared parts**: `internal/channel/` also provides parts the features on top of it share. `Incoming.Answer` answers an incoming stream (dial, reject on failure, accept), `Relay` relays both directions (passing half-closes on, idle timeout, linger), and `Describe` maps failure codes to results (`allowed`, `denied`, `failed`) and fixed reason strings. Status tool outputs embed `EventHead`, `Outcome` and `Recent`, and `Snapshot` builds them from the history and the session state. Reasons are fixed strings; network error text, which can contain credentials, is never recorded.
-- **`internal/clientproxy/`**: Implements the authenticated local HTTP proxy, upstream dialing, and diagnostics (`proxy_status`) on top of `internal/channel/`.
+- **`internal/clientproxy/`**: Implements the authenticated local HTTP proxy, upstream dialing, and diagnostics and rule updates (`proxy_status`, `proxy_rules_update`) on top of `internal/channel/`.
 - **`internal/forward/`**: Implements local forwards, remote forwards, SOCKS5, and the forwarding management tools (`forward_*`) on top of `internal/channel/`.
+- **`internal/remotedns/`**: Implements the target-side UNIX domain socket listener, remote DNS adapter (`preload.c`) placement, and `bridge`-side name resolution on top of `internal/channel/`.
 
 ## Maintaining the code-server injection skill
 
@@ -267,9 +276,9 @@ To update the bundled code-server version:
 
 ### Checking the UI in a browser (Chrome for Testing on WSL)
 
-On a WSL2 development machine, you can show Chrome for Testing through WSLg and check code-server while seeing the same screen as the user.
+On a WSL2 development machine, you can start Chrome for Testing through WSLg to inspect code-server while seeing the same screen as the user.
 
-1. Start Chrome for Testing with a CDP listener, opening `http://127.0.0.1:<forwarded port>/` obtained from port forwarding (`forward_open`).
+1. Start Chrome for Testing with CDP enabled, opening `http://127.0.0.1:<forwarded port>/` obtained from port forwarding (`forward_open`).
 
    ```bash
    chrome --ozone-platform=x11 --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 \
@@ -277,39 +286,11 @@ On a WSL2 development machine, you can show Chrome for Testing through WSLg and 
      --window-size=1400,900 --window-position=40,40 http://127.0.0.1:<forwarded port>/
    ```
 
-2. The user types the code-server password and completes GitHub authentication directly in this window. The agent does not read the password.
-3. The agent attaches to the same browser with `chromium.connectOverCDP('http://127.0.0.1:9222')` from `playwright-core` and checks the screen with page screenshots (`page.screenshot`).
-4. When finished, close Chrome and delete the profile given in `--user-data-dir`, because it keeps the GitHub sign-in.
+2. The user enters the code-server password and completes GitHub authentication directly in this window (the agent does not read the password).
+3. The agent attaches with `chromium.connectOverCDP('http://127.0.0.1:9222')` from `playwright-core` and inspects the UI using page screenshots (`page.screenshot`). Do not take screenshots of the entire Windows desktop, as they can capture secrets in other open windows.
+4. When finished, close Chrome and delete the profile in `--user-data-dir` so GitHub sign-in state is not retained.
 
-Notes:
-
-- CDP screenshots work even when the window is not shown on Windows. They do not prove that the window is visible.
-- Do not take screenshots of the whole Windows desktop. They capture secrets in files open in front, such as the code-server `config.yaml`. Check visibility on Windows with the window list described below.
-- Chrome rewrites its process title, so `/proc/<pid>/environ` cannot tell whether `DISPLAY` is set. Check the connection to the X server with `ss -xp`, looking for peers of `/tmp/.X11-unix/X0`.
-
-#### When WSLg windows do not appear
-
-When you connect to the development machine's Windows through Remote Desktop (mstsc), WSLg can stop showing windows after a disconnect and reconnect. In that state:
-
-- The X server responds (`xrandr` returns the screen size), but new X11 windows stay at off-screen coordinates such as `-32730,-32709`.
-- The WSLg RDP client on Windows (`C:\Program Files\WSL\msrdc.exe`) is running but has no visible window.
-- Clipboard sharing keeps working.
-
-To check visible windows on Windows, enumerate the windows of the `msrdc.exe` process with `EnumWindows` in PowerShell and check `IsWindowVisible` and the title. WSLg window titles carry the distribution name (for example, `code-server login - Google Chrome for Testing (OracleLinux8-Dev)`).
-
-To recover, force-stop the WSLg `msrdc.exe`.
-
-```bash
-taskkill.exe /F /PID <PID of msrdc.exe>
-```
-
-- Find the PID with `tasklist.exe /FI "IMAGENAME eq msrdc.exe"`. If there are several, choose the one whose path is `C:\Program Files\WSL\msrdc.exe` and whose arguments include `/wslg`.
-- A stop request without `/F` is ignored.
-- WSLg restarts `msrdc.exe` within a few seconds, and the windows of running X11 clients (such as Chrome) appear.
-- Stopping it does not affect the mstsc connection, WSL processes, or containers.
-- If this does not recover the display, run `wsl --shutdown` on Windows. This stops every process and container in WSL.
-
-Verified environment: Windows (connected through mstsc), WSLg 1.0.71, Oracle Linux 8 (WSL2), Chrome for Testing 148.0.7778.97.
+When connecting to the Windows host via Remote Desktop (`mstsc`), WSLg windows may stop appearing after a reconnect (even though CDP screenshots continue to work). In that case, find the PID of the WSLg `C:\Program Files\WSL\msrdc.exe` process (with `/wslg` in its arguments) using `tasklist.exe /FI "IMAGENAME eq msrdc.exe"` and restart it with `taskkill.exe /F /PID <PID>` (run `wsl --shutdown` only if that does not recover the display).
 
 ## Maintaining the VS Code Remote - SSH skill
 

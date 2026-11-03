@@ -7,7 +7,7 @@ This guide describes how to edit files on a Linux `host-shell` target from your 
 
 The procedure is packaged as the `host-shell-vscode-remote-ssh` skill (`.agents/skills/host-shell-vscode-remote-ssh/`), which an agent runs with the MCP tools. This guide covers the architecture, preparation, what is placed on the target, version updates, and limitations.
 
-To use VS Code in a browser instead, see [Injecting code-server](code-server.md).
+To use VS Code in a browser instead, or when the target is Windows, a container without `/usr/sbin/sshd`, or requires automatic shutdown on MCP disconnect or [`remote-dns`](remote-dns.md), see [Injecting code-server](code-server.md).
 
 ## Use cases
 

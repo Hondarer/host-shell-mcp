@@ -85,7 +85,7 @@ Device code authentication can use the local browser, but the remote CLI must al
 
 For Copilot CLI, run `/login`, choose the account (`GitHub.com`), and choose `Sign in with a device code`. Do not use `Sign in with your browser`, which returns to the target's localhost.
 
-On targets without secure storage such as a keychain (containers and minimal Linux), the CLI shows `System vault not available` after authentication and asks whether to store the token in a plain-text config file. Declining cancels the sign-in. In disposable validation environments, choose `1. Yes, store in plain text (insecure)`. The token is stored in the target user's `~/.copilot/config.json` (mode 600), readable by that user and root. Discarding the environment removes the file, but the authorization on GitHub can be revoked separately in GitHub settings (Applications). On shared or long-lived targets, decide with the user whether plain-text storage is acceptable.
+On targets without secure storage such as a keychain (containers and minimal Linux), the CLI shows `System vault not available` after authentication and asks whether to store the token in plain text in `~/.copilot/config.json` (mode 600; declining cancels sign-in). In disposable validation environments you can choose `1. Yes, store in plain text (insecure)`, whereas on shared or long-lived targets you should confirm with the user whether plain-text storage is acceptable (GitHub authorization can be revoked separately under Applications in GitHub settings).
 
 The user performs authentication. Keep API keys and tokens out of documentation, tool arguments, conversations, and validation logs. Avoid copying an entire home directory containing credentials. CLIs running as the same target user may share credentials and conversation history. For separate accounts, check the CLI's supported configuration isolation mechanism.
 
@@ -119,13 +119,7 @@ Copilot CLI's built-in Web Fetch also resolves names before connecting, failing 
 
 Table: Copilot destinations
 
-At startup, the in-editor Copilot Chat fetches the known-model catalog for BYOK (external models using the user's own API keys) from `main.vscode-cdn.net` ([fetching implementation](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts)). GitHub and Copilot API rules alone do not cover it, resulting in a `Failed to update known models list` warning. To allow fetching the catalog, add the following to the existing startup rules:
-
-```text
---proxy-allow-host main.vscode-cdn.net:443
-```
-
-If `proxy_rules_update` is available, read the current `rules_revision` and complete allow and deny lists, add this single destination, and submit the update. Session updates take effect without restarting but end with the session, so add the option to future startup commands as well. Telemetry and experimentation hosts (such as `mobile.events.data.microsoft.com` and `default.exp-tas.com`) are not needed to fetch the model catalog.
+At startup, the in-editor Copilot Chat fetches the known-model catalog for BYOK (external models using the user's own API keys) from `main.vscode-cdn.net` ([fetching implementation](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts)). When not allowed, `Failed to update known models list` is logged. To allow fetching the catalog, add `--proxy-allow-host main.vscode-cdn.net:443` (or apply it in a running session via [`proxy_rules_update`](client-proxy.md#proxy_rules_update-bridge)). Telemetry and experimentation hosts (such as `mobile.events.data.microsoft.com` and `default.exp-tas.com`) are not needed.
 
 ## Clipboard copying fails only inside Copilot CLI
 
@@ -160,8 +154,8 @@ Verified with Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz` from [github/copilo
 | Authentication | Login succeeds with the chosen method | Verified with device code (entering the displayed code in a separate browser). Behavior after credential expiry is unverified |
 | Inference | Responses arrive only through the bridge with direct target egress blocked | Verified |
 | Built-in Web Fetch | Fetching succeeds on a target without DNS | Verified together with [remote-dns](remote-dns.md) |
-| Operations | Editing a test file and running a small command succeed | Verified. Creating and editing the file each ran after approval (`1. Yes`). The `wc -c` result matched a check on the target. This read-only command ran without an approval prompt |
-| Shutdown | After MCP disconnect, check code-server, CLI, helper processes, and listeners | Verified. When the bridge disconnects because the MCP client exits, the target host-shell, the whole code-server tree (including `copilot-runtime`), and the terminal shells and Copilot CLI (in a session separate from host-shell) all exit; the target listeners (code-server, proxy), the local forward port, and the DNS and proxy temporary directories are removed. Installed files, credentials, and work files remain |
+| Operations | Editing a test file and running a small command succeed | Verified (confirmed file creation and editing after approval, and execution of read-only commands) |
+| Shutdown | After MCP disconnect, check code-server, CLI, helper processes, and listeners | Verified (confirmed that on MCP disconnect, the target `host-shell`, the code-server process tree, terminal shells and Copilot CLI, listening ports, and DNS/proxy temporary directories are all terminated and removed; installed files, credentials, and work files remain) |
 | Multiple connections | Startup, authentication state, and disconnect effects across connections | Unverified |
 
 Table: Copilot CLI validation stages

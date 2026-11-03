@@ -7,7 +7,7 @@
 
 一連の手順は `host-shell-vscode-remote-ssh` スキル (`.agents/skills/host-shell-vscode-remote-ssh/`) にまとめられており、エージェントが MCP ツールを使って実行します。この文書では、構成、事前の準備、配置される内容、版の更新、および制限を説明します。
 
-ブラウザーで VS Code を使う場合は、[code-server の導入](code-server.md) を参照してください。
+ブラウザーだけで VS Code を使いたい場合、Windows 接続先や `/usr/sbin/sshd` のないコンテナーを使う場合、または MCP 切断時の自動停止や [`remote-dns`](remote-dns.md) が必要な場合は、[code-server の導入](code-server.md) を参照してください。
 
 ## 用途
 

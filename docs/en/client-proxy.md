@@ -50,9 +50,9 @@ Both standard HTTP proxy requests and `CONNECT` tunnels are supported. TLS traff
 
 ### Distinguishing DNS failures from denied destinations
 
-This is an HTTP proxy, not a relay for the target OS's DNS queries. When an application sends a hostname to the proxy, resolution happens on the client side or through the configured upstream proxy route. Thus HTTP/HTTPS can work through the proxy even when `getaddrinfo` or `nslookup` fails in a container without networking. Applications that perform their own lookup before connecting to the proxy require separate handling.
+This is an HTTP proxy, not a relay for the target OS's DNS queries. When an application sends a hostname to the proxy, resolution happens on the client side (or through the configured upstream proxy route). Thus HTTP/HTTPS can work through the proxy even when `getaddrinfo` or `nslookup` fails in a container without networking. For Linux/glibc programs that call `getaddrinfo` before connecting to the proxy, combine this feature with [client-side name resolution (remote-dns)](remote-dns.md) (`--remote-dns`).
 
-`destination not allowed` in `proxy_status` means the destination allowlist rejected the request; it is not a DNS error. HTTP returns 403, and HTTPS receives 403 for CONNECT. Compare requests to allowed hosts, denied hosts and ports, and application errors. Adding external networking to the container is not necessary merely to make proxy-based name resolution work.
+`destination not allowed` in `proxy_status` means the destination allowlist rejected the request; it is not a DNS error (HTTP returns 403, and HTTPS receives 403 for `CONNECT`). Compare requests to allowed hosts, denied hosts and ports, and application errors.
 
 ## Authentication and diagnostics
 
@@ -91,13 +91,12 @@ Starting `bridge` with `--proxy --proxy-allow-rule-updates` exposes `proxy_rules
 }
 ```
 
-- Returns the new `allow_hosts`, `deny_hosts`, and `rules_revision`. This example replaces the allowlist with only the API and specified website; derive real updates from the existing rules returned by `proxy_status`.
-- All input rules are validated before atomic replacement. Invalid rules and stale revisions leave state unchanged. On a conflict, read the current state and reconsider the intended change.
-- Deny takes precedence. Empty `allow_hosts` rejects all new destinations.
-- Applies to new relay connections checked after the update. In-flight requests and established CONNECT tunnels are not forcibly disconnected. SSH, code-server, proxy URLs, and browser port forwards remain running.
-- Changes live only in session memory. Registration and configuration files are not modified; subsequent sessions start from their startup rules. The bridge logs the revision and both lists to stderr.
-- A supporting bridge started with mutation enabled is required. Older binaries and sessions started without this option cannot acquire the tool dynamically. After initial deployment/enabling, individual rule changes require no restart.
-- This covers only the client HTTP/HTTPS proxy. It does not change target `--allow-host`, forwarding permissions, or DNS relay settings.
+- Returns the updated `allow_hosts`, `deny_hosts`, and `rules_revision` (build the full replacement lists from the current rules returned by `proxy_status`).
+- Validates all input rules before atomically replacing them. Invalid rules or a stale revision leave the state unchanged (re-read `proxy_status` on conflict).
+- Deny (`deny_hosts`) takes precedence over allow (`allow_hosts`). An empty `allow_hosts` rejects all new connections.
+- Updated rules apply to new relay connections without disconnecting in-flight requests or established `CONNECT` tunnels.
+- Changes apply only in memory for the current session (`bridge` logs the revision and both lists to standard error). Configuration files are not modified; subsequent sessions revert to the startup options.
+- Applies only to the client HTTP/HTTPS proxy; target `--allow-host`, port forwarding rules, and `remote-dns` settings are unchanged.
 
 ### Target audit log
 
@@ -112,5 +111,3 @@ The target's audit log records the following entries:
 - **Timeouts**: Upstream connection establishment and HTTP header reads time out after 30 seconds, idle streams time out after 5 minutes, and graceful shutdown waits up to 5 seconds.
 - **HTTP error status codes**: Denied destinations return `403`, authentication failures return `407`, reaching the stream limit returns `503`, upstream connection failures return `502`, and connection timeouts return `504`. Errors after a `CONNECT` tunnel is established close the stream. Disconnecting the MCP session closes the loopback listener and all active relay connections.
 - **Relationship to MCP restriction flags**: `--tools` and `--read-only` on the target govern which MCP tools are published; they do not restrict traffic passing through the HTTP proxy. Control proxy access via explicit enablement on both ends and `--proxy-allow-host` rules on `bridge`.
-
-Optional name resolution relay: [remote-dns](remote-dns.md). See `--remote-dns` on both ends and target `--remote-dns-library PATH` for a prebuilt adapter.

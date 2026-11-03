@@ -66,6 +66,8 @@ internal/bridge/       host-shell bridge (ローカル中継、transfer_push、t
 internal/channel/      SSH stdio 上の多重化チャネル (機能ネゴシエーション、双方向ストリーム、フロー制御) と、その上の機能が共有する部品 (接続の応答と中継、失敗コードと理由の対応、状態ツールの履歴と出力型)
 internal/clientproxy/  クライアント経由 HTTP プロキシ (bridge 側の宛先検査と上流接続、接続先側の認証付きプロキシ)
 internal/forward/      ポート転送 (常設転送の書式解析、bridge 側の待ち受け・SOCKS5・forward_*、接続先側の発信と待ち受け)
+internal/remotedns/    接続元を使う名前解決 (bridge 側のリゾルバー、接続先側の UNIX ソケット待ち受けとアダプター配置)
+  assets/preload.c     LD_PRELOAD 用名前解決アダプター (libhostshell_dns-linux-<arch>.so のソース)
 internal/proc/         子プロセス起動、OS 別シェル実行、プロセス ツリー終了、シグナル送信、生存確認
   proc_unix.go         Linux (プロセス グループ、SIGKILL、シグナル名の表)
   proc_windows.go      Windows (cmd コマンドライン、taskkill /T)
@@ -88,6 +90,8 @@ internal/version/      バージョン情報
                        接続先への code-server 導入スキル (packages/ は download で取得、Git 管理外)
 .agents/skills/host-shell-vscode-remote-ssh/
                        接続先への VS Code Remote - SSH 接続スキル (packages/ は fetch で取得、Git 管理外)
+.agents/skills/host-shell-coding-agents/
+                       接続先での CLI 型 AI コーディングエージェント導入・検証スキル
 docs/ja/               文書の日本語版 (正本)
 docs/en/               文書の英語版 (docs/ja/ の英訳)
 ```
@@ -102,7 +106,7 @@ docs/en/               文書の英語版 (docs/ja/ の英訳)
 - **機密引数のログ出力抑制**: 書き込み内容や標準入力など操作ログに残すべきでない引数は、入力型に `AuditArgs() any` (`audit.Redactor`) を実装してマスクします。
 - **ツール内部での文字コード変換**: ツールの入出力は常に UTF-8 とします。接続先の文字コードとの変換には `textenc` パッケージを、文字コード指定引数の解決には `textenc.ParseAuto` (自動判定を許す引数) または `textenc.ParseFixed` (既定の文字コードを持つ引数) を使用し、分割読み取り時はマルチバイト文字の境界を分断しないようにします。
 - **共通部品の再利用**: 同じ処理を各ツールで再実装しないでください。引数の解釈には `internal/tools/args.go` (`readCharset`、`writeCharset`、`decodeData`、`compileUntil`、`clampMax`)、BOM と UTF-16 の判定には `textenc.Choice.Detect`、UTF-8 以外の復号には `Encoding.DecodeUnlessUTF8`、出力の伏せ字とプロキシ認証情報のマスクには `d.redact` と `d.mask`、プロセスの生存確認には `proc.Alive` を使用します。
-- **設定と実行時部品の分離**: `config.Config` は起動オプションの値のみを持ちます。実行時に生成する部品 (クライアント プロキシとポート転送の接続先側) は `server.Session` を経由して `tools.Deps` に渡します。ポリシーは `server.NewPolicy` で 1 回だけ生成し、ツールとポート転送で共有します。
+- **設定と実行時部品の分離**: `config.Config` は起動オプションの値のみを持ちます。実行時に生成する部品 (クライアント プロキシ、ポート転送、名前解決の接続先側) は `server.Session` を経由して `tools.Deps` に渡します。ポリシーは `server.NewPolicy` で 1 回だけ生成し、ツールとポート転送で共有します。
 - **bridge と接続先ツールの分離**: `internal/bridge` は `internal/tools` を import しません。両者が共有するクライアント名、転送単位、マニフェストのデータ型は `internal/wire` に置きます。
 - **フラグ引数を避けた API**: 動作を切り替える bool 引数は追加せず、関数を分ける (`CheckRead` と `CheckWrite`、`Signal` と `SignalGroup`、`ParseAuto` と `ParseFixed`) か、名前付きフィールドを持つ構造体 (`forward.TargetOptions`、`policy.Tool`) で受け取ります。
 - **命名の統一**: エラー変数は `err`、オプション構造体の引数は `opt` とし、組み込み関数と同名の変数 (`max`、`min` など) は使用しません。同じ意味の値には同じ名前を使い (接続 ID は `connID`、`*channel.Conn` は `conn`)、HTTP ステータスは `net/http` の定数で記述します。出力フィールドでは、1 回の試行の結果 (接続イベント、転送のファイル別結果) を `result`、継続している状態 (セッション、プロセス、サービス) を `state` と呼びます (`status` はジョブ状態のスナップショットと HTTP ステータス コードに限ります)。パッケージ外から使わない識別子は公開しません。
@@ -216,9 +220,9 @@ Table: 動作する OS
 上記より古い OS はサポート対象外です ([Go MinimumRequirements](https://go.dev/wiki/MinimumRequirements) 参照)。  
 Windows 環境ではウイルス対策ソフトが Go 製バイナリを誤検知する場合があるため、配布時はコード署名の付与を検討してください。
 
-## 多重化チャネルとプロキシ・転送の構成
+## 多重化チャネルとプロキシ・転送・名前解決の構成
 
-利用者向けの仕様は [クライアント経由 HTTP プロキシ](client-proxy.md) および [SSH stdio 経由のポート転送](port-forward.md) を参照してください。
+利用者向けの仕様は [クライアント経由 HTTP プロキシ](client-proxy.md)、[SSH stdio 経由のポート転送](port-forward.md)、および [接続元を使う名前解決 (remote-dns)](remote-dns.md) を参照してください。
 
 矢印は主な依存方向を示します。`bridge` と接続先の `tools` は互いを参照せず、チャネル上の共通部品を使用します。
 
@@ -226,22 +230,27 @@ Windows 環境ではウイルス対策ソフトが Go 製バイナリを誤検�
 flowchart TB
     Bridge["internal/bridge"] --> Proxy["internal/clientproxy"]
     Bridge --> Forward["internal/forward"]
+    Bridge --> DNS["internal/remotedns"]
     Server["internal/server"] --> Tools["internal/tools"]
     Server --> Proxy
     Server --> Forward
+    Server --> DNS
     Tools --> Proxy
     Tools --> Forward
+    Tools --> DNS
     Tools --> Jobs["internal/jobs"]
     Tools --> Proc["internal/proc"]
     Jobs --> Proc
     Proxy --> Channel["internal/channel"]
     Forward --> Channel
+    DNS --> Channel
 ```
 
-- **`internal/channel/`**: `bridge` と接続先の `mcp.Connection` ラッパーとして `host-shell/channel/*` 通知を処理し、通常の MCP 層へは渡しません。接続開始時のネゴシエーションでは、`bridge` が要求する機能 (`http_proxy`、`forward_local`、`forward_remote`) と接続先が許可する機能を `hello` フレームで交換し、常設リモート転送の待ち受け (`listen`) を完了させてから `ready` フレームで MCP の初期化へ進みます。接続先は許可オプションが指定されていない場合でも最初のメッセージを確認し、通常の MCP メッセージであればそのまま処理します。データ ストリームは両端のどちらからでも開始でき、接続 ID は `bridge` 起点が奇数、接続先起点が偶数を使用します。なお、接続先側から開けるストリームは `bridge` が `listen` で登録したリモート転送への着信のみであり、接続先から任意の宛先を指定して `bridge` に発信させることはできません。
+- **`internal/channel/`**: `bridge` と接続先の `mcp.Connection` ラッパーとして `host-shell/channel/*` 通知を処理し、通常の MCP 層へは渡しません。接続開始時のネゴシエーションでは、`bridge` が要求する機能 (`http_proxy`、`forward_local`、`forward_remote`、`remote_dns`) と接続先が許可する機能を `hello` フレームで交換し、常設リモート転送の待ち受け (`listen`) を完了させてから `ready` フレームで MCP の初期化へ進みます。接続先は許可オプションが指定されていない場合でも最初のメッセージを確認し、通常の MCP メッセージであればそのまま処理します。データ ストリームは両端のどちらからでも開始でき、接続 ID は `bridge` 起点が奇数、接続先起点が偶数を使用します。接続先側から開けるストリームはネゴシエーション済みの機能に限定され、ポート転送 (`forward`) は `bridge` が `listen` で登録したリモート転送への着信のみ、プロキシ (`http`、`connect`) は `bridge` 側の `--proxy-allow-host`・`--proxy-deny-host` で許可された宛先のみ、名前解決 (`dns`) は `bridge` 側リゾルバーによる名前解決のみを受け付けます。
 - **共有部品**: `internal/channel/` は、その上の機能が共通に使う部品も提供します。着信ストリームへの応答 (発信、失敗時の拒否、受け付け) は `Incoming.Answer`、双方向の中継 (半クローズの伝達、アイドル タイムアウト、残存時間) は `Relay`、失敗コードから結果 (`allowed`、`denied`、`failed`) と固定の理由文字列への対応は `Describe` が担います。状態ツールの出力は `EventHead`、`Outcome`、`Recent` を埋め込んで構成し、`Snapshot` で履歴とセッション状態から生成します。理由は固定文字列とし、認証情報を含みうるネットワーク エラーの文字列は記録しません。
-- **`internal/clientproxy/`**: `internal/channel/` の上に、認証付きローカル HTTP プロキシ、上流接続、および診断機能 (`proxy_status`) を実装します。
+- **`internal/clientproxy/`**: `internal/channel/` の上に、認証付きローカル HTTP プロキシ、上流接続、および診断・ルール更新機能 (`proxy_status`、`proxy_rules_update`) を実装します。
 - **`internal/forward/`**: `internal/channel/` の上に、ローカル転送、リモート転送、SOCKS5、および転送管理ツール (`forward_*`) を実装します。
+- **`internal/remotedns/`**: `internal/channel/` の上に、接続先側の UNIX ドメイン ソケット待ち受け、名前解決アダプター (`preload.c`) の配置、および `bridge` 側での名前解決を実装します。
 
 ## code-server 導入スキルの保守
 
@@ -266,9 +275,9 @@ code-server のバージョンを更新する手順は次のとおりです。
 
 ### ブラウザーでの画面確認 (WSL の Chrome for Testing)
 
-WSL2 の開発環境では、WSLg に Chrome for Testing を表示し、利用者と同じ画面を見ながら code-server を確認できます。
+WSL2 の開発環境では、WSLg 上で Chrome for Testing を起動して利用者と同じ画面を見ながら code-server を確認できます。
 
-1. ポート転送 (`forward_open`) で得た `http://127.0.0.1:<転送ポート>/` を開き、CDP の待ち受けを付けて Chrome for Testing を起動します。
+1. ポート転送 (`forward_open`) で得た `http://127.0.0.1:<転送ポート>/` を指定し、CDP を有効にして Chrome for Testing を起動します。
 
    ```bash
    chrome --ozone-platform=x11 --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 \
@@ -276,39 +285,11 @@ WSL2 の開発環境では、WSLg に Chrome for Testing を表示し、利用�
      --window-size=1400,900 --window-position=40,40 http://127.0.0.1:<転送ポート>/
    ```
 
-2. code-server のパスワードと GitHub の認証は、利用者がこのウィンドウに直接入力します。エージェントはパスワードを読みません。
-3. エージェントは `playwright-core` の `chromium.connectOverCDP('http://127.0.0.1:9222')` で同じブラウザーに接続し、ページ単位のスクリーンショット (`page.screenshot`) で画面を確認します。
-4. 確認が終わったら Chrome を終了し、`--user-data-dir` に指定したプロファイルを削除します (GitHub のログイン情報が残るため)。
+2. code-server のパスワードと GitHub の認証は利用者がウィンドウに直接入力します (エージェントはパスワードを読み取りません)。
+3. エージェントは `playwright-core` の `chromium.connectOverCDP('http://127.0.0.1:9222')` で接続し、ページ単位のスクリーンショット (`page.screenshot`) で確認します。手前に開いているファイルの秘密情報が写り込むため、デスクトップ全体のスクリーンショットは使用しません。
+4. 確認後は Chrome を終了し、GitHub のログイン情報が残らないよう `--user-data-dir` のプロファイルを削除します。
 
-注意点は次のとおりです。
-
-- CDP のスクリーンショットは、ウィンドウが Windows 側に表示されていなくても撮れます。表示できていることの確認には使えません。
-- Windows のデスクトップ全体のスクリーンショットは撮りません。手前に開いているファイル (code-server の `config.yaml` など) の秘密情報が写ります。Windows 側の表示は、次に示すウィンドウ一覧で確認します。
-- Chrome はプロセスタイトルを書き換えるため、`/proc/<pid>/environ` から `DISPLAY` の有無は判断できません。X サーバーへの接続は `ss -xp` で `/tmp/.X11-unix/X0` の接続相手を確認します。
-
-#### WSLg のウィンドウが表示されない場合
-
-開発機の Windows にリモートデスクトップ (mstsc) で接続している場合、切断・再接続のあとで WSLg がウィンドウを表示しなくなることがあります。このとき、次の状態になります。
-
-- X サーバーは応答する (`xrandr` が画面サイズを返す) が、新しい X11 ウィンドウは画面外の座標 (`-32730,-32709` など) に置かれたままになる
-- Windows 側の WSLg 用 RDP クライアント (`C:\Program Files\WSL\msrdc.exe`) は動作しているが、表示中のウィンドウを持たない
-- クリップボードの連携は動作し続ける
-
-Windows 側の表示中のウィンドウは、PowerShell で `msrdc.exe` のプロセスが持つウィンドウを `EnumWindows` で列挙し、`IsWindowVisible` とタイトルで確認します。WSLg のウィンドウのタイトルには、ディストリビューション名が付きます (例: `code-server login - Google Chrome for Testing (OracleLinux8-Dev)`)。
-
-回復するには、WSLg 用の `msrdc.exe` を強制終了します。
-
-```bash
-taskkill.exe /F /PID <msrdc.exe の PID>
-```
-
-- PID は `tasklist.exe /FI "IMAGENAME eq msrdc.exe"` で確認します。複数ある場合は、パスが `C:\Program Files\WSL\msrdc.exe` で、起動引数に `/wslg` を含むものを選びます。
-- `/F` を付けない終了要求は無視されます。
-- WSLg は数秒で `msrdc.exe` を起動し直し、既存の X11 クライアント (Chrome など) のウィンドウが表示されます。
-- 終了しても、mstsc の接続、WSL のプロセス、コンテナーには影響しません。
-- この方法で回復しない場合は、Windows 側で `wsl --shutdown` を実行します。WSL 上のすべてのプロセスとコンテナーが停止します。
-
-確認環境: Windows (mstsc で接続)、WSLg 1.0.71、Oracle Linux 8 (WSL2)、Chrome for Testing 148.0.7778.97。
+なお、Windows にリモート デスクトップ (`mstsc`) で接続している環境では、再接続後に WSLg のウィンドウが表示されなくなることがあります (CDP のスクリーンショットはウィンドウが非表示でも取得できます)。その場合は `tasklist.exe /FI "IMAGENAME eq msrdc.exe"` で WSLg 用の `C:\Program Files\WSL\msrdc.exe` (`/wslg` 引数付き) の PID を確認し、`taskkill.exe /F /PID <PID>` で再起動させてください (回復しない場合のみ `wsl --shutdown` を実行します)。
 
 ## VS Code Remote - SSH 接続スキルの保守
 

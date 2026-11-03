@@ -76,7 +76,7 @@ flowchart TB
 ```
 
 `bridge` relays all tools exposed by the target's `host-shell` and adds `transfer_push` (local to target) and `transfer_pull` (target to local).  
-File contents stream directly between `bridge` and the target's `host-shell` without passing through the agent context, supporting large files and directory trees. When enabled on both ends, `bridge` also provides an [HTTP proxy through the client](client-proxy.md) and [port forwarding](port-forward.md) over the same SSH session.  
+File contents stream directly between `bridge` and the target's `host-shell` without passing through the agent context, supporting large files and directory trees. When enabled on both ends, `bridge` also provides an [HTTP proxy through the client](client-proxy.md), [port forwarding](port-forward.md), and [client-side name resolution (remote-dns)](remote-dns.md) over the same SSH session.  
 `bridge` is a subcommand of the same `host-shell` binary; use the executable matching the client OS (Linux, Windows, or macOS).
 
 ### Runs only while connected
@@ -98,6 +98,7 @@ flowchart TD
 | Commands and jobs | Terminates processes started by `exec_run`, `exec_sudo`, and `job_start`, including their descendants |
 | Port forwarding | Closes remote forward listeners on the target, local forward and SOCKS5 listeners on `bridge`, and established connections |
 | HTTP proxy through the client | Closes the loopback listener on the target and relayed connections, and deletes the URL file that contains the credential |
+| Client-side name resolution (`remote-dns`) | Closes the UNIX domain socket on the target and removes the per-session temporary directory containing the adapter |
 
 Table: Cleaned up on disconnect
 
@@ -403,9 +404,16 @@ Table: Investigation examples
 
 For large files, `fs_read` with `line_start` and `line_count` reads only the requested line range (for example, "read the last 200 lines of the log").
 
-### Comparing with local sources
+### Preparing target information and sources on the client
 
-When you have a matching source tree locally, use `fs_manifest` to compare SHA-256 hashes and read only modified files:
+While `host-shell` describes the target OS and its own tools automatically, organizing the connection route along with target-specific context and assets in your local workspace (where the agent runs) streamlines setup, eliminates exploratory round-trips, and makes investigation much more effective:
+
+- **SSH route, network topology, and authentication methods**: Because you need to tell the agent how to reach the target when deploying or registering `host-shell` (including via the `host-shell-connect` skill) or when hopping further into internal hosts or containers, organize the route details in advance: jump hosts and hop order, container runtime and container names (`podman` / `docker` / `kubectl`), authentication methods at each hop (`~/.ssh/config` host aliases, key file paths, whether `sudo` is required—without writing passwords or secret values themselves), and target network constraints (whether outbound internet/DNS is available or client proxy and port forwarding are needed).
+- **File system layout**: Documenting application install directories, configuration and log paths, and systemd unit or Windows service names in local agent instructions (`AGENTS.md`, `CLAUDE.md`, etc.) lets the agent read the right paths immediately without scanning directories (especially helpful when [`--allow-path` or `--allow-read-path`](operations.md#restriction-options) restricts accessible directories).
+- **Target diagnostic commands and scripts**: Listing the paths and arguments of target-specific diagnostic commands, operational wrappers, or admin CLIs allows the agent to run established procedures directly—and pairs naturally with `--allow-command` policies that permit only approved diagnostic scripts. You can also keep diagnostic scripts on the client and upload them to a temporary directory on the target via `transfer_push`.
+- **Source code for investigation**: Even when the target only has compiled binaries deployed, keeping the corresponding source tree on the client lets the agent correlate logs, metrics, and stack traces from the target directly against the local source code.
+
+When both the client and the target have a copy of the source or configuration tree, use `fs_manifest` to compare SHA-256 hashes and read only modified files:
 
 ```text
 Get the fs_manifest of /srv/app/src on the target, compare it with the SHA-256 of the local ./src,
@@ -473,12 +481,14 @@ Files accessible via HTTP/HTTPS from the target can be downloaded directly to a 
 
 Without `bridge`, files can be transferred in chunks via `fs_read` and `fs_write` (`base64`, `offset`), though this passes data through the agent context and is practical only up to a few megabytes (`offset` writes are idempotent and can resume from `fs_stat` `size`).
 
-### Port forwarding and HTTP proxy
+### Port forwarding, HTTP proxy, name resolution, and remote IDEs
 
-Even where SSH port forwarding (`-L`, `-R`, `-D`) is unavailable, enabling the corresponding options on both `bridge` and the target provides network relaying over the existing SSH session's standard input and output:
+Even where SSH port forwarding (`-L`, `-R`, `-D`), outbound network access, or external DNS is unavailable, enabling the corresponding options on both `bridge` and the target provides network relaying and remote development environments over the existing SSH session's standard input and output:
 
-- **[Port forwarding](port-forward.md)**: Supports local forwards (`--forward-local`), remote forwards (`--forward-remote`), SOCKS5 (`--forward-socks`), and dynamic forwards via `forward_open`. You can also use local forwarding to [inject code-server](code-server.md) into a closed-network target and open it in a local browser.
+- **[Port forwarding](port-forward.md)**: Supports local forwards (`--forward-local`), remote forwards (`--forward-remote`), SOCKS5 (`--forward-socks`), and dynamic forwards via `forward_open`.
 - **[HTTP proxy through the client](client-proxy.md)**: Routes HTTP and HTTPS requests from proxy-aware target applications through the `bridge` network (`--proxy`, `--proxy-allow-host`, `--client-proxy`).
+- **[Client-side name resolution (remote-dns)](remote-dns.md)**: Relays `getaddrinfo` name resolution to `bridge` for Linux/glibc programs that resolve destination hostnames before connecting to the HTTP proxy (`--remote-dns`).
+- **Deploying IDEs and coding agents to closed-network targets**: Combine file transfers, port forwarding, and the client proxy to [inject code-server](code-server.md) (opened in a local browser), connect local desktop VS Code via [VS Code Remote - SSH](vscode-remote-ssh.md), or run [CLI coding agents](coding-agents.md) on offline targets.
 
 ### Encodings and line endings
 

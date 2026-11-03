@@ -9,7 +9,7 @@ The workflow is packaged in the `host-shell-code-server` skill (`.agents/skills/
 
 For deploying CLI coding agents and running them in the terminal, see [Deploying CLI coding agents in an isolated environment](coding-agents.md) for the architecture and validation status.
 
-To use a target from your local VS Code (Remote - SSH), see [Using a target with VS Code Remote - SSH](vscode-remote-ssh.md).
+To use your local desktop VS Code (Remote - SSH extension) and local GitHub sign-in directly on a Linux target with `/usr/sbin/sshd`, see [Using a target with VS Code Remote - SSH](vscode-remote-ssh.md). Choose code-server (this guide) when you want a browser-only workflow, when the target is Windows or a container without `sshd`, or when you need automatic shutdown on MCP disconnect or [`remote-dns`](remote-dns.md).
 
 ## Overview
 
@@ -149,19 +149,14 @@ The default display language is English. To use Japanese or another language, pa
 
 Table: Specifying the display language
 
-- Each `install` run registers the installed Language Packs in code-server's language pack list (`languagepacks.json` in the user data). code-server does not register Language Packs installed with the CLI (`--install-extension`) and does not use unregistered languages for display. Without registration, switching the language requires reinstalling the pack from the marketplace (network access).
-- After installation, "Configure Display Language" in the Command Palette also switches the language. It rewrites `locale` in `User/argv.json` (creating the file if needed) and takes effect after code-server confirms a restart. Installed languages can be switched offline.
-- The list shows "English (Current)" regardless of the actual display language. The code-server server process adds "(Current)" by comparing with its own language, which is always English. No setting changes this, and fixing it would require modifying the code-server distribution, so it is left as is. Selecting a language switches to it correctly.
-- The login page belongs to code-server itself and is shown in English regardless of the display language. code-server's own section of the Welcome page (Next Up) is also in English.
-- The Japanese Language Pack (1.131.0) is older than VS Code 1.144.0, so some strings of newer features remain in English.
+- `install` registers installed Language Packs in `languagepacks.json` in the user data directory (because code-server's `--install-extension` alone does not register them). After installation, you can also switch between installed languages offline using "Configure Display Language" in the Command Palette (which updates `User/argv.json` and takes effect after restart).
+- The language picker always labels English as "English (Current)" because the server process compares against its own locale (always English), but selecting another language switches the UI properly.
+- The login screen, code-server's own section of the Welcome page (Next Up), and some newer strings in VS Code 1.144.0 (newer than Language Pack 1.131.0) remain in English.
 
 | Verified behavior | Method and environment | Status |
 | --- | --- | --- |
-| An installation without a language starts in English and switches to Japanese with "Configure Display Language" (starting without `User/argv.json`) | Oracle Linux 10.2 / x86_64 Podman container (`--network none`, no client proxy), code-server 4.144.0, Chrome for Testing 148 (requests other than to `127.0.0.1` blocked) | Verified |
-| An installation with `--locale ja` shows Japanese from the first start (workbench and commands of built-in extensions such as Git) | Same as above | Verified |
-| Switching between Japanese and English offline | Same as above | Verified |
-| Stopping for a language without a Language Pack | Same as above (`--locale fr`) | Verified |
-| Generating the language pack list and writing `argv.json` (keeping comments and other properties, regional tags, rejecting malformed input) | Automated tests (`tests/language-packs.test.mjs`) | Verified |
+| First-start Japanese UI (`--locale ja`), offline switching between Japanese and English via the Command Palette, and failing on an uninstalled locale (`--locale fr`) | Oracle Linux 10.2 / x86_64 Podman container (`--network none`, no client proxy), code-server 4.144.0, Chrome for Testing 148 (requests other than to `127.0.0.1` blocked) | Verified |
+| Generating `languagepacks.json` and writing `argv.json` (preserving comments and existing keys, regional tags, rejecting malformed input) | Automated tests (`tests/language-packs.test.mjs`) | Verified |
 | Windows targets (`install.ps1`) | Syntax check with Windows PowerShell 5.1 only | Unverified |
 | Linux arm64 targets | None | Unverified |
 
@@ -259,17 +254,10 @@ Transferring the former 20 default extensions (144 MB) took 3–4 seconds, so th
 
 On subsequent runs, unchanged files with matching SHA-256 hashes are skipped.
 
-## Copying from the terminal
+## Copying from the terminal and Edge writing hints
 
-Copying may work in an ordinary terminal while Copilot CLI shows `Copied` without updating the clipboard. With mouse support enabled, even Shift+drag cannot select text. Running `Terminal: Select All` and then `Terminal: Copy Selection` from the Command Palette copies with mouse support still enabled (in Copilot CLI, the area currently shown on screen is copied). `--no-mouse` also works, but impairs wheel scrolling and other interactions. See [Clipboard copying fails only inside Copilot CLI](coding-agents.md#clipboard-copying-fails-only-inside-copilot-cli) for applicability and limitations.
-
-## Blue dot or pencil near the cursor in Edge
-
-Microsoft Edge's Writing assistance can show a blue dot or pencil icon in the code-server terminal input area. Distinguish this browser UI from code-server and Copilot CLI running in the terminal.
-
-Turning off **Show writing hints** under **Writing assistance** in Edge settings removes them. Open `edge://settings/languages` and turn it off. The setting's location and label may differ between Edge versions.
-
-The parent **Use writing assistance** toggle can remain enabled while cursor hints are disabled. No code-server or container configuration changes are needed.
+- **Copying from Copilot CLI**: Copying may work in an ordinary terminal while Copilot CLI shows `Copied` without updating the clipboard. To copy while keeping mouse support enabled, run `Terminal: Select All` followed by `Terminal: Copy Selection` from the Command Palette (see [Clipboard copying fails only inside Copilot CLI](coding-agents.md#clipboard-copying-fails-only-inside-copilot-cli) for details).
+- **Blue dot or pencil near the cursor in Edge**: Microsoft Edge's Writing assistance may display a blue dot or pencil icon in the terminal input area. To hide it, open `edge://settings/languages` and turn off **Show writing hints** under **Writing assistance** (the parent **Use writing assistance** toggle can remain enabled).
 
 ## Security considerations
 

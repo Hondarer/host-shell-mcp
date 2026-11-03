@@ -9,7 +9,7 @@
 
 CLI 型 AI コーディングエージェントを接続先へ配置してターミナルから利用する構成と検証状況は、[隔離環境への CLI 型 AI コーディングエージェントの導入](coding-agents.md) を参照してください。
 
-手元の VS Code (Remote - SSH) から接続先を利用する場合は、[VS Code Remote - SSH での接続先の利用](vscode-remote-ssh.md) を参照してください。
+手元のデスクトップ版 VS Code (Remote - SSH 拡張機能) と手元の GitHub サインインをそのまま使いたい場合 (Linux 接続先で `/usr/sbin/sshd` が利用可能な場合) は、[VS Code Remote - SSH での接続先の利用](vscode-remote-ssh.md) を参照してください。ブラウザーだけで完結させたい場合、Windows 接続先や `sshd` のないコンテナーを使う場合、MCP 切断時の自動停止や [`remote-dns`](remote-dns.md) が必要な場合は、本書の code-server を使用します。
 
 ## 概要
 
@@ -149,19 +149,14 @@ Table: 同梱されている設定
 
 Table: 表示言語の指定
 
-- `install` は実行のたびに、導入済みの Language Pack を code-server の言語パック一覧 (ユーザー データの `languagepacks.json`) に登録します。code-server は、CLI (`--install-extension`) で導入した Language Pack をこの一覧に登録せず、一覧にない言語は表示に使いません。登録がないと、言語を切り替えるにはマーケットプレースからの再導入 (ネットワーク接続) が必要になります。
-- 導入後は、コマンド パレットの「Configure Display Language」(日本語表示では「表示言語を構成する」) でも切り替えられます。`User/argv.json` の `locale` が書き換わり (ファイルがなければ作成され)、code-server の再起動の確認後に反映されます。導入済みの言語の間は、オフラインのまま切り替えられます。
-- この一覧では、実際の表示言語にかかわらず「English (Current)」と表示されます。「(Current)」は code-server のサーバー プロセスが自身の言語 (常に英語) と比べて付けるためです。設定では変更できず、修正には code-server の配布物の変更が必要なため、対処していません。選択した言語には正しく切り替わります。
-- ログイン画面は code-server 本体の画面であり、表示言語の設定にかかわらず英語で表示されます。Welcome ページの code-server 独自の欄 (Next Up) も英語です。
-- 日本語 Language Pack (1.131.0) は VS Code 1.144.0 より古いため、新しい機能の一部の文言は英語のまま表示されます。
+- `install` は導入済みの Language Pack をユーザー データの `languagepacks.json` に登録します (code-server の `--install-extension` 単体では登録されないため)。導入後はコマンド パレットの「Configure Display Language」(「表示言語を構成する」) からもオフラインのまま切り替えられます (`User/argv.json` が更新され、再起動後に反映されます)。
+- 言語選択一覧では、サーバー プロセス自身の言語 (英語) と比較される仕様のため、実際の表示言語にかかわらず「English (Current)」と付記されますが、選択した言語へ正常に切り替わります。
+- ログイン画面、Welcome ページの code-server 独自欄 (Next Up)、および Language Pack (1.131.0) より新しい VS Code 1.144.0 の一部文言は英語で表示されます。
 
 | 確認内容 | 方法・環境 | 状態 |
 | --- | --- | --- |
-| 言語を指定しない導入で英語で起動し、「Configure Display Language」で日本語へ切り替えられる (`User/argv.json` がない状態から) | Oracle Linux 10.2 / x86_64 の Podman コンテナー (`--network none`、クライアント経由プロキシなし)、code-server 4.144.0、Chrome for Testing 148 (`127.0.0.1` 以外への通信を遮断) | 検証済 |
-| `--locale ja` の導入で、初回の起動から日本語で表示される (ワークベンチと、Git など組み込み拡張機能のコマンド) | 同上 | 検証済 |
-| 日本語と英語をオフラインのまま相互に切り替えられる | 同上 | 検証済 |
-| Language Pack がない言語の指定で停止する | 同上 (`--locale fr`) | 検証済 |
-| 言語パック一覧の生成と `argv.json` の書き込み (コメントとほかの項目の保持、地域付きの言語タグ、不正な指定の拒否) | 自動テスト (`tests/language-packs.test.mjs`) | 検証済 |
+| 初回日本語起動 (`--locale ja`)、コマンド パレットからの日英相互切り替え、未導入言語指定時のエラー停止 (`--locale fr`) | Oracle Linux 10.2 / x86_64 の Podman コンテナー (`--network none`、クライアント経由プロキシなし)、code-server 4.144.0、Chrome for Testing 148 (`127.0.0.1` 以外への通信を遮断) | 検証済 |
+| `languagepacks.json` の生成と `argv.json` の書き込み (コメント・既存項目の保持、地域付きタグ、不正指定の拒否) | 自動テスト (`tests/language-packs.test.mjs`) | 検証済 |
 | Windows 接続先 (`install.ps1`) | Windows PowerShell 5.1 での構文検査のみ | 未検証 |
 | Linux arm64 の接続先 | なし | 未検証 |
 
@@ -259,17 +254,10 @@ Table: 転送サイズと所要時間 (測定値)
 
 2 回目以降の転送では、SHA-256 が一致する未変更ファイルはスキップされます。
 
-## ターミナルからのコピー
+## ターミナルからのコピーと Edge の入力ヒント表示
 
-通常のターミナルではコピーできても、Copilot CLI 内では `Copied` と表示されるだけでクリップボードが更新されない場合があります。マウス有効時は Shift＋ドラッグでも選択できません。マウスを有効にしたまま、コマンド パレットから `Terminal: Select All` と `Terminal: Copy Selection` を順に実行するとコピーできます (Copilot CLI ではそのとき画面に表示されている範囲が対象)。`--no-mouse` でもコピーできますが、ホイールスクロールなどに制限が生じます。適用条件と制限は [Copilot CLI のコピーが動作しない場合](coding-agents.md#copilot-cli-のコピーが動作しない場合) を参照してください。
-
-## Edge のカーソル付近に青いドットやペンが表示される場合
-
-Microsoft Edge の「文書作成支援」が、code-server のターミナル入力欄に青いドットやペンのアイコンを表示する場合があります。code-server やターミナル内の Copilot CLI の表示とは区別してください。
-
-Edge の設定にある「文書作成支援」内の **「文章作成のヒントを表示する」** をオフにすると表示されなくなります。`edge://settings/languages` を開き、この項目をオフにしてください。設定場所や表示名は Edge のバージョンによって異なる場合があります。
-
-上位の「文書作成支援を使用する」はオンのままで、カーソル付近のヒント表示だけを無効にできます。code-server やコンテナーの設定変更は不要です。
+- **Copilot CLI からのコピー**: 通常のターミナルではコピーできても、Copilot CLI 内では `Copied` と表示されるだけでクリップボードが更新されない場合があります。マウスを有効にしたままコピーするには、コマンド パレットから `Terminal: Select All` と `Terminal: Copy Selection` を順に実行してください (詳細は [Copilot CLI のコピーが動作しない場合](coding-agents.md#copilot-cli-のコピーが動作しない場合) を参照)。
+- **Edge のカーソル付近の青いドット・ペン表示**: Microsoft Edge の「文書作成支援」がターミナル入力欄に表示するアイコンです。非表示にするには `edge://settings/languages` を開き、「文書作成支援」内の **「文章作成のヒントを表示する」** をオフにしてください (上位の「文書作成支援を使用する」はオンのままで構いません)。
 
 ## セキュリティ上の注意
 

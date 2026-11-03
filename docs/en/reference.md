@@ -88,7 +88,7 @@ Passing an unknown flag or an invalid value type prints usage information to sta
 | Standard error | Writes diagnostic messages such as startup errors |
 | Working directory | Current working directory at startup (typically the user's home directory over SSH) |
 | Normal exit | When standard input closes (SSH disconnect) or upon receiving `SIGINT` or `SIGTERM` (exit code 0) |
-| Cleanup on exit | Terminates all running jobs and commands and closes port forwarding and client proxy listeners (also deleting the proxy URL file) |
+| Cleanup on exit | Terminates all running jobs and commands and closes port forwarding, client proxy, and `remote-dns` listeners (also deleting the proxy URL file and the `remote-dns` temporary directory) |
 
 Table: Input, output and exit
 
@@ -429,6 +429,7 @@ Reading and writing in `base64` mode transfer raw bytes without encoding or line
 | Transfer with the local machine | [`transfer_push`](#transfer_push) | Uploads local files or directories to the target (`bridge` only) |
 | | [`transfer_pull`](#transfer_pull) | Downloads target files or directories to the local machine (`bridge` only) |
 | Client HTTP proxy | [`proxy_status`](client-proxy.md#proxy_status-bridge) | Returns client HTTP proxy status and recent connection events (`bridge` with `--proxy` only) |
+| | [`proxy_rules_update`](client-proxy.md#proxy_rules_update-bridge) | Updates client HTTP proxy allow and deny rules (`bridge` with `--proxy --proxy-allow-rule-updates` only) |
 | Port forwarding | [`forward_status`](port-forward.md#tools-bridge) | Lists port forwards and recent connection events (`bridge` with forwarding enabled only) |
 | | [`forward_open`](port-forward.md#tools-bridge) | Opens a new port forward (`bridge` with allow rules only) |
 | | [`forward_close`](port-forward.md#tools-bridge) | Closes a forward opened by `forward_open` (`bridge` with allow rules only) |
@@ -1573,12 +1574,13 @@ Table: Output of transfer_push and transfer_pull
 
 Transfers a file or directory from the target to the local machine. Arguments and output match [`transfer_push`](#transfer_push) (`local_path` is the destination). After checking SHA-256 hashes with `fs_manifest` on the target, changed files are read in 1 MiB chunks via `fs_read` (`base64`) into `<local destination>.host-shell-part`, verified by SHA-256, given the source permissions, and renamed into place.
 
-### Client HTTP proxy and port forwarding
+### Client HTTP proxy, port forwarding, and name resolution
 
-`bridge` multiplexes TCP streams over the MCP standard I/O channel, enabling an HTTP/HTTPS proxy through the client (`proxy_status`) and TCP / SOCKS5 port forwarding (`forward_open`, `forward_close`, `forward_status`).
+When the corresponding options are enabled on both `bridge` and the target, `bridge` multiplexes HTTP/HTTPS proxy traffic, TCP / SOCKS5 port forwarding, and client-side name resolution over the existing SSH session's standard I/O channel.
 
-- For startup options, destination rules, environment variable precedence, and `proxy_status` details, see [HTTP proxy through the client](client-proxy.md).
-- For local forwards, remote forwards, SOCKS5, permission matching, and `forward_open`, `forward_close`, and `forward_status` details, see [Port forwarding over SSH stdio](port-forward.md).
+- **Client HTTP proxy**: For startup options (`--proxy`, `--proxy-allow-host`, `--proxy-allow-rule-updates`, `--client-proxy`), `proxy_status` and `proxy_rules_update` tools, environment variable precedence, and limits, see [HTTP proxy through the client](client-proxy.md).
+- **Port forwarding**: For local forwards, remote forwards, SOCKS5, permission matching, `forward_open`, `forward_close`, and `forward_status` tools, and limits, see [Port forwarding over SSH stdio](port-forward.md).
+- **Client-side name resolution (`remote-dns`)**: For `getaddrinfo` relaying on Linux/glibc targets, `--remote-dns` on both ends, `--remote-dns-library` on the target, and limitations, see [Client-side name resolution (remote-dns)](remote-dns.md).
 
 ## Starting and ending processes
 
@@ -1733,5 +1735,3 @@ Because `command` and `argv` are logged verbatim, do not pass secrets such as pa
 - `net_list_listeners`, `svc_list`, `svc_control`, `log_query`, and `disk_list` are supported only on Linux and Windows (service and log tools on Linux require systemd).
 - Startup restriction flags (policy options) validate tool arguments rather than enforcing OS-level sandboxing (see [Limits of the restrictions](#limits-of-the-restrictions)).
 - Following Go 1.26 platform requirements, supported operating systems are Windows 10 / Windows Server 2016 or later (`pty` requires Windows 10 1809 / Windows Server 2019 or later), Linux kernel 3.2 or later, and macOS 12 or later (`bridge` only).
-
-Optional name resolution relay: [remote-dns](remote-dns.md). See `--remote-dns` on both ends and target `--remote-dns-library PATH` for a prebuilt adapter.
