@@ -9,6 +9,8 @@ The workflow is packaged in the `host-shell-code-server` skill (`.agents/skills/
 
 For deploying CLI coding agents and running them in the terminal, see [Deploying CLI coding agents in an isolated environment](coding-agents.md) for the architecture and validation status.
 
+To use a target from your local VS Code (Remote - SSH), see [Using a target with VS Code Remote - SSH](vscode-remote-ssh.md).
+
 ## Overview
 
 ```mermaid

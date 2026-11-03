@@ -9,6 +9,8 @@
 
 CLI 型 AI コーディングエージェントを接続先へ配置してターミナルから利用する構成と検証状況は、[隔離環境への CLI 型 AI コーディングエージェントの導入](coding-agents.md) を参照してください。
 
+手元の VS Code (Remote - SSH) から接続先を利用する場合は、[VS Code Remote - SSH での接続先の利用](vscode-remote-ssh.md) を参照してください。
+
 ## 概要
 
 ```mermaid

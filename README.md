@@ -112,6 +112,7 @@ See [`docs/`](docs/README.md). **The Japanese documents (`docs/ja/`) are the sin
 | [Port forwarding](docs/en/port-forward.md) | Local forwards, remote forwards, and SOCKS5 over SSH stdio |
 | [CLI coding agents](docs/en/coding-agents.md) | Deploying CLI coding agents and validating authentication and API access through the client proxy |
 | [Injecting code-server](docs/en/code-server.md) | Installing code-server with default settings and extensions on a closed-network target and opening it via a local forward |
+| [VS Code Remote - SSH](docs/en/vscode-remote-ssh.md) | Connecting local VS Code to a target through a user-mode sshd and a local forward, with the VS Code Server placed offline and pinned to the client version |
 | [Connecting into containers](docs/en/container.md) | Deploying and registering `host-shell` inside a running Podman, Docker, or Kubernetes container via `exec -i` |
 
 Table: Documentation
@@ -233,6 +234,7 @@ GitHub Release には、タグ名の先頭の `v` を残したアーカイブ (`
 | [ポート転送](docs/ja/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
 | [CLI 型 AI コーディングエージェントの導入](docs/ja/coding-agents.md) | CLI 型 AI コーディングエージェントの配置とクライアント経由プロキシによる認証・API 通信の検証 |
 | [code-server の導入](docs/ja/code-server.md) | 閉鎖環境の接続先への code-server・既定設定・拡張機能の導入とローカル転送での利用 |
+| [VS Code Remote - SSH での利用](docs/ja/vscode-remote-ssh.md) | 利用者権限の sshd とローカル転送による手元の VS Code からの接続、VS Code Server のオフライン配置とクライアントの版への固定 |
 | [コンテナーへの接続](docs/ja/container.md) | 稼働中の Podman、Docker、Kubernetes コンテナー内への `exec -i` による `host-shell` の配置と登録 |
 
 Table: ドキュメント

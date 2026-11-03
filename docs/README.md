@@ -17,6 +17,7 @@
 | Remote DNS | [en/remote-dns.md](en/remote-dns.md) | [ja/remote-dns.md](ja/remote-dns.md) | Optional Linux/glibc getaddrinfo relay over the existing MCP connection |
 | CLI coding agents | [en/coding-agents.md](en/coding-agents.md) | [ja/coding-agents.md](ja/coding-agents.md) | Deploying CLI coding agents and validating authentication and API access through the client proxy |
 | Injecting code-server | [en/code-server.md](en/code-server.md) | [ja/code-server.md](ja/code-server.md) | Installing code-server with default settings and extensions on a closed-network target and opening it via a local forward |
+| VS Code Remote - SSH | [en/vscode-remote-ssh.md](en/vscode-remote-ssh.md) | [ja/vscode-remote-ssh.md](ja/vscode-remote-ssh.md) | Connecting local VS Code to a target through a user-mode sshd and a local forward, with the VS Code Server placed offline and pinned to the client version |
 | Connecting into containers | [en/container.md](en/container.md) | [ja/container.md](ja/container.md) | Deploying and registering `host-shell` inside a running Podman, Docker, or Kubernetes container via `exec -i` |
 
 Table: Documents
@@ -38,6 +39,7 @@ When updating documentation, edit the Japanese version first and update the Engl
 | 接続元を使う名前解決 | [ja/remote-dns.md](ja/remote-dns.md) | [en/remote-dns.md](en/remote-dns.md) | Linux/glibc の getaddrinfo を既存の MCP 接続で中継する任意機能 |
 | CLI 型 AI コーディングエージェントの導入 | [ja/coding-agents.md](ja/coding-agents.md) | [en/coding-agents.md](en/coding-agents.md) | CLI 型 AI コーディングエージェントの配置と認証・API 通信の検証 |
 | code-server の導入 | [ja/code-server.md](ja/code-server.md) | [en/code-server.md](en/code-server.md) | 閉鎖環境の接続先への code-server・既定設定・拡張機能の導入とローカル転送での利用 |
+| VS Code Remote - SSH での利用 | [ja/vscode-remote-ssh.md](ja/vscode-remote-ssh.md) | [en/vscode-remote-ssh.md](en/vscode-remote-ssh.md) | 利用者権限の sshd とローカル転送による手元の VS Code からの接続、VS Code Server のオフライン配置とクライアントの版への固定 |
 | コンテナーへの接続 | [ja/container.md](ja/container.md) | [en/container.md](en/container.md) | 稼働中の Podman、Docker、Kubernetes コンテナー内への `exec -i` による `host-shell` の配置と登録 |
 
 Table: 文書
