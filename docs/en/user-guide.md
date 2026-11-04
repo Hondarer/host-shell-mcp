@@ -535,6 +535,75 @@ Table: What works for non-administrator connecting users
 
 This was checked on a Windows 11 Enterprise (build 26300, amd64) virtual machine with the connecting user removed from Administrators, once in Users only and once also in Power Users (Verified; [validation record, Japanese](../prompts/past/261105-windows-standard-user-validation.md)). Both gave the same results. Domain users, Windows Server, and arm64 are Unverified.
 
+#### Connecting to Linux in WSL
+
+To use a WSL 2 Linux distribution on a Windows target, run sshd inside WSL and connect with the Windows sshd as a jump host (ProxyJump); this is the recommended configuration. From the client, WSL is then an ordinary Linux SSH target, so the host-shell-connect skill's scripts (`detect.sh`, `deploy.sh`, `probe.sh`) and registration steps work unchanged. It reuses the Windows sshd's public key authentication and does not expose a WSL port to the network.
+
+```mermaid
+flowchart LR
+    Client["Client<br/>ssh (ProxyJump)"] -->|"SSH (22)"| WinSSHD["Windows sshd"]
+    WinSSHD -->|"TCP forward<br/>localhost:2222"| WSLSSHD["sshd in WSL"]
+    WSLSSHD --> HS["host-shell (Linux)"]
+```
+
+Preparation (run the WSL steps as root; from the Windows target, use `wsl -d <distribution> -u root -- ...`):
+
+1. Install `openssh-server` in WSL. If the target cannot reach the internet, start `host-shell` inside WSL with `--client-proxy`, allow only the package sources on `bridge` (for Ubuntu, `archive.ubuntu.com:80` and `security.ubuntu.com:80`), and run `apt-get install openssh-server`.
+2. Set the listening port and authentication methods, and enable systemd.
+
+   ```bash
+   printf 'Port 2222\nPasswordAuthentication no\nKbdInteractiveAuthentication no\n' > /etc/ssh/sshd_config.d/10-host-shell-wsl.conf
+   printf '\n[boot]\nsystemd=true\n' >> /etc/wsl.conf
+   ```
+
+3. Put the public key in the connecting user's `~/.ssh/authorized_keys` (directory 700, file 600).
+4. Stop WSL's automatic shutdown in `.wslconfig` in the Windows user's profile folder. By default the distribution stops about 15 seconds after the last session ends, and sshd stops listening with it.
+
+   ```ini
+   [general]
+   instanceIdleTimeout=-1
+
+   [wsl2]
+   vmIdleTimeout=-1
+   ```
+
+5. After `wsl --shutdown`, start WSL once (`wsl -d <distribution> -- true`) and check that `systemctl is-active ssh.socket` reports `active`. Ubuntu 24.04 uses socket activation, so `ssh.socket` is generated from the `Port` value. After Windows restarts, sshd does not listen until WSL is started once.
+6. Obtain the WSL sshd host key (`/etc/ssh/ssh_host_ed25519_key.pub`) through the Windows target and add it to the client's known_hosts as `[localhost]:2222 ssh-ed25519 ...`.
+
+An example `~/.ssh/config` on the client. The Windows sshd must have `AllowTcpForwarding` enabled (the default).
+
+```text
+Host win-target
+    HostName 192.0.2.10
+    User alice
+
+Host wsl-target
+    HostName localhost
+    Port 2222
+    User alice
+    ProxyJump win-target
+```
+
+From then on, treat `wsl-target` as an ordinary Linux target (for example `scripts/deploy.sh wsl-target linux-amd64`). When passing the configuration file with `-F` on a Windows client, use `/` as the path separator: the path ProxyJump hands to the jump ssh loses its `\` characters.
+
+If sshd cannot be set up, host-shell can also be started through `wsl.exe` from the Windows sshd:
+
+```bash
+ssh -T win-target wsl -d ubuntu -- /home/alice/.local/bin/host-shell --mcp
+```
+
+Standard input and output arrive intact on this route, but the skill's scripts do not work: the Windows `cmd` in between interprets `|`, `>`, and `&&` inside single quotes before passing them to `wsl.exe` (`sh -c 'a | b'` is split). Place files with `transfer_push` on the Windows side and copy them inside WSL from `/mnt/c/...`, and pass commands in double quotes or as base64.
+
+| Configuration | Checked | Environment | Status |
+|---|---|---|---|
+| sshd in WSL with ProxyJump | `detect.sh` (`linux-amd64`), `deploy.sh` (placement and `up to date`), `probe.sh`, and through bridge: `exec_run`, pty jobs, `transfer_push` and `transfer_pull` of about 13 MiB (SHA-256 match), `svc_list`, remote forwards. With the `.wslconfig` settings, connecting still works 30 seconds or more after the sessions close | Windows 11 Enterprise (build 26300) Hyper-V virtual machine, WSL 3.0.3, Ubuntu 24.04 (systemd, openssh-server 9.6p1), Windows OpenSSH client | Verified |
+| Route through `wsl.exe` | Starting MCP, 1,020,000 bytes of standard input, symbol interpretation by cmd | Same | Verified |
+| Connecting directly to the WSL sshd in mirrored networking (`networkingMode=mirrored`) | Behavior | None | Unverified |
+
+Table: Verification status of connecting to Linux in WSL
+
+The history is in [261105-wsl-connection-validation.md](../prompts/past/261105-wsl-connection-validation.md) (Japanese only).
+
 ## Troubleshooting
 
 | Symptom | Cause and remedy |

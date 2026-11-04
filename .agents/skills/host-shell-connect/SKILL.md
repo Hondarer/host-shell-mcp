@@ -191,6 +191,10 @@ Append target restriction options after `--mcp`. To restrict local transfer path
 
 After registration, instruct the user to reload the MCP server in their agent (in Claude Code, run `/mcp` or restart) and verify that `sys_get_info` returns the target's host name and OS.
 
+## WSL on Windows targets
+
+When the user wants to use Linux in WSL 2 on a Windows target, recommend running sshd inside WSL and reaching it with the Windows sshd as a ProxyJump host; WSL is then an ordinary Linux route and every script here works unchanged. Follow "Connecting to Linux in WSL" in `docs/en/user-guide.md` for the setup (port, systemd, `.wslconfig` idle timeouts, host key). Without sshd in WSL, `ssh -T <windows> wsl -d <distribution> -- <host-shell> --mcp` works for registration, but `remote.sh`, `detect.sh`, `deploy.sh`, and `probe.sh` cannot target it (the Windows `cmd` hop interprets `|`, `>`, and `&&`); place the binary manually as that section describes.
+
 ## Containers
 
 `host-shell` can also run inside a running Linux container, reached via the container runtime's `exec -i` subcommand instead of SSH (see `docs/en/container.md`).

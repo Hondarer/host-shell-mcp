@@ -536,6 +536,75 @@ Table: 管理者でない接続ユーザーで使える範囲
 
 確認した環境は、Windows 11 Enterprise (ビルド 26300、amd64) の仮想マシンで、接続ユーザーを Administrators から外し、Users だけの場合と Power Users にも入れた場合です (検証済、[検証記録](../prompts/past/261105-windows-standard-user-validation.md))。2 つの場合の結果は同じでした。ドメイン ユーザー、Windows Server、arm64 は未検証です。
 
+#### WSL の Linux への接続
+
+Windows の接続先で WSL 2 の Linux を使う場合は、WSL の中で sshd を動かし、Windows の sshd を中継 (ProxyJump) にして接続する構成を推奨します。接続元から見ると WSL は通常の Linux の SSH 接続先になるため、スキル host-shell-connect のスクリプト (`detect.sh`、`deploy.sh`、`probe.sh`) と登録の手順をそのまま使えます。Windows の sshd の公開鍵認証をそのまま使い、WSL のポートを外部に開く必要もありません。
+
+```mermaid
+flowchart LR
+    Client["接続元<br/>ssh (ProxyJump)"] -->|"SSH (22)"| WinSSHD["Windows の sshd"]
+    WinSSHD -->|"TCP 転送<br/>localhost:2222"| WSLSSHD["WSL の sshd"]
+    WSLSSHD --> HS["host-shell (Linux)"]
+```
+
+準備は次のとおりです (WSL の中は root で実行します。Windows の接続先からは `wsl -d <ディストリビューション> -u root -- ...` で実行できます)。
+
+1. WSL に `openssh-server` を導入します。接続先からインターネットへ出られない場合は、WSL の中で `host-shell` を `--client-proxy` 付きで起動し、`bridge` で配布元 (Ubuntu では `archive.ubuntu.com:80` と `security.ubuntu.com:80`) だけを許可して `apt-get install openssh-server` を実行できます。
+2. 待ち受けのポートと認証方式を設定し、systemd を有効にします。
+
+   ```bash
+   printf 'Port 2222\nPasswordAuthentication no\nKbdInteractiveAuthentication no\n' > /etc/ssh/sshd_config.d/10-host-shell-wsl.conf
+   printf '\n[boot]\nsystemd=true\n' >> /etc/wsl.conf
+   ```
+
+3. 接続する利用者の `~/.ssh/authorized_keys` に公開鍵を置きます (ディレクトリーは 700、ファイルは 600)。
+4. Windows の利用者フォルダーの `.wslconfig` で、WSL の自動停止を止めます。既定では、最後のセッションが終わると 15 秒ほどでディストリビューションが止まり、sshd の待ち受けも消えます。
+
+   ```ini
+   [general]
+   instanceIdleTimeout=-1
+
+   [wsl2]
+   vmIdleTimeout=-1
+   ```
+
+5. `wsl --shutdown` の後に WSL を一度起動し (`wsl -d <ディストリビューション> -- true`)、`systemctl is-active ssh.socket` が `active` であることを確認します。Ubuntu 24.04 はソケット起動のため、`Port` の値から `ssh.socket` が作られます。Windows の再起動後は、WSL を一度起動するまで sshd は待ち受けません。
+6. WSL の sshd のホスト鍵 (`/etc/ssh/ssh_host_ed25519_key.pub`) を、Windows の接続先を経由して取得し、接続元の known_hosts に `[localhost]:2222 ssh-ed25519 ...` の形で登録します。
+
+接続元の `~/.ssh/config` の例です。Windows の sshd は `AllowTcpForwarding` が有効 (既定) である必要があります。
+
+```text
+Host win-target
+    HostName 192.0.2.10
+    User alice
+
+Host wsl-target
+    HostName localhost
+    Port 2222
+    User alice
+    ProxyJump win-target
+```
+
+以降は `wsl-target` を通常の Linux の接続先として扱います (例: `scripts/deploy.sh wsl-target linux-amd64`)。設定ファイルを `-F` で指定する場合、Windows の接続元ではパスの区切りを `/` にします。ProxyJump が中継用の ssh に渡すパスから `\` が失われるためです。
+
+sshd を用意できない場合は、Windows の sshd から `wsl.exe` を挟んで起動することもできます。
+
+```bash
+ssh -T win-target wsl -d ubuntu -- /home/alice/.local/bin/host-shell --mcp
+```
+
+この経路でも標準入出力は欠けずに届きますが、スキルのスクリプトは使えません。中継の Windows の `cmd` が、シングル クォートの中の `|`、`>`、`&&` を `wsl.exe` に渡す前に解釈するためです (`sh -c 'a | b'` が分割される)。配置は Windows 側の `transfer_push` で送ってから WSL の中で `/mnt/c/...` からコピーし、コマンドはダブル クォートで囲むか base64 にして渡します。
+
+| 構成 | 確認内容 | 環境 | 状態 |
+|---|---|---|---|
+| WSL の sshd と ProxyJump | `detect.sh` (`linux-amd64`)、`deploy.sh` (配置と `up to date`)、`probe.sh`、bridge 経由の `exec_run`、pty ジョブ、約 13 MiB の `transfer_push`・`transfer_pull` (SHA-256 一致)、`svc_list`、リモート転送。`.wslconfig` の設定後、セッションを閉じて 30 秒以上たっても接続できる | Windows 11 Enterprise (ビルド 26300) の Hyper-V 仮想マシン、WSL 3.0.3、Ubuntu 24.04 (systemd、openssh-server 9.6p1)、接続元は Windows の OpenSSH | 検証済 |
+| `wsl.exe` を挟む経路 | MCP の起動、1,020,000 バイトの標準入力、cmd による記号の解釈 | 同上 | 検証済 |
+| ミラー モードのネットワーク (`networkingMode=mirrored`) で WSL の sshd に直接接続 | 動作 | なし | 未検証 |
+
+Table: WSL の Linux への接続の検証状況
+
+経緯は [WSL の Linux への接続の検証記録](../prompts/past/261105-wsl-connection-validation.md) にあります。
+
 ## トラブルシューティング
 
 | 症状 | 原因と対処 |
