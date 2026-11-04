@@ -79,8 +79,14 @@ func TestSignalNoProcessAndUnsupported(t *testing.T) {
 	if err := cmd.Run(); err != nil {
 		t.Fatal(err)
 	}
-	if err := Signal(cmd.Process.Pid, "kill"); !errors.Is(err, errNoProcess) {
-		t.Errorf("Signal on an exited process = %v, want errNoProcess", err)
+	// The process object of a just-exited process may still be open elsewhere; then Signal reports
+	// success because the process is no longer running.
+	if err := Signal(cmd.Process.Pid, "kill"); err != nil && !errors.Is(err, errNoProcess) {
+		t.Errorf("Signal on an exited process = %v, want nil or errNoProcess", err)
+	}
+	// Process IDs are multiples of 4 and far below this value.
+	if err := Signal(0x3FFFFFFC, "kill"); !errors.Is(err, errNoProcess) {
+		t.Errorf("Signal on a nonexistent process = %v, want errNoProcess", err)
 	}
 	if err := SignalGroup(cmd.Process.Pid, "term"); err == nil {
 		t.Error("SignalGroup with term succeeded, want an error")
