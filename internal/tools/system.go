@@ -96,6 +96,7 @@ type SysGetInfoOutput struct {
 	RemoteDNS        bool   `json:"remote_dns"`
 	RemoteDNSLibrary string `json:"remote_dns_library,omitempty"`
 	RemoteDNSSocket  string `json:"remote_dns_socket,omitempty"`
+	RemoteDNSListen  string `json:"remote_dns_listen,omitempty" jsonschema:"loopback address of the DNS server answering A/AAAA through the bridge (--remote-dns-listen)"`
 	ClientProxy      bool   `json:"client_proxy"`
 	ProxyURLFile     string `json:"proxy_url_file,omitempty"`
 	// Port forwarding permitted by this host; remote forwards are addresses the bridge listens on here.
@@ -139,6 +140,7 @@ func (d *Deps) sysGetInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp
 		out.RemoteDNS = true
 		out.RemoteDNSLibrary = d.DNS.Library
 		out.RemoteDNSSocket = d.DNS.Socket
+		out.RemoteDNSListen = d.DNS.Listen
 	}
 	if d.Proxy != nil {
 		out.ClientProxy = true

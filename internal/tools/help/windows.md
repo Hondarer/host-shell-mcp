@@ -13,3 +13,16 @@
 - `svc_list` and `svc_control` use the Service Control Manager; starting, stopping, or reconfiguring services requires an elevated administrator session. `log_query` reads the Event Log (`log`: `System`, `Application`, `Security`, or a channel name; `unit`: provider name); reading `Security` requires administrator privileges.
 - `reg_read`, `reg_write`, and `reg_delete` access the Windows registry. Writing to `HKLM\...` requires administrator privileges; `HKCU\...` does not.
 - Client proxy (`--client-proxy`): `curl.exe` (Schannel) fails with `CRYPT_E_REVOCATION_OFFLINE` when certificate revocation servers are unreachable; pass `--ssl-revoke-best-effort`. Windows PowerShell 5.1 `Invoke-WebRequest` ignores `HTTPS_PROXY`; pass `-Proxy` and `-ProxyCredential` built from the variable.
+
+## Remote DNS on Windows
+
+Windows has no per-process resolver hook. With `--remote-dns --remote-dns-listen 127.0.0.1:53` on the target (and `--remote-dns` on the bridge), host-shell serves A/AAAA queries on that loopback address through the bridge; `sys_get_info` reports it as `remote_dns_listen`. Programs that query DNS servers themselves (for example Node.js `dns.resolve4`) use it when the network adapter has no DNS server. For the OS resolver (`getaddrinfo`, .NET, curl, ping), an administrator must route queries to it, and only with the user's consent, because the change is machine-wide:
+
+```powershell
+Add-DnsClientNrptRule -Namespace '.' -NameServers 127.0.0.1 -Comment host-shell-remote-dns
+Clear-DnsClientCache
+# after the session
+Get-DnsClientNrptRule | Where-Object Comment -eq 'host-shell-remote-dns' | ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force }
+```
+
+`getaddrinfo` returns IPv4 answers only when an IPv4 default route exists; on a network without a default gateway it reports "no data of the requested type". `Resolve-DnsName` works without one. While the rule remains and no session serves the address, lookups fail immediately.

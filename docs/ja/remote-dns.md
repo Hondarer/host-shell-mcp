@@ -3,7 +3,7 @@
 > [!NOTE]
 > この文書が正本です。英訳は [../en/remote-dns.md](../en/remote-dns.md) にあります。内容が一致しない場合は日本語版が優先されます。
 
-Linux/glibc の接続先で `getaddrinfo` を呼ぶプロセスの名前解決を、既存の MCP 接続を通じて接続元に中継します。通常ユーザーで利用でき、`/etc/resolv.conf`、`/etc/hosts` やサービス設定の変更は不要です。初期状態では無効です。
+Linux/glibc の接続先で `getaddrinfo` を呼ぶプロセスの名前解決を、既存の MCP 接続を通じて接続元に中継します。通常ユーザーで利用でき、`/etc/resolv.conf`、`/etc/hosts` やサービス設定の変更は不要です。初期状態では無効です。Windows の接続先では、接続先のループバックで動く DNS サーバーを経由して中継します。こちらは OS の名前解決の設定変更 (管理者権限) が必要です ([Windows の接続先](#windows-の接続先))。
 
 ```mermaid
 flowchart LR
@@ -62,6 +62,62 @@ host-shell bridge --remote-dns -- \
 - `sys_get_info` の `remote_dns`、`remote_dns_library`、`remote_dns_socket` で設定を確認できます。
 - アダプターとソケットはセッションごとの非公開一時ディレクトリーに置き、切断時に削除します。`--remote-dns-library` で指定した原本は削除しません。
 - bridge なしで `--remote-dns` 付きの接続先を起動すると、`bridge must enable --remote-dns` で停止します。
+
+## Windows の接続先
+
+Windows には `LD_PRELOAD` に当たる、プロセスごとに名前解決を差し替える仕組みがありません。そこで、接続先の `host-shell` がループバック アドレスで DNS サーバーを動かし、A と AAAA の問い合わせを既存の MCP 接続で接続元へ中継します。OS の名前解決 (DNS Client サービス) をこのサーバーへ向けるには、管理者が NRPT (Name Resolution Policy Table、名前空間ごとに問い合わせ先の DNS サーバーを決める Windows の仕組み) に規則を追加します。
+
+```mermaid
+flowchart LR
+    Process["接続先のプロセス<br/>getaddrinfo / .NET / curl"] --> Client["Windows DNS Client<br/>NRPT 規則 '.' → 127.0.0.1"]
+    Client --> Stub["host-shell の DNS サーバー<br/>127.0.0.1:53 (UDP / TCP)"]
+    Stub --> Channel["既存の MCP / SSH 接続<br/>DNS 専用チャネル"]
+    Channel --> Resolver["接続元: Go 標準リゾルバー"]
+```
+
+### 手順
+
+1. 両端に `--remote-dns` を指定し、接続先には待ち受けアドレスを `--remote-dns-listen` で指定します。Windows の接続先で `--remote-dns-listen` を省略すると、起動時にエラーで停止します。
+
+   ```bash
+   host-shell bridge --remote-dns -- \
+     ssh -T target C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe \
+       --mcp --remote-dns --remote-dns-listen 127.0.0.1:53
+   ```
+
+2. 管理者権限の PowerShell で NRPT 規則を追加します。マシン全体の名前解決が変わるため、利用者の同意を得てから実行します。接続ユーザーが管理者なら、`exec_run` からも実行できます (Windows の OpenSSH は、公開鍵認証で管理者に昇格済みのトークンを渡します)。
+
+   ```powershell
+   Add-DnsClientNrptRule -Namespace '.' -NameServers 127.0.0.1 -Comment host-shell-remote-dns
+   Clear-DnsClientCache
+   ```
+
+3. 使い終わったら規則を削除します。
+
+   ```powershell
+   Get-DnsClientNrptRule | Where-Object Comment -eq 'host-shell-remote-dns' |
+     ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force }
+   Clear-DnsClientCache
+   ```
+
+`host-shell` は NRPT 規則を追加も削除もしません。OS の設定を変えるのは、手順 2 と 3 を実行した管理者だけです。
+
+### 名前解決の経路ごとの結果
+
+| 名前解決の経路 | DNS サーバーのみ | NRPT 規則あり |
+|---|---|---|
+| OS の名前解決 (`getaddrinfo`。.NET の `Dns`、Node.js の `dns.lookup`、`curl.exe`、`ping`、Go の `net`) | 失敗する | 成功する。ただし IPv4 のデフォルト ルートが必要 (下記) |
+| `Resolve-DnsName` | 失敗する | 成功する (デフォルト ルートは不要) |
+| DNS サーバーへ自分で問い合わせるプログラム (Node.js の `dns.resolve4`) | ネットワーク アダプターに DNS サーバーが設定されていなければ成功する (127.0.0.1 を既定の問い合わせ先にするため) | 成功する |
+
+Table: Windows での名前解決の経路
+
+- **デフォルト ルート**: Windows の `getaddrinfo` は、IPv4 のデフォルト ルートがないと、回答を受け取っても `The requested name is valid, but no data of the requested type was found` (WSANO_DATA) を返します。デフォルト ゲートウェイのない閉じたネットワークでは、転送を行わないホストを次ホップにしたルートでも条件を満たします。
+- **回答の内容**: A と AAAA に答え、canonical name が問い合わせ名と異なる場合は CNAME を付けます。TTL は 30 秒です。その他の種別 (HTTPS、SVCB、PTR、MX など) には回答なし (NODATA) を返します。NXDOMAIN は、どのアドレス ファミリーでもアドレスがない名前に限って返します (IPv6 だけの名前を「存在しない」と OS にキャッシュさせないため)。
+- **待ち受け**: ループバック アドレスだけを受け付けます。同じアドレスを別のセッションが使っている場合は、起動時に bind エラーで停止します。待ち受けは接続中だけで、切断時に閉じます。`sys_get_info` の `remote_dns_listen` で確認できます。
+- **アクセス制御**: Linux の非公開ソケットと異なり、接続先のすべてのユーザーとサービスが問い合わせできます。NRPT 規則もマシン全体に適用されます。
+- **切断後に規則が残った場合**: 問い合わせ先がないため、名前解決は待たずにすぐ失敗します。手順 3 で規則を削除してください。
+- **環境変数**: `exec_run` と `job_start` の環境変数は変更しません。OS 全体の設定で中継するため、code-server の拡張ホストのような子孫プロセスにも同じ経路が使われます。
 
 ## HTTP プロキシとの併用
 
@@ -158,13 +214,29 @@ Table: 診断の観点
 
 Table: 検証済みの範囲
 
+Windows の接続先は、Windows 11 Enterprise (ビルド 26300、amd64) の Hyper-V 仮想マシンで検証しました。ネットワークは Internal スイッチだけで、DNS サーバーもインターネットへの経路もない状態です。接続元は Windows 11 (ビルド 26300) の `bridge` で、OpenSSH_for_Windows 9.5p2 の `sshd` を経由します。
+
+| 対象 | 確認内容 | 方法・環境 | 状態 |
+|---|---|---|---|
+| DNS サーバーの応答 | UDP と TCP、CNAME、NXDOMAIN と NODATA の区別、他の種別への NODATA、不正な名前の拒否、ループバック以外の拒否、接続前の SERVFAIL、切断時の待ち受け解放 | 自動テスト (Windows、Linux) | 検証済 |
+| `Resolve-DnsName -Server 127.0.0.1` | UDP と TCP で回答し、存在しない名前は `DNS name does not exist` になる | Windows 11 仮想マシン | 検証済 |
+| NRPT 規則による OS の名前解決 | 規則とデフォルト ルートがあれば .NET、Node.js `dns.lookup`、`curl.exe`、`ping`、`net_check` (Go) が成功する。規則がなければ失敗し、ルートがなければ WSANO_DATA になる | Windows 11 仮想マシン | 検証済 |
+| Node.js `dns.resolve4` | NRPT 規則がなくても成功する | 同上 (code-server 4.144.0 同梱の Node.js) | 検証済 |
+| HTTP プロキシとの併用 | `curl.exe --ssl-revoke-best-effort` で許可済み宛先への HTTPS が成功する | 同上 | 検証済 |
+| 異常時 | 同じアドレスでの 2 つ目のセッションは起動時に停止する。規則が残った状態では名前解決がすぐ失敗する | 同上 | 検証済 |
+| code-server の拡張ホスト、Copilot CLI・Copilot Chat | Windows の接続先での動作 | なし | 未検証 |
+| Windows Server、arm64 | 動作 | なし | 未検証 |
+| `nslookup` | NRPT 規則との関係 | なし | 未検証 |
+
+Table: Windows の接続先での検証状況
+
 未検証の範囲:
 
 - Copilot SDK の `web_fetch` 以外の内部処理と、拡張ホスト上の拡張機能が直接行う名前解決
 - 専用コピーモードの arm64 での動作 (アーカイブの検査のみ)
 - ブラウザー内の Web 拡張
 
-検証の経緯は [remote-dns の検証記録](../prompts/past/261102-remote-dns-validation.md) と [画面内 Copilot Chat の検証記録](../prompts/past/261103-copilot-chat-remote-dns-validation.md) にあります。
+検証の経緯は [remote-dns の検証記録](../prompts/past/261102-remote-dns-validation.md)、[画面内 Copilot Chat の検証記録](../prompts/past/261103-copilot-chat-remote-dns-validation.md)、[Windows 接続先の検証記録](../prompts/past/261104-windows-target-validation.md)、[Windows 向け remote-dns の設計](../prompts/past/261104-windows-remote-dns-design.md) にあります。
 
 開発時の検証コマンド (Linux、Node.js が必要):
 
@@ -175,6 +247,7 @@ go test ./internal/remotedns
 
 ## 適用範囲と制限
 
+- Windows の接続先の条件と制限は [Windows の接続先](#windows-の接続先) を参照してください。以下は Linux の接続先についての制限です。
 - 接続先は Linux/glibc、接続元は host-shell が対応する各 OS です。musl (Alpine など)、静的バイナリー、特権実行で無視される `LD_PRELOAD`、独自 DNS 実装、Node.js の `dns.resolve*`、逆引き、`gethostbyname` は対象外です。
 - 数値 IP、`localhost`、`AI_NUMERICHOST` は接続先の libc に委ねます。それ以外の接続先固有の hosts エントリーは接続元の名前解決に置き換わります。
 - 接続元は Go 標準リゾルバーを使用します。OS ごとの libc/NSS の全挙動を再現するものではありません。IPv4/IPv6、canonical name、サービス名の処理に対応しますが、完全な libc の代替ではありません。

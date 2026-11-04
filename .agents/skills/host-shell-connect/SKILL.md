@@ -252,6 +252,12 @@ claude mcp add host-shell-target -- /path/to/host-shell bridge --remote-dns -- s
 
 After reloading, verify that `sys_get_info` reports `remote_dns: true`. Remote DNS permits arbitrary client-side lookups independently of HTTP proxy rules. Leave it disabled unless requested by the user.
 
+Windows targets have no adapter. Add `--remote-dns --remote-dns-listen 127.0.0.1:53` after `--mcp` (and `--remote-dns` to `bridge`); `sys_get_info` then reports `remote_dns_listen`. The OS resolver uses this loopback DNS server only after an administrator adds an NRPT rule, which changes name resolution for the whole machine (see "Windows targets" in `docs/en/remote-dns.md`). Show the user the commands to add and remove the rule; run them through `exec_run` only with the user's explicit consent, and remind them to remove the rule after the session. Windows `getaddrinfo` also needs an IPv4 default route.
+
+```bash
+claude mcp add host-shell-target -- /path/to/host-shell bridge --remote-dns -- ssh -T -o BatchMode=yes target C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe --mcp --remote-dns --remote-dns-listen 127.0.0.1:53
+```
+
 ## Optional port forwarding
 
 When the user asks for port forwarding in an environment where SSH port forwarding is unavailable, see `docs/en/port-forward.md`. Pass `--forward-local [BIND:]PORT:HOST:HOSTPORT` (listen locally, connect from the target), `--forward-remote` (listen on the target, connect from the client), or `--forward-socks [BIND:]PORT` (with `--forward-allow-local` rules) to `bridge`. Add `--forward-allow-local` or `--forward-allow-remote HOST[:PORT]` when the agent should be able to open forwards dynamically with `forward_open`. The target must also permit each direction with `--allow-forward-local` or `--allow-forward-remote`. Listeners bind to loopback only and do not authenticate local connections. Use `forward_status` to diagnose issues, and never broaden user-approved rules autonomously. Leave port forwarding disabled unless requested by the user.

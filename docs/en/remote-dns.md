@@ -3,7 +3,7 @@
 > [!NOTE]
 > This is an English translation. The Japanese version ([../ja/remote-dns.md](../ja/remote-dns.md)) is the single source of truth (SSOT) and takes precedence if they differ.
 
-Relay Linux/glibc target processes' `getaddrinfo` calls over the existing MCP connection to the connecting machine. This optional feature needs no root access or changes to `/etc/resolv.conf`, `/etc/hosts`, or service configuration. It is disabled by default.
+Relay Linux/glibc target processes' `getaddrinfo` calls over the existing MCP connection to the connecting machine. This optional feature needs no root access or changes to `/etc/resolv.conf`, `/etc/hosts`, or service configuration. It is disabled by default. On Windows targets, resolution goes through a DNS server on the target's loopback address instead; this requires a change to the OS resolver configuration (administrator rights) ([Windows targets](#windows-targets)).
 
 ```mermaid
 flowchart LR
@@ -62,6 +62,62 @@ Without `--remote-dns-library`, the target compiles the adapter from the embedde
 - Inspect `remote_dns`, `remote_dns_library`, and `remote_dns_socket` in `sys_get_info`.
 - The adapter and owner-only socket live in a private per-session temporary directory removed on disconnect. The original passed with `--remote-dns-library` is retained.
 - A target started with `--remote-dns` without a bridge stops with `bridge must enable --remote-dns`.
+
+## Windows targets
+
+Windows has no counterpart to `LD_PRELOAD` that replaces name resolution per process. Instead, the target `host-shell` runs a DNS server on a loopback address and relays A and AAAA queries over the existing MCP connection to the connecting machine. To point the OS resolver (the DNS Client service) at this server, an administrator adds a rule to the NRPT (Name Resolution Policy Table, the Windows mechanism that selects DNS servers per namespace).
+
+```mermaid
+flowchart LR
+    Process["Target process<br/>getaddrinfo / .NET / curl"] --> Client["Windows DNS Client<br/>NRPT rule '.' → 127.0.0.1"]
+    Client --> Stub["host-shell DNS server<br/>127.0.0.1:53 (UDP / TCP)"]
+    Stub --> Channel["Existing MCP / SSH connection<br/>DNS channel"]
+    Channel --> Resolver["Client: Go standard resolver"]
+```
+
+### Procedure
+
+1. Pass `--remote-dns` on both ends, and the listen address with `--remote-dns-listen` on the target. On a Windows target, omitting `--remote-dns-listen` stops startup with an error.
+
+   ```bash
+   host-shell bridge --remote-dns -- \
+     ssh -T target C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe \
+       --mcp --remote-dns --remote-dns-listen 127.0.0.1:53
+   ```
+
+2. Add the NRPT rule from an elevated PowerShell. It changes name resolution for the whole machine, so obtain the user's consent first. If the connecting user is an administrator, `exec_run` can run it as well (Windows OpenSSH grants an elevated token with public key authentication).
+
+   ```powershell
+   Add-DnsClientNrptRule -Namespace '.' -NameServers 127.0.0.1 -Comment host-shell-remote-dns
+   Clear-DnsClientCache
+   ```
+
+3. Remove the rule when finished.
+
+   ```powershell
+   Get-DnsClientNrptRule | Where-Object Comment -eq 'host-shell-remote-dns' |
+     ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force }
+   Clear-DnsClientCache
+   ```
+
+`host-shell` neither adds nor removes NRPT rules. Only the administrator running steps 2 and 3 changes OS settings.
+
+### Results by resolution path
+
+| Resolution path | DNS server only | With the NRPT rule |
+|---|---|---|
+| OS resolver (`getaddrinfo`: .NET `Dns`, Node.js `dns.lookup`, `curl.exe`, `ping`, Go `net`) | Fails | Succeeds, but needs an IPv4 default route (below) |
+| `Resolve-DnsName` | Fails | Succeeds (no default route needed) |
+| Programs querying DNS servers themselves (Node.js `dns.resolve4`) | Succeeds when no DNS server is set on the network adapter (127.0.0.1 is their default) | Succeeds |
+
+Table: Resolution paths on Windows
+
+- **Default route**: Without an IPv4 default route, Windows `getaddrinfo` returns `The requested name is valid, but no data of the requested type was found` (WSANO_DATA) even after receiving an answer. On a closed network without a default gateway, a route whose next hop is a host that does not forward packets satisfies the condition.
+- **Answers**: A and AAAA are answered, with a CNAME when the canonical name differs from the query name. The TTL is 30 seconds. Other types (HTTPS, SVCB, PTR, MX, and so on) get an empty answer (NODATA). NXDOMAIN is returned only for names without addresses in any family, so the OS does not cache an IPv6-only name as missing.
+- **Listening**: Only loopback addresses are accepted. If another session uses the same address, startup stops with a bind error. The server listens only while connected and closes on disconnect. `sys_get_info` reports it as `remote_dns_listen`.
+- **Access control**: Unlike the private Linux socket, every user and service on the target can query it. The NRPT rule also applies to the whole machine.
+- **A rule left after disconnect**: With nothing answering, lookups fail immediately without waiting. Remove the rule with step 3.
+- **Environment variables**: `exec_run` and `job_start` environments are unchanged. Because the relay is configured OS-wide, descendants such as code-server's extension host use the same path.
 
 ## Combine with the HTTP proxy
 
@@ -158,13 +214,29 @@ Use the same allowed URL (for example `https://api.github.com/zen`) to separate 
 
 Table: Verified scope
 
+Windows targets were verified on a Windows 11 Enterprise (build 26300, amd64) Hyper-V virtual machine on an Internal switch only, with no DNS server and no route to the internet. The client was a `bridge` on Windows 11 (build 26300), through OpenSSH_for_Windows 9.5p2 `sshd`.
+
+| Subject | Checked | Method and environment | Status |
+|---|---|---|---|
+| DNS server responses | UDP and TCP, CNAME, NXDOMAIN versus NODATA, NODATA for other types, rejection of invalid names and non-loopback addresses, SERVFAIL before attach, listener release on disconnect | Automated tests (Windows, Linux) | Verified |
+| `Resolve-DnsName -Server 127.0.0.1` | Answers over UDP and TCP; a missing name gives `DNS name does not exist` | Windows 11 virtual machine | Verified |
+| OS resolver through the NRPT rule | With the rule and a default route, .NET, Node.js `dns.lookup`, `curl.exe`, `ping`, and `net_check` (Go) succeed. Without the rule they fail; without the route they get WSANO_DATA | Windows 11 virtual machine | Verified |
+| Node.js `dns.resolve4` | Succeeds even without the NRPT rule | Same (Node.js bundled with code-server 4.144.0) | Verified |
+| Combined with the HTTP proxy | HTTPS to an allowed destination succeeds with `curl.exe --ssl-revoke-best-effort` | Same | Verified |
+| Failure cases | A second session on the same address stops at startup; with a leftover rule, lookups fail immediately | Same | Verified |
+| code-server extension host, Copilot CLI and Copilot Chat | Behavior on Windows targets | None | Unverified |
+| Windows Server, arm64 | Behavior | None | Unverified |
+| `nslookup` | Interaction with the NRPT rule | None | Unverified |
+
+Table: Verification status on Windows targets
+
 Unverified:
 
 - Name resolution by Copilot SDK internals other than `web_fetch`, and by extensions in the extension host directly
 - Patched-copy mode on arm64 (archive inspection only)
 - Browser Web extensions
 
-The validation history is in [261102-remote-dns-validation.md](../prompts/past/261102-remote-dns-validation.md) and [261103-copilot-chat-remote-dns-validation.md](../prompts/past/261103-copilot-chat-remote-dns-validation.md) (Japanese only).
+The validation history is in [261102-remote-dns-validation.md](../prompts/past/261102-remote-dns-validation.md), [261103-copilot-chat-remote-dns-validation.md](../prompts/past/261103-copilot-chat-remote-dns-validation.md), [261104-windows-target-validation.md](../prompts/past/261104-windows-target-validation.md), and [261104-windows-remote-dns-design.md](../prompts/past/261104-windows-remote-dns-design.md) (Japanese only).
 
 Development validation commands (Linux, Node.js required):
 
@@ -175,6 +247,7 @@ go test ./internal/remotedns
 
 ## Scope and limitations
 
+- For the conditions and limits on Windows targets, see [Windows targets](#windows-targets). The items below apply to Linux targets.
 - Targets require Linux/glibc; the bridge supports host-shell's supported operating systems. musl (such as Alpine), static binaries, privileged execution ignoring `LD_PRELOAD`, custom DNS implementations, Node.js `dns.resolve*`, reverse lookups, and `gethostbyname` are out of scope.
 - Numeric IPs, `localhost`, and `AI_NUMERICHOST` use target libc. Other target-specific hosts entries are replaced by client resolution.
 - The client uses Go's standard resolver, not every OS libc/NSS behavior. It supports IPv4/IPv6, canonical names, and service names, but is not a complete libc replacement.

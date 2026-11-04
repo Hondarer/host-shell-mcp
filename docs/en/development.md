@@ -66,7 +66,7 @@ internal/bridge/       host-shell bridge (local relay, transfer_push, transfer_p
 internal/channel/      Multiplexed channel over SSH stdio (feature negotiation, bidirectional streams, flow control) and parts shared by the features on top of it (answering and relaying connections, mapping failure codes to reasons, status-tool history and output types)
 internal/clientproxy/  HTTP proxy through the client (bridge-side destination checks and upstream connections, target-side authenticated proxy)
 internal/forward/      Port forwarding (persistent forward syntax, bridge listeners, SOCKS5 and forward_*, target-side connections and listeners)
-internal/remotedns/    Name resolution through the client (bridge-side resolver, target-side UNIX socket listener and adapter placement)
+internal/remotedns/    Name resolution through the client (bridge-side resolver, target-side UNIX socket listener and adapter placement, loopback DNS server)
   assets/preload.c     LD_PRELOAD remote DNS adapter (source for libhostshell_dns-linux-<arch>.so)
 internal/proc/         Child process spawning, OS shell execution, process tree termination, signal delivery, liveness checks
   proc_unix.go         Linux (process groups, SIGKILL, signal name table)
@@ -197,6 +197,7 @@ To build identical archives locally, run `make release VERSION=v1.0.0` (written 
 |---|---|
 | `github.com/modelcontextprotocol/go-sdk` | Official MCP Go SDK (stdio transport, JSON-RPC, schema generation and validation) |
 | `golang.org/x/text` | Character encoding conversion (pure Go, preserving static linking) |
+| `golang.org/x/net` | DNS message parsing and packing (`dns/dnsmessage`, for the remote-dns loopback DNS server) |
 | `golang.org/x/sys` | Windows API calls (ConPTY, Service Control Manager, registry, disk usage) |
 | `github.com/creack/pty` | Pseudo-terminal allocation on Linux and macOS |
 | `github.com/charmbracelet/x/vt` | Virtual terminal emulator (for `job_read` `screen` mode; pure Go, MIT / BSD licenses) |
@@ -250,7 +251,7 @@ flowchart TB
 - **Shared parts**: `internal/channel/` also provides parts the features on top of it share. `Incoming.Answer` answers an incoming stream (dial, reject on failure, accept), `Relay` relays both directions (passing half-closes on, idle timeout, linger), and `Describe` maps failure codes to results (`allowed`, `denied`, `failed`) and fixed reason strings. Status tool outputs embed `EventHead`, `Outcome` and `Recent`, and `Snapshot` builds them from the history and the session state. Reasons are fixed strings; network error text, which can contain credentials, is never recorded.
 - **`internal/clientproxy/`**: Implements the authenticated local HTTP proxy, upstream dialing, and diagnostics and rule updates (`proxy_status`, `proxy_rules_update`) on top of `internal/channel/`.
 - **`internal/forward/`**: Implements local forwards, remote forwards, SOCKS5, and the forwarding management tools (`forward_*`) on top of `internal/channel/`.
-- **`internal/remotedns/`**: Implements the target-side UNIX domain socket listener, remote DNS adapter (`preload.c`) placement, and `bridge`-side name resolution on top of `internal/channel/`.
+- **`internal/remotedns/`**: Implements the target-side UNIX domain socket listener, remote DNS adapter (`preload.c`) placement, the loopback DNS server (`stub.go`, used on Windows targets), and `bridge`-side name resolution on top of `internal/channel/`.
 
 ## Maintaining the code-server injection skill
 

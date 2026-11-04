@@ -84,6 +84,7 @@ func parseFlags(fs *flag.FlagSet, args []string) (cfg config.Config, showVersion
 
 		dnsMode    = fs.Bool("remote-dns", false, "inject Linux/glibc getaddrinfo relay over the bridge; requires cc or --remote-dns-library")
 		dnsLibrary = fs.String("remote-dns-library", "", "prebuilt Linux/glibc DNS adapter (requires --remote-dns)")
+		dnsListen  = fs.String("remote-dns-listen", "", "also serve A/AAAA queries through the bridge on this loopback address, e.g. 127.0.0.1:53 (requires --remote-dns; required on Windows)")
 		proxyMode  = fs.Bool("client-proxy", false, "route HTTP/HTTPS through an explicitly enabled local bridge")
 		fwdLocal   = fs.Bool("allow-forward-local", false, "permit the bridge's local forwards and SOCKS5 to connect from this host (takes no value; destinations follow --allow-host)")
 		fwdRemote  = fs.Bool("allow-forward-remote", false, "permit the bridge's remote forwards to listen on this host's loopback (takes no value)")
@@ -120,9 +121,12 @@ func parseFlags(fs *flag.FlagSet, args []string) (cfg config.Config, showVersion
 	}
 
 	cfg.ClientProxy = *proxyMode
-	cfg.RemoteDNS, cfg.RemoteDNSLibrary = *dnsMode, *dnsLibrary
+	cfg.RemoteDNS, cfg.RemoteDNSLibrary, cfg.RemoteDNSListen = *dnsMode, *dnsLibrary, *dnsListen
 	if *dnsLibrary != "" && !*dnsMode {
 		return cfg, false, errors.New("--remote-dns-library requires --remote-dns")
+	}
+	if *dnsListen != "" && !*dnsMode {
+		return cfg, false, errors.New("--remote-dns-listen requires --remote-dns")
 	}
 	cfg.ForwardLocal = *fwdLocal
 	cfg.ForwardRemote = *fwdRemote
@@ -173,7 +177,7 @@ func run(cfg config.Config) error {
 	var channelOptions channel.Options
 	sess := server.Session{Audit: al}
 	if cfg.RemoteDNS {
-		target, err := remotedns.NewTarget(ctx, cfg.RemoteDNSLibrary)
+		target, err := remotedns.NewTarget(ctx, remotedns.TargetOptions{Library: cfg.RemoteDNSLibrary, Listen: cfg.RemoteDNSListen})
 		if err != nil {
 			return err
 		}

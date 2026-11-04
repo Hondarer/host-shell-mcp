@@ -66,7 +66,7 @@ internal/bridge/       host-shell bridge (ローカル中継、transfer_push、t
 internal/channel/      SSH stdio 上の多重化チャネル (機能ネゴシエーション、双方向ストリーム、フロー制御) と、その上の機能が共有する部品 (接続の応答と中継、失敗コードと理由の対応、状態ツールの履歴と出力型)
 internal/clientproxy/  クライアント経由 HTTP プロキシ (bridge 側の宛先検査と上流接続、接続先側の認証付きプロキシ)
 internal/forward/      ポート転送 (常設転送の書式解析、bridge 側の待ち受け・SOCKS5・forward_*、接続先側の発信と待ち受け)
-internal/remotedns/    接続元を使う名前解決 (bridge 側のリゾルバー、接続先側の UNIX ソケット待ち受けとアダプター配置)
+internal/remotedns/    接続元を使う名前解決 (bridge 側のリゾルバー、接続先側の UNIX ソケット待ち受けとアダプター配置、ループバックの DNS サーバー)
   assets/preload.c     LD_PRELOAD 用名前解決アダプター (libhostshell_dns-linux-<arch>.so のソース)
 internal/proc/         子プロセス起動、OS 別シェル実行、プロセス ツリー終了、シグナル送信、生存確認
   proc_unix.go         Linux (プロセス グループ、SIGKILL、シグナル名の表)
@@ -197,6 +197,7 @@ Table: アーカイブに加えるもの
 |---|---|
 | `github.com/modelcontextprotocol/go-sdk` | MCP 公式 Go SDK (stdio 通信、JSON-RPC、スキーマ生成・検証) |
 | `golang.org/x/text` | 文字コード変換 (Pure Go 実装のため静的リンクを維持) |
+| `golang.org/x/net` | DNS メッセージの解析と生成 (`dns/dnsmessage`。remote-dns のループバック DNS サーバー) |
 | `golang.org/x/sys` | Windows API 呼び出し (ConPTY、サービス コントロール マネージャー、レジストリ、ディスク情報) |
 | `github.com/creack/pty` | Linux・macOS の疑似端末制御 |
 | `github.com/charmbracelet/x/vt` | 仮想端末エミュレーター (`job_read` の `screen` 取得用、Pure Go、MIT / BSD ライセンス) |
@@ -250,7 +251,7 @@ flowchart TB
 - **共有部品**: `internal/channel/` は、その上の機能が共通に使う部品も提供します。着信ストリームへの応答 (発信、失敗時の拒否、受け付け) は `Incoming.Answer`、双方向の中継 (半クローズの伝達、アイドル タイムアウト、残存時間) は `Relay`、失敗コードから結果 (`allowed`、`denied`、`failed`) と固定の理由文字列への対応は `Describe` が担います。状態ツールの出力は `EventHead`、`Outcome`、`Recent` を埋め込んで構成し、`Snapshot` で履歴とセッション状態から生成します。理由は固定文字列とし、認証情報を含みうるネットワーク エラーの文字列は記録しません。
 - **`internal/clientproxy/`**: `internal/channel/` の上に、認証付きローカル HTTP プロキシ、上流接続、および診断・ルール更新機能 (`proxy_status`、`proxy_rules_update`) を実装します。
 - **`internal/forward/`**: `internal/channel/` の上に、ローカル転送、リモート転送、SOCKS5、および転送管理ツール (`forward_*`) を実装します。
-- **`internal/remotedns/`**: `internal/channel/` の上に、接続先側の UNIX ドメイン ソケット待ち受け、名前解決アダプター (`preload.c`) の配置、および `bridge` 側での名前解決を実装します。
+- **`internal/remotedns/`**: `internal/channel/` の上に、接続先側の UNIX ドメイン ソケット待ち受け、名前解決アダプター (`preload.c`) の配置、ループバックの DNS サーバー (`stub.go`、Windows 接続先で使用)、および `bridge` 側での名前解決を実装します。
 
 ## code-server 導入スキルの保守
 

@@ -66,7 +66,7 @@ flowchart TB
 | Direct or multi-hop SSH | `ssh -T [hop1 ssh -T ...] target host-shell --mcp` (works even with `AllowTcpForwarding no` and no SFTP) | [User Guide](docs/en/user-guide.md) |
 | Running containers | `[ssh -T host] podman\|docker\|kubectl exec -i <container> host-shell --mcp` | [Connecting into containers](docs/en/container.md) |
 | Direct file transfer & TCP forwarding | `host-shell bridge` (`transfer_push`, `transfer_pull`, `--forward-local`, `--forward-remote`, `--forward-socks`, `forward_open`) | [Reference](docs/en/reference.md#transfer-with-the-local-machine-bridge), [Port forwarding](docs/en/port-forward.md) |
-| Outbound HTTP/HTTPS & DNS from isolated targets | Loopback HTTP proxy (`--proxy`, `--client-proxy`, `proxy_rules_update`) and Linux/glibc `getaddrinfo` relay (`--remote-dns`) | [HTTP proxy through the client](docs/en/client-proxy.md), [Remote DNS](docs/en/remote-dns.md) |
+| Outbound HTTP/HTTPS & DNS from isolated targets | Loopback HTTP proxy (`--proxy`, `--client-proxy`, `proxy_rules_update`) and client-side name resolution (`--remote-dns`: Linux/glibc `getaddrinfo` relay, or a loopback DNS server on Windows) | [HTTP proxy through the client](docs/en/client-proxy.md), [Remote DNS](docs/en/remote-dns.md) |
 | Browser VS Code on closed-network targets | Offline `code-server` injection (`127.0.0.1:8000-8079`) accessed via local port forwarding (Linux & Windows targets) | [Injecting code-server](docs/en/code-server.md) |
 | Local desktop VS Code on closed-network targets | Offline VS Code Server + user-mode `sshd` (`127.0.0.1:2222`) accessed from local VS Code (Remote - SSH) via local port forwarding (Linux glibc targets) | [VS Code Remote - SSH](docs/en/vscode-remote-ssh.md) |
 | CLI coding agents on isolated targets | CLI agent (such as Copilot CLI) running in the target terminal and reaching authentication/inference APIs via the client HTTP proxy and `remote-dns` | [CLI coding agents](docs/en/coding-agents.md) |
@@ -84,7 +84,7 @@ Table: Supported configurations
 - **Network diagnostics and requests**: Supports HTTP requests from the target (`net_request_http`, including the Docker API over Unix sockets), TCP send/receive (`net_exchange`), DNS/connectivity/certificate checks (`net_check`), and listening port inspection (`net_list_listeners`).
 - **Unified OS administration**: Manages services (systemd / Windows services), system logs (journald / Event Log), process termination, disk usage, and the Windows registry through a consistent interface.
 - **Direct file transfer**: With local `host-shell bridge`, transfers files and directories directly without passing through the agent context (`transfer_push`, `transfer_pull`), checking free disk space beforehand, verifying SHA-256 hashes, and skipping unchanged files.
-- **Port forwarding, HTTP proxy, and remote DNS without SSH forwarding**: When enabled on both ends, `host-shell bridge` multiplexes bidirectional TCP port forwarding, a SOCKS5 proxy, an authenticated HTTP/HTTPS proxy through the client network (with optional live rule updates via `proxy_rules_update`), and Linux/glibc `getaddrinfo` resolution (`--remote-dns`) over the same SSH session.
+- **Port forwarding, HTTP proxy, and remote DNS without SSH forwarding**: When enabled on both ends, `host-shell bridge` multiplexes bidirectional TCP port forwarding, a SOCKS5 proxy, an authenticated HTTP/HTTPS proxy through the client network (with optional live rule updates via `proxy_rules_update`), and client-side name resolution (`--remote-dns`: Linux/glibc `getaddrinfo`, or a loopback DNS server on Windows) over the same SSH session.
 - **Closed-network IDE and coding agent workflows**: Bundled agent skills automate offline deployment of `code-server`, `VS Code Remote - SSH` (via a user-mode `sshd`), and CLI coding agents onto targets without direct internet access.
 - **Progress notifications and cancellation**: Reports progress for long commands, downloads, and file transfers via MCP notifications, and terminates execution when the agent cancels a request.
 - **Policy restrictions via startup options**: Runs with the connecting user's permissions by default; startup options can restrict published tool groups, enforce read-only mode, limit allowed paths/commands/hosts, require user confirmation, and mask secrets.
@@ -173,7 +173,7 @@ See [`docs/`](docs/README.md). **The Japanese documents (`docs/ja/`) are the sin
 | [Development Guide](docs/en/development.md) | Building, source layout, design rules, adding tools, testing, releases |
 | [HTTP proxy through the client](docs/en/client-proxy.md) | Routing target HTTP/HTTPS traffic through the bridge's network |
 | [Port forwarding](docs/en/port-forward.md) | Local forwards, remote forwards, and SOCKS5 over SSH stdio |
-| [Remote DNS](docs/en/remote-dns.md) | Optional Linux/glibc `getaddrinfo` relay over the existing MCP connection |
+| [Remote DNS](docs/en/remote-dns.md) | Optional client-side name resolution over the existing MCP connection (Linux/glibc `getaddrinfo` relay, or a loopback DNS server on Windows) |
 | [CLI coding agents](docs/en/coding-agents.md) | Deploying CLI coding agents and validating authentication and API access through the client proxy |
 | [Injecting code-server](docs/en/code-server.md) | Installing code-server with default settings and extensions on a closed-network target and opening it via a local forward |
 | [VS Code Remote - SSH](docs/en/vscode-remote-ssh.md) | Connecting local VS Code to a target through a user-mode sshd and a local forward, with the VS Code Server placed offline and pinned to the client version |
@@ -252,7 +252,7 @@ flowchart TB
 | 直接または多段の SSH 接続 | `ssh -T [hop1 ssh -T ...] target host-shell --mcp` (`AllowTcpForwarding no` や SFTP 無効環境でも動作) | [利用ガイド](docs/ja/user-guide.md) |
 | 稼働中のコンテナーへの接続 | `[ssh -T host] podman\|docker\|kubectl exec -i <container> host-shell --mcp` | [コンテナーへの接続](docs/ja/container.md) |
 | ファイル直接転送・TCP ポート転送 | `host-shell bridge` (`transfer_push`、`transfer_pull`、`--forward-local`、`--forward-remote`、`--forward-socks`、`forward_open`) | [リファレンス](docs/ja/reference.md#手元との転送-bridge)、[ポート転送](docs/ja/port-forward.md) |
-| 閉鎖環境からの HTTP/HTTPS 通信・名前解決 | ループバック HTTP プロキシ (`--proxy`、`--client-proxy`、`proxy_rules_update`) と Linux/glibc の `getaddrinfo` 中継 (`--remote-dns`) | [クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md)、[接続元を使う名前解決](docs/ja/remote-dns.md) |
+| 閉鎖環境からの HTTP/HTTPS 通信・名前解決 | ループバック HTTP プロキシ (`--proxy`、`--client-proxy`、`proxy_rules_update`) と接続元を使う名前解決 (`--remote-dns`。Linux/glibc の `getaddrinfo` 中継、Windows ではループバックの DNS サーバー) | [クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md)、[接続元を使う名前解決](docs/ja/remote-dns.md) |
 | 閉鎖環境でのブラウザー版 VS Code | `code-server` (`127.0.0.1:8000-8079`) をオフライン導入し、ローカル転送経由で手元のブラウザーから利用 (Linux / Windows 接続先) | [code-server の導入](docs/ja/code-server.md) |
 | 閉鎖環境でのデスクトップ版 VS Code | VS Code Server と利用者権限の `sshd` (`127.0.0.1:2222`) をオフライン配置し、ローカル転送経由で手元の VS Code (Remote - SSH) から接続 (Linux glibc 接続先) | [VS Code Remote - SSH での利用](docs/ja/vscode-remote-ssh.md) |
 | 隔離環境での CLI 型 AI コーディングエージェント | 接続先ターミナル内の CLI (Copilot CLI など) からクライアント経由 HTTP プロキシと `remote-dns` を通じて認証・推論 API を利用 | [CLI 型 AI コーディングエージェントの導入](docs/ja/coding-agents.md) |
@@ -270,7 +270,7 @@ Table: サポートされる構成
 - **ネットワーク診断・通信ツール**: 接続先からの HTTP リクエスト (`net_request_http`、Unix ソケットの Docker API を含む)、TCP 送受信 (`net_exchange`)、名前解決・疎通・証明書確認 (`net_check`)、待ち受けポート一覧 (`net_list_listeners`) を提供します。
 - **OS 管理の統一インターフェイス**: サービス (systemd / Windows サービス)、システム ログ (journald / イベント ログ)、プロセス停止、ディスク使用量、Windows レジストリを共通の形式で操作できます。
 - **ローカル・接続先間のファイル転送**: ローカル側に `host-shell bridge` を挟むと、エージェントのコンテキストを経由せずにファイルやディレクトリを直接転送できます (`transfer_push`、`transfer_pull`)。事前に空き容量を確認し、SHA-256 で照合して同一内容のファイルは転送を省略します。
-- **SSH 転送に依存しないポート転送・HTTP プロキシ・名前解決**: 両端で明示的に有効化すると、`host-shell bridge` が同じ SSH セッション上で双方向の TCP ポート転送、SOCKS5、クライアント側ネットワーク経由の認証付き HTTP/HTTPS プロキシ (`proxy_rules_update` によるセッション中の規則更新に対応)、および Linux/glibc の `getaddrinfo` 中継 (`--remote-dns`) を提供します。
+- **SSH 転送に依存しないポート転送・HTTP プロキシ・名前解決**: 両端で明示的に有効化すると、`host-shell bridge` が同じ SSH セッション上で双方向の TCP ポート転送、SOCKS5、クライアント側ネットワーク経由の認証付き HTTP/HTTPS プロキシ (`proxy_rules_update` によるセッション中の規則更新に対応)、および接続元を使う名前解決 (`--remote-dns`。Linux/glibc の `getaddrinfo` 中継、Windows ではループバックの DNS サーバー) を提供します。
 - **閉鎖環境への IDE・コーディングエージェント導入**: 同梱のエージェント スキルにより、インターネットに出られない接続先への `code-server` の導入、`VS Code Remote - SSH` (利用者権限の `sshd` 経由) の接続、CLI 型 AI コーディングエージェントの導入・検証を行えます。
 - **進捗通知とキャンセル**: 長時間コマンド、ダウンロード、ファイル転送の進捗を MCP 通知で送り、エージェントが要求をキャンセルすると処理を停止します。
 - **起動オプションによるポリシー制限**: 既定では接続ユーザーの全権限で動作し、必要に応じて公開ツール グループ、読み取り専用、許可パス、許可コマンド、接続先ホスト、事前確認、機密情報の伏せ字化を起動オプションで制限できます。
@@ -359,7 +359,7 @@ GitHub Release には、タグ名の先頭の `v` を残したアーカイブ (`
 | [開発ガイド](docs/ja/development.md) | ビルド、ソース構成、設計規約、ツールの追加手順、テスト、リリース |
 | [クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |
 | [ポート転送](docs/ja/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
-| [接続元を使う名前解決](docs/ja/remote-dns.md) | Linux/glibc の `getaddrinfo` を既存の MCP 接続で中継する任意機能 |
+| [接続元を使う名前解決](docs/ja/remote-dns.md) | 名前解決を既存の MCP 接続で接続元へ中継する任意機能 (Linux/glibc の `getaddrinfo`、Windows ではループバックの DNS サーバー) |
 | [CLI 型 AI コーディングエージェントの導入](docs/ja/coding-agents.md) | CLI 型 AI コーディングエージェントの配置とクライアント経由プロキシによる認証・API 通信の検証 |
 | [code-server の導入](docs/ja/code-server.md) | 閉鎖環境の接続先への code-server・既定設定・拡張機能の導入とローカル転送での利用 |
 | [VS Code Remote - SSH での利用](docs/ja/vscode-remote-ssh.md) | 利用者権限の sshd とローカル転送による手元の VS Code からの接続、VS Code Server のオフライン配置とクライアントの版への固定 |

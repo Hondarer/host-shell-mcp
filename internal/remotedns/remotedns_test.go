@@ -72,7 +72,7 @@ func TestHookThroughChannelAndCleanup(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	target, err := NewTarget(ctx, prebuilt)
+	target, err := NewTarget(ctx, TargetOptions{Library: prebuilt})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestHookThroughChannelAndCleanup(t *testing.T) {
 	if st, err := os.Stat(target.Library); err != nil || st.Mode().Perm()&077 != 0 {
 		t.Fatalf("adapter permissions: %v %v", st, err)
 	}
-	copyTarget, err := NewTarget(ctx, target.Library)
+	copyTarget, err := NewTarget(ctx, TargetOptions{Library: target.Library})
 	if err != nil {
 		t.Fatalf("prebuilt adapter: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestHookThroughChannelAndCleanup(t *testing.T) {
 	if err := os.WriteFile(bad, []byte("not an ELF library"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if badTarget, err := NewTarget(ctx, bad); err == nil {
+	if badTarget, err := NewTarget(ctx, TargetOptions{Library: bad}); err == nil {
 		badTarget.Close()
 		t.Fatal("accepted an invalid adapter")
 	}

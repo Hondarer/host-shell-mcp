@@ -17,6 +17,8 @@ type Config struct {
 	ClientProxy      bool
 	RemoteDNS        bool
 	RemoteDNSLibrary string
+	// RemoteDNSListen is the loopback address of the DNS server answering through the bridge (--remote-dns-listen).
+	RemoteDNSListen string
 	// ForwardLocal and ForwardRemote permit the bridge's port forwards (--allow-forward-local/--allow-forward-remote).
 	ForwardLocal, ForwardRemote bool
 	// ForwardRemotePorts limits the ports remote forwards listen on (--allow-forward-remote-port); nil permits any port.
