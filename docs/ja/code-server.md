@@ -101,6 +101,7 @@ flowchart TB
 
 - 各プロセスは 8000〜8079 の別々の空きポートで待ち受け、各接続元は自分のポート転送経由でブラウザーから利用します。たとえば、接続元 A は接続先のポート 8000、接続元 B はポート 8001 を使用します。`CODE_SERVER_PORT` で同じポートを指定すると、後から起動する側はエラーになります。
 - MCP 接続が終了すると、その接続で起動した code-server とポート転送が停止します。他の MCP 接続で起動した code-server は引き続き動作します。
+- Windows 接続先 (Windows 11 Enterprise ビルド 26300 の仮想マシン) で、2 つの MCP 接続がポート 8000 と 8001 で同時に起動し、片方の `job_stop` 後ももう片方が応答し、MCP 接続の終了で node.exe が残らないことを確認しました (検証済)。
 - code-server の設定ファイル (ログイン パスワードを含む)、ユーザー データ、拡張機能の保存先は共有します。同じ接続先ユーザーの権限で動作するため、設定・拡張機能の変更や同じファイルへの編集は他の接続にも影響します。ブラウザーごとに利用できても、利用者ごとに分離された環境にはなりません。
 
 導入は最初に一度行い、以降の接続では起動とポート転送を行ってください。利用中の共有バイナリやデータに影響する更新・削除は、すべての接続で code-server を停止してから行ってください。
@@ -160,6 +161,7 @@ Table: 表示言語の指定
 | `languagepacks.json` の生成と `argv.json` の書き込み (コメント・既存項目の保持、地域付きタグ、不正指定の拒否) | 自動テスト (`tests/language-packs.test.mjs`) | 検証済 |
 | Windows 接続先 (`install.ps1 -Locale`) で、`languagepacks.json` の登録、`argv.json` への `"locale": "ja"` の書き込み、未導入言語指定時のエラー停止 (`-Locale fr`、`argv.json` を作らない) | Windows 11 Enterprise (ビルド 26300、amd64) の Hyper-V 仮想マシン (インターネットへの経路なし)、Windows PowerShell 5.1、code-server 4.144.0 | 検証済 |
 | Windows 接続先のブラウザーでの日本語表示 (ログイン、エクスプローラー、チャット、コマンド パレット、統合ターミナル)、`workspace URL path` の URL でのフォルダーの表示、統合ターミナルの PowerShell 5.1 での日本語の入出力 | Windows 11 Enterprise (ビルド 26300、amd64) の Hyper-V 仮想マシン、code-server 4.144.0、ホストの Chrome からローカル転送経由で操作。接続ユーザーが管理者、Users だけ、Power Users にも所属の 3 通り | 検証済 |
+| Windows 接続先で、コマンド パレットの「表示言語を構成する」からの日本語から英語、英語から日本語への切り替え (再起動の確認を経て反映、`argv.json` の `locale` も更新) | 同上 (接続ユーザーは管理者) | 検証済 |
 | 管理者でない接続ユーザー (Users、Power Users) の Windows 接続先で、`install.ps1 -Locale` (`ja` と `fr`)、`start.ps1` の起動と `/login` の取得、実行中の `uninstall.ps1` の拒否、`job_stop` による停止 | 同上 (接続ユーザーを Administrators から外した状態) | 検証済 |
 | Linux arm64 の接続先 | なし | 未検証 |
 

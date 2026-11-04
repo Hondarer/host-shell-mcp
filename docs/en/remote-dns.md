@@ -174,6 +174,8 @@ Table: Resolution paths on Windows
 - **Answers**: A and AAAA are answered, with a CNAME when the canonical name differs from the query name. The TTL is 30 seconds. Other types (HTTPS, SVCB, PTR, MX, and so on) get an empty answer (NODATA). NXDOMAIN is returned only for names without addresses in any family, so the OS does not cache an IPv6-only name as missing.
 - **Listening**: Only loopback addresses are accepted. If another session uses the same address, startup stops with a bind error. The server listens only while connected and closes on disconnect. `sys_get_info` reports it as `remote_dns_listen`.
 - **Access control**: Unlike the private Linux socket, every user and service on the target can query it. The NRPT rule also applies to the whole machine.
+- **Lookups by OS services**: While the NRPT rule exists, name lookups by OS services such as Windows Defender, Windows Update, and telemetry are relayed to the client too (observed in validation: `wdcp.microsoft.com`, `ctldl.windowsupdate.com`, `self.events.data.microsoft.com`, and others). Only name resolution is relayed; the connections themselves follow the target's network. When asking for the user's approval, tell them that the client network will see queries for names the target OS looks up.
+- **`nslookup`**: It does not use the NRPT rule and queries the network adapter's DNS server directly. Without one, it queries the default address (`fec0:0:0:ffff::1`) and fails. To check, name the server as in `nslookup <name> 127.0.0.1`, or use `Resolve-DnsName`.
 - **A rule left after disconnect**: With nothing answering, lookups fail immediately without waiting. Remove it with step 3 of the manual procedure, start again with `--remote-dns-configure`, or restart.
 - **Environment variables**: `exec_run` and `job_start` environments are unchanged. Because the relay is configured OS-wide, descendants such as code-server's extension host use the same path.
 
@@ -287,9 +289,12 @@ Windows targets were verified on a Windows 11 Enterprise (build 26300, amd64) Hy
 | `--remote-dns-configure` | Adding the volatile rule (with and without an existing `DnsPolicyConfig`) and the loopback default route; resolution by .NET, Node.js `dns.lookup`, `curl.exe`, and `ping`; removal on exit; removal when the client side is killed; cleanup at the next start, and disappearance on restart, of the rule, key, and route left by a killed target `host-shell`; cleanup of the manual procedure's persistent rule; no route added when a default route exists | Same | Verified |
 | Manual procedure | The listed commands add and remove the volatile rule and route, and remove the `DnsPolicyConfig` key they created when it was missing | Same | Verified |
 | Non-administrator connecting user (Users, Power Users) | The DNS server listens (127.0.0.1:53, UDP and TCP); `Resolve-DnsName -Server 127.0.0.1` and Node.js `dns.resolve4` succeed. `--remote-dns-configure` stops at startup with an error saying administrator rights are needed, and the manual procedure is refused; neither changes OS settings | Same (tester removed from Administrators) | Verified |
-| code-server extension host, Copilot CLI and Copilot Chat | Behavior on Windows targets | None | Unverified |
+| Processes started from the code-server integrated terminal | With `--remote-dns-configure` and code-server together, Node.js (`dns.lookup`, bundled with code-server) and .NET started from the integrated terminal resolve names through the client (confirmed in the query trace) | Same (code-server 4.144.0, operated from a browser) | Verified |
+| code-server server process | Installing another version of an extension (Hex Editor) makes the server resolve `open-vsx.org` through the client (the download fails because the target cannot reach outside) | Same | Verified |
+| code-server extension host | GitLens 19.5.0 (installed from Open VSX through the client HTTP proxy) resolves `api.gitkraken.dev`, `configs.gitkraken.dev`, and `otel.gitkraken.com` through the client at startup. Unlike Linux, no patched-copy mode is needed | Same | Verified |
+| Copilot CLI and Copilot Chat | Behavior on Windows targets | None | Unverified |
 | Windows Server, arm64 | Behavior | None | Unverified |
-| `nslookup` | Interaction with the NRPT rule | None | Unverified |
+| `nslookup` | Without a server argument it ignores the NRPT rule and fails; with `127.0.0.1` it succeeds | Same | Verified |
 
 Table: Verification status on Windows targets
 
@@ -299,7 +304,7 @@ Unverified:
 - Patched-copy mode on arm64 (archive inspection only)
 - Browser Web extensions
 
-The validation history is in [261102-remote-dns-validation.md](../prompts/past/261102-remote-dns-validation.md), [261103-copilot-chat-remote-dns-validation.md](../prompts/past/261103-copilot-chat-remote-dns-validation.md), [261104-windows-target-validation.md](../prompts/past/261104-windows-target-validation.md), [261104-windows-remote-dns-design.md](../prompts/past/261104-windows-remote-dns-design.md), [261105-windows-remote-dns-configure-design.md](../prompts/past/261105-windows-remote-dns-configure-design.md), and [261105-windows-remote-dns-volatile-design.md](../prompts/past/261105-windows-remote-dns-volatile-design.md) (Japanese only).
+The validation history is in [261102-remote-dns-validation.md](../prompts/past/261102-remote-dns-validation.md), [261103-copilot-chat-remote-dns-validation.md](../prompts/past/261103-copilot-chat-remote-dns-validation.md), [261104-windows-target-validation.md](../prompts/past/261104-windows-target-validation.md), [261104-windows-remote-dns-design.md](../prompts/past/261104-windows-remote-dns-design.md), [261105-windows-remote-dns-configure-design.md](../prompts/past/261105-windows-remote-dns-configure-design.md), [261105-windows-remote-dns-volatile-design.md](../prompts/past/261105-windows-remote-dns-volatile-design.md), and [261105-windows-remaining-validation.md](../prompts/past/261105-windows-remaining-validation.md) (Japanese only).
 
 Development validation commands (Linux, Node.js required):
 

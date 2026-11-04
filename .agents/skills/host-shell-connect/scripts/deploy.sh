@@ -191,7 +191,7 @@ windows)
 	temp=$(printf '%s\n' "$out" | sed -n 1p | sed 's:/*$::')
 	appdata=$(printf '%s\n' "$out" | sed -n 2p | sed 's:/*$::')
 	if [ -z "$temp" ] || [ -z "$appdata" ]; then
-		echo "could not determine %TEMP% and %LOCALAPPDATA% on the target (output: ${out:-none})" >&2
+		echo "could not determine %TEMP% and %LOCALAPPDATA% on the target (output: ${out:-none}); the default shell of sshd must be cmd" >&2
 		exit 1
 	fi
 	set -- "$temp/host-shell/host-shell.exe" "$appdata/Programs/host-shell/host-shell.exe"

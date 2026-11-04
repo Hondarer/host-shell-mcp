@@ -101,6 +101,7 @@ flowchart TB
 
 - Each process listens on a different free port in 8000–8079, and each client accesses it in a browser through its own port forward. For example, client A uses target port 8000 and client B uses port 8001. If both pin the same port with `CODE_SERVER_PORT`, the later launch fails.
 - When an MCP connection ends, the code-server process and port forward started by that connection stop. Processes started by other MCP connections continue running.
+- On a Windows target (a Windows 11 Enterprise build 26300 virtual machine), two MCP connections started code-server on ports 8000 and 8001 at the same time; after `job_stop` on one, the other kept answering, and no node.exe remained after the MCP connections ended (Verified).
 - The code-server configuration file (including the login password), user data, and extensions directory are shared. All processes run with the same target user's permissions, so changes to settings, extensions, or the same files affect other connections too. Separate browser access does not provide an isolated environment for each user.
 
 Install once before starting this workflow, then start code-server and open a port forward from subsequent connections. Stop code-server in all connections before updating or removing shared binaries or data.
@@ -160,6 +161,7 @@ Table: Specifying the display language
 | Generating `languagepacks.json` and writing `argv.json` (preserving comments and existing keys, regional tags, rejecting malformed input) | Automated tests (`tests/language-packs.test.mjs`) | Verified |
 | Windows targets (`install.ps1 -Locale`): registering `languagepacks.json`, writing `"locale": "ja"` to `argv.json`, and stopping with an error for a language without a pack (`-Locale fr`, no `argv.json` created) | Windows 11 Enterprise (build 26300, amd64) Hyper-V virtual machine (no route to the internet), Windows PowerShell 5.1, code-server 4.144.0 | Verified |
 | Japanese display in the browser on Windows targets (login, Explorer, Chat, Command Palette, integrated terminal), opening the folder through the `workspace URL path` URL, and Japanese input and output in the integrated terminal's PowerShell 5.1 | Windows 11 Enterprise (build 26300, amd64) Hyper-V virtual machine, code-server 4.144.0, operated from Chrome on the host through a local forward, with the connecting user as an administrator, in Users only, and also in Power Users | Verified |
+| On a Windows target, switching from Japanese to English and back with "Configure Display Language" in the Command Palette (applied after the restart prompt; `locale` in `argv.json` is updated too) | Same (connecting user is an administrator) | Verified |
 | On a Windows target with a non-administrator connecting user (Users, Power Users): `install.ps1 -Locale` (`ja` and `fr`), starting with `start.ps1` and fetching `/login`, refusal of `uninstall.ps1` while running, and stopping with `job_stop` | Same (connecting user removed from Administrators) | Verified |
 | Linux arm64 targets | None | Unverified |
 

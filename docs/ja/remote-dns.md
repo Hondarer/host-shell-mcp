@@ -174,6 +174,8 @@ Table: Windows での名前解決の経路
 - **回答の内容**: A と AAAA に答え、canonical name が問い合わせ名と異なる場合は CNAME を付けます。TTL は 30 秒です。その他の種別 (HTTPS、SVCB、PTR、MX など) には回答なし (NODATA) を返します。NXDOMAIN は、どのアドレス ファミリーでもアドレスがない名前に限って返します (IPv6 だけの名前を「存在しない」と OS にキャッシュさせないため)。
 - **待ち受け**: ループバック アドレスだけを受け付けます。同じアドレスを別のセッションが使っている場合は、起動時に bind エラーで停止します。待ち受けは接続中だけで、切断時に閉じます。`sys_get_info` の `remote_dns_listen` で確認できます。
 - **アクセス制御**: Linux の非公開ソケットと異なり、接続先のすべてのユーザーとサービスが問い合わせできます。NRPT 規則もマシン全体に適用されます。
+- **OS のサービスの問い合わせ**: NRPT 規則がある間は、Windows Defender、Windows Update、テレメトリーなど、OS のサービスの名前解決も接続元へ中継されます (検証では `wdcp.microsoft.com`、`ctldl.windowsupdate.com`、`self.events.data.microsoft.com` などを観測)。中継されるのは名前解決だけで、通信そのものは接続先のネットワークに従います。接続元のネットワークに、接続先の OS が引く名前の問い合わせが流れることを、利用者の承諾を得る際に伝えてください。
+- **`nslookup`**: NRPT 規則を使わず、ネットワーク アダプターの DNS サーバーに直接問い合わせます。DNS サーバーがない場合は既定のアドレス (`fec0:0:0:ffff::1`) に問い合わせて失敗します。確認するときは `nslookup <名前> 127.0.0.1` のように問い合わせ先を指定するか、`Resolve-DnsName` を使います。
 - **切断後に規則が残った場合**: 問い合わせ先がないため、名前解決は待たずにすぐ失敗します。手動設定の手順 3 で削除するか、`--remote-dns-configure` で起動し直すか、再起動してください。
 - **環境変数**: `exec_run` と `job_start` の環境変数は変更しません。OS 全体の設定で中継するため、code-server の拡張ホストのような子孫プロセスにも同じ経路が使われます。
 
@@ -287,9 +289,12 @@ Windows の接続先は、Windows 11 Enterprise (ビルド 26300、amd64) の Hy
 | `--remote-dns-configure` | 揮発性の規則 (`DnsPolicyConfig` がある場合とない場合) とループバックのデフォルト ルートの追加、.NET・Node.js `dns.lookup`・`curl.exe`・`ping` の名前解決、終了時の削除、接続元を強制終了したときの削除、接続先の `host-shell` を強制終了して残った規則・キー・ルートの次回起動時の削除と再起動による消滅、手動手順の永続する規則の片付け、既存のデフォルト ルートがあるときにルートを追加しないこと | 同上 | 検証済 |
 | 手動設定の手順 | 記載のコマンドで揮発性の規則とルートを追加・削除し、`DnsPolicyConfig` がない場合は作ったキーも削除する | 同上 | 検証済 |
 | 管理者でない接続ユーザー (Users、Power Users) | DNS サーバーの待ち受け (127.0.0.1:53、UDP と TCP)、`Resolve-DnsName -Server 127.0.0.1`、Node.js `dns.resolve4` が成功する。`--remote-dns-configure` は起動時に管理者権限が必要というエラーで停止し、手動設定の手順も拒否される。どちらも OS の設定は変わらない | 同上 (tester を Administrators から外した状態) | 検証済 |
-| code-server の拡張ホスト、Copilot CLI・Copilot Chat | Windows の接続先での動作 | なし | 未検証 |
+| code-server の統合ターミナルから起動したプロセス | `--remote-dns-configure` と code-server を併用し、統合ターミナルから起動した Node.js (`dns.lookup`、code-server 同梱) と .NET の名前解決が接続元経由で成功する (問い合わせの記録で確認) | 同上 (code-server 4.144.0、ブラウザーから操作) | 検証済 |
+| code-server のサーバー プロセス | 拡張機能 (Hex Editor) の別の版のインストールで、サーバーが `open-vsx.org` を接続元経由で名前解決する (ダウンロードは接続先から外へ出られないため失敗) | 同上 | 検証済 |
+| code-server の拡張ホスト | GitLens 19.5.0 (Open VSX からクライアント経由プロキシで導入) が起動時に `api.gitkraken.dev`、`configs.gitkraken.dev`、`otel.gitkraken.com` を接続元経由で名前解決する。Linux と違い、専用コピーモードは要らない | 同上 | 検証済 |
+| Copilot CLI・Copilot Chat | Windows の接続先での動作 | なし | 未検証 |
 | Windows Server、arm64 | 動作 | なし | 未検証 |
-| `nslookup` | NRPT 規則との関係 | なし | 未検証 |
+| `nslookup` | 問い合わせ先を指定しないと NRPT 規則を使わずに失敗し、`127.0.0.1` を指定すると成功する | 同上 | 検証済 |
 
 Table: Windows の接続先での検証状況
 
@@ -299,7 +304,7 @@ Table: Windows の接続先での検証状況
 - 専用コピーモードの arm64 での動作 (アーカイブの検査のみ)
 - ブラウザー内の Web 拡張
 
-検証の経緯は [remote-dns の検証記録](../prompts/past/261102-remote-dns-validation.md)、[画面内 Copilot Chat の検証記録](../prompts/past/261103-copilot-chat-remote-dns-validation.md)、[Windows 接続先の検証記録](../prompts/past/261104-windows-target-validation.md)、[Windows 向け remote-dns の設計](../prompts/past/261104-windows-remote-dns-design.md)、[Windows の名前解決設定の自動化の設計](../prompts/past/261105-windows-remote-dns-configure-design.md)、[NRPT 規則の揮発化の設計](../prompts/past/261105-windows-remote-dns-volatile-design.md) にあります。
+検証の経緯は [remote-dns の検証記録](../prompts/past/261102-remote-dns-validation.md)、[画面内 Copilot Chat の検証記録](../prompts/past/261103-copilot-chat-remote-dns-validation.md)、[Windows 接続先の検証記録](../prompts/past/261104-windows-target-validation.md)、[Windows 向け remote-dns の設計](../prompts/past/261104-windows-remote-dns-design.md)、[Windows の名前解決設定の自動化の設計](../prompts/past/261105-windows-remote-dns-configure-design.md)、[NRPT 規則の揮発化の設計](../prompts/past/261105-windows-remote-dns-volatile-design.md)、[Windows 接続先の残りの自動検証の記録](../prompts/past/261105-windows-remaining-validation.md) にあります。
 
 開発時の検証コマンド (Linux、Node.js が必要):
 
