@@ -7,6 +7,8 @@
 `host-shell` is an MCP server **deployed on the target machine (Windows / Linux) and accessed over the standard input and output of SSH or a similar channel**.  
 Even where port forwarding and SFTP are unavailable, coding agents such as Claude Code and GitHub Copilot can inspect and operate remote machines over a plain SSH session.
 
+This repository provides a set of tools and agent skills to make restricted SSH environments easier to access, together with documentation that compiles evaluation and verification results across representative use cases—serving as a practical knowledge base for applying these methods to diverse network and OS configurations.
+
 ```text
 agent --stdio(MCP)--> ssh -T hop1 ssh -T target host-shell --mcp
 ```
@@ -163,7 +165,8 @@ GitHub Releases include archives named with the tag, including the leading `v` (
 
 ### Documentation
 
-See [`docs/`](docs/README.md). **The Japanese documents (`docs/ja/`) are the single source of truth (SSOT)**, and `docs/en/` contains English translations.
+See [`docs/`](docs/README.md). **The Japanese documents (`docs/ja/`) are the single source of truth (SSOT)**, and `docs/en/` contains English translations.  
+Each guide documents not only setup procedures, but also the verified scope (OS, CPU, libc, and product versions), architectural trade-offs, and known limitations evaluated against representative use cases so you can adapt them to your specific environment.
 
 | Document | Contents |
 |---|---|
@@ -192,6 +195,8 @@ See the [Operations Guide](docs/en/operations.md) for details.
 
 `host-shell` は、**接続先マシン (Windows / Linux) に配置し、SSH などの標準入出力経由で中継して使用する** MCP サーバーです。  
 ポート転送や SFTP が使えない環境でも、Claude Code や GitHub Copilot などのコーディング エージェントから、プレーンな SSH セッションだけで遠隔マシンを調査・操作できます。
+
+本リポジトリは、制限された SSH 環境へのアクセスを容易にするための各種手段 (単一バイナリ、標準入出力の多重化ブリッジ、導入自動化スキル) を提供するとともに、代表的なユースケースに従った評価・検証の結果と、各種構成への適用を考慮した実践的なノウハウをまとめたものです。
 
 ```text
 エージェント --stdio(MCP)--> ssh -T hop1 ssh -T target host-shell --mcp
@@ -349,7 +354,8 @@ GitHub Release には、タグ名の先頭の `v` を残したアーカイブ (`
 
 ### ドキュメント
 
-文書は [`docs/`](docs/README.md) にあります。**日本語版 (`docs/ja/`) が正本** であり、`docs/en/` に英訳を配置しています。
+文書は [`docs/`](docs/README.md) にあります。**日本語版 (`docs/ja/`) が正本** であり、`docs/en/` に英訳を配置しています。  
+各文書には導入・利用手順だけでなく、代表的なユースケースに基づく評価・検証済みの範囲 (OS・CPU・libc・製品の版) や制約事項、構成ごとの適用ノウハウを記載しています。
 
 | 文書 | 内容 |
 |---|---|
