@@ -203,6 +203,8 @@ Table: Copilot CLI の検証段階
 | --- | --- | --- | --- |
 | Copilot CLI 1.0.105 (`copilot-win32-x64.zip`、SHA-256 `34e16e9cf47de0e1534920171d6f39fa246638bddbb6ece820870b382bcc061a`) | `COPILOT_OFFLINE=true` の有無の両方で、`-p` の質問に BYOK のモデルから応答が返る。Chat Completions と Responses API の両方。`--allow-all-tools` で `create` によるファイル作成と `powershell` によるコマンド実行が接続先で行われ、結果がモデルへ戻る | Windows 11 Enterprise (ビルド 26300、amd64) の Hyper-V 仮想マシン、`exec_run` から実行 | 検証済 |
 | 画面内の Copilot Chat (code-server 4.144.0 の GitHub Copilot Chat 0.72.0) | Azure の提供元で BYOK のモデルを登録し、応答が表示される。エージェントの `create_file` と `read_file` が接続先で実行され、結果がモデルへ戻る | 同上、ホストの Chrome から操作 | 検証済 |
+| Copilot CLI 1.0.105 の Linux 版 (`copilot-linux-x64.tar.gz`、SHA-256 `aba1f06f27bc0447656647f76e0a4cf58b4b2a341c75ff04a750982b6aeb6bd2`) | Windows 版と同じ確認。ツール実行は `create` と `bash` | 同じ仮想マシン上の WSL 2 (WSL 3.0.3、Ubuntu 24.04、x86_64、glibc 2.39)。接続先の `host-shell` は `ssh <接続先> wsl -d ubuntu -- <host-shell> --mcp` で起動 | 検証済 |
+| 画面内の Copilot Chat (Linux 版 code-server 4.144.0) | Windows と同じ確認 | 同上、ホストの Chrome から操作 | 検証済 |
 | 実際の Azure OpenAI、クライアント経由プロキシでの到達 | 通信と応答 | なし | 未検証 |
 
 Table: BYOK の検証状況
@@ -224,4 +226,4 @@ Codex は読み取り専用ファイルシステムでは、PATH 用エイリア
 
 ### 検証の記録
 
-新しく検証するときは、OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、検証済みの段階と失敗理由を記録します。経緯の記録は `docs/prompts/past/` に置き、この文書には結果だけを反映します。これまでの経緯は [CLI 型 AI コーディングエージェントの検証記録](../prompts/past/261102-coding-agents-validation.md) 、[Copilot CLI の操作段階の検証記録](../prompts/past/261103-copilot-cli-operation-validation.md)、[Copilot CLI のコピー範囲の検証記録](../prompts/past/261103-copilot-cli-copy-scope-validation.md)、[終了段階の検証記録](../prompts/past/261103-coding-agents-shutdown-validation.md)、[BYOK の検証記録](../prompts/past/261105-copilot-byok-validation.md) にあります。
+新しく検証するときは、OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、検証済みの段階と失敗理由を記録します。経緯の記録は `docs/prompts/past/` に置き、この文書には結果だけを反映します。これまでの経緯は [CLI 型 AI コーディングエージェントの検証記録](../prompts/past/261102-coding-agents-validation.md) 、[Copilot CLI の操作段階の検証記録](../prompts/past/261103-copilot-cli-operation-validation.md)、[Copilot CLI のコピー範囲の検証記録](../prompts/past/261103-copilot-cli-copy-scope-validation.md)、[終了段階の検証記録](../prompts/past/261103-coding-agents-shutdown-validation.md)、[BYOK の検証記録](../prompts/past/261105-copilot-byok-validation.md)、[WSL での BYOK の検証記録](../prompts/past/261105-wsl-byok-validation.md) にあります。
