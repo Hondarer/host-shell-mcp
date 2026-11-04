@@ -49,8 +49,18 @@ else {
     }
 }
 
+# code-server on Windows turns a folder argument into ?folder=C:\..., which the browser cannot resolve
+# ("unable to resolve filesystem provider with relative file path"). The folder is therefore not passed
+# as an argument; the URL path below opens it in the form the workbench expects (/C:/...).
+$workspace = (Resolve-Path -LiteralPath $workspace).ProviderPath
+if ($workspace.StartsWith("\\")) {
+    throw "workspace folder must be on a drive letter, not a UNC path: $workspace"
+}
+$folderUrl = "/?folder=" + [Uri]::EscapeDataString("/" + $workspace.Replace("\", "/"))
+
 Write-Output "starting code-server $($config.Version) on 127.0.0.1:$port"
 Write-Output "workspace: $workspace"
+Write-Output "workspace URL path: $folderUrl"
 Write-Output "configuration: $($config.ConfigFile)"
 # Inside a VS Code terminal these make code-server hand over to that VS Code instead of listening.
 Remove-Item Env:VSCODE_IPC_HOOK_CLI -ErrorAction SilentlyContinue
@@ -58,5 +68,5 @@ Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
 Set-Location -LiteralPath $workspace
 & $config.NodeExe $config.InstallDir --config $config.ConfigFile --bind-addr "127.0.0.1:$port" `
     --auth password --ignore-last-opened --user-data-dir $config.UserDataDir `
-    --extensions-dir $config.ExtensionsDir $workspace
+    --extensions-dir $config.ExtensionsDir
 exit $LASTEXITCODE

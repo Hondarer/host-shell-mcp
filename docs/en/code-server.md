@@ -75,6 +75,7 @@ The `start` script checks ports 8000 through 8079 on the target's `127.0.0.1` in
 
 - If all ports in 8000–8079 are in use, `start` exits with `no free port in 8000-8079 on 127.0.0.1`.
 - Setting the `CODE_SERVER_PORT` environment variable pins a single port (and fails if that port is already in use).
+- On Windows targets, the folder to open is given in the URL. Append the path that `start.ps1` prints as `workspace URL path: /?folder=%2FC%3A%2FUsers%2Falice` to the client URL (`http://127.0.0.1:<client port>`). The Windows build of code-server redirects a folder given at startup to `?folder=C:\Users\alice`, which the browser cannot open ("unable to resolve filesystem provider"), so `start.ps1` does not pass the folder to code-server and the root URL opens an empty window. Folders on UNC paths are not supported.
 - If another process binds the chosen port between the availability check and startup, code-server exits with `EADDRINUSE` and the agent runs `start` again.
 - If `bridge` was registered with an allow rule for `127.0.0.1:8000` only and port 8000 is already in use, forwarding to the fallback port is rejected. In that case, the agent stops code-server and asks you to update the rule to `'127.0.0.1:80[0-7]?'` and reconnect.
 
@@ -158,13 +159,13 @@ Table: Specifying the display language
 | First-start Japanese UI (`--locale ja`), offline switching between Japanese and English via the Command Palette, and failing on an uninstalled locale (`--locale fr`) | Oracle Linux 10.2 / x86_64 Podman container (`--network none`, no client proxy), code-server 4.144.0, Chrome for Testing 148 (requests other than to `127.0.0.1` blocked) | Verified |
 | Generating `languagepacks.json` and writing `argv.json` (preserving comments and existing keys, regional tags, rejecting malformed input) | Automated tests (`tests/language-packs.test.mjs`) | Verified |
 | Windows targets (`install.ps1 -Locale`): registering `languagepacks.json`, writing `"locale": "ja"` to `argv.json`, and stopping with an error for a language without a pack (`-Locale fr`, no `argv.json` created) | Windows 11 Enterprise (build 26300, amd64) Hyper-V virtual machine (no route to the internet), Windows PowerShell 5.1, code-server 4.144.0 | Verified |
-| Japanese display in the browser on Windows targets | None | Unverified |
+| Japanese display in the browser on Windows targets (login, Explorer, Chat, Command Palette, integrated terminal), opening the folder through the `workspace URL path` URL, and Japanese input and output in the integrated terminal's PowerShell 5.1 | Windows 11 Enterprise (build 26300, amd64) Hyper-V virtual machine, code-server 4.144.0, operated from Chrome on the host through a local forward, with the connecting user as an administrator, in Users only, and also in Power Users | Verified |
 | On a Windows target with a non-administrator connecting user (Users, Power Users): `install.ps1 -Locale` (`ja` and `fr`), starting with `start.ps1` and fetching `/login`, refusal of `uninstall.ps1` while running, and stopping with `job_stop` | Same (connecting user removed from Administrators) | Verified |
 | Linux arm64 targets | None | Unverified |
 
 Table: Display language verification status
 
-The validation history is in [261103-code-server-offline-locale-validation.md](../prompts/past/261103-code-server-offline-locale-validation.md) (Japanese only).
+The validation history is in [261103-code-server-offline-locale-validation.md](../prompts/past/261103-code-server-offline-locale-validation.md) and [261105-windows-code-server-browser-validation.md](../prompts/past/261105-windows-code-server-browser-validation.md) (Japanese only).
 
 ### Fetching extensions
 

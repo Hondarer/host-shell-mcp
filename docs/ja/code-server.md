@@ -75,6 +75,7 @@ host-shell bridge --forward-allow-local '127.0.0.1:80[0-7]?' \
 
 - ポート 8000〜8079 がすべて使用中の場合は、`no free port in 8000-8079 on 127.0.0.1` を出力して終了します。
 - 環境変数 `CODE_SERVER_PORT` を指定すると、そのポートのみを使用します (使用中の場合はエラーで終了します)。
+- Windows の接続先では、開くフォルダーを URL で指定します。`start.ps1` が出力する `workspace URL path: /?folder=%2FC%3A%2FUsers%2Falice` の形のパスを、クライアントの URL (`http://127.0.0.1:<クライアントのポート>`) に続けて開きます。code-server の Windows 版は、起動時に渡したフォルダーを `?folder=C:\Users\alice` の形にして転送するため、ブラウザーがフォルダーを開けません (`filesystem プロバイダーを解決できません`)。そのため `start.ps1` はフォルダーを code-server に渡さず、ルートの URL は空のウィンドウを開きます。UNC パスのフォルダーには対応しません。
 - 空き確認から待ち受け開始までの間に別プロセスが同じポートを取得した場合、code-server は `EADDRINUSE` で終了し、エージェントが `start` を再実行します。
 - `bridge` の許可規則が `127.0.0.1:8000` のみになっており、ポート 8000 が使用中だった場合は、別ポートで起動した code-server への転送が拒否されます。その場合、エージェントは code-server を停止し、許可規則を `'127.0.0.1:80[0-7]?'` に変更して再接続するよう案内します。
 
@@ -158,13 +159,13 @@ Table: 表示言語の指定
 | 初回日本語起動 (`--locale ja`)、コマンド パレットからの日英相互切り替え、未導入言語指定時のエラー停止 (`--locale fr`) | Oracle Linux 10.2 / x86_64 の Podman コンテナー (`--network none`、クライアント経由プロキシなし)、code-server 4.144.0、Chrome for Testing 148 (`127.0.0.1` 以外への通信を遮断) | 検証済 |
 | `languagepacks.json` の生成と `argv.json` の書き込み (コメント・既存項目の保持、地域付きタグ、不正指定の拒否) | 自動テスト (`tests/language-packs.test.mjs`) | 検証済 |
 | Windows 接続先 (`install.ps1 -Locale`) で、`languagepacks.json` の登録、`argv.json` への `"locale": "ja"` の書き込み、未導入言語指定時のエラー停止 (`-Locale fr`、`argv.json` を作らない) | Windows 11 Enterprise (ビルド 26300、amd64) の Hyper-V 仮想マシン (インターネットへの経路なし)、Windows PowerShell 5.1、code-server 4.144.0 | 検証済 |
-| Windows 接続先のブラウザーでの日本語表示 | なし | 未検証 |
+| Windows 接続先のブラウザーでの日本語表示 (ログイン、エクスプローラー、チャット、コマンド パレット、統合ターミナル)、`workspace URL path` の URL でのフォルダーの表示、統合ターミナルの PowerShell 5.1 での日本語の入出力 | Windows 11 Enterprise (ビルド 26300、amd64) の Hyper-V 仮想マシン、code-server 4.144.0、ホストの Chrome からローカル転送経由で操作。接続ユーザーが管理者、Users だけ、Power Users にも所属の 3 通り | 検証済 |
 | 管理者でない接続ユーザー (Users、Power Users) の Windows 接続先で、`install.ps1 -Locale` (`ja` と `fr`)、`start.ps1` の起動と `/login` の取得、実行中の `uninstall.ps1` の拒否、`job_stop` による停止 | 同上 (接続ユーザーを Administrators から外した状態) | 検証済 |
 | Linux arm64 の接続先 | なし | 未検証 |
 
 Table: 表示言語の検証状況
 
-経緯は [code-server の表示言語のオフライン化の検証記録](../prompts/past/261103-code-server-offline-locale-validation.md) にあります。
+経緯は [code-server の表示言語のオフライン化の検証記録](../prompts/past/261103-code-server-offline-locale-validation.md)、[Windows 接続先の code-server のブラウザー検証記録](../prompts/past/261105-windows-code-server-browser-validation.md) にあります。
 
 ### 拡張機能の取得
 

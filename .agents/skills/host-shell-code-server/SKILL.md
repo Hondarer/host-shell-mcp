@@ -117,6 +117,7 @@ Use `transfer_pull` to copy `<home>/.config/host-shell-code-server/config.yaml` 
 3. Call `forward_open` with `direction: "local"`, `host: "127.0.0.1"`, `port: <port>`, and `listen_port` omitted.
    - If `bridge` rejects the destination (for example, when registered with `127.0.0.1:8000` while port 8000 was already in use), stop code-server with `job_stop` and ask the user to update the rule to `--forward-allow-local '127.0.0.1:80[0-7]?'` (along with the target's `--allow-host`, if used) and reconnect.
 4. Report the local URL `http://127.0.0.1:<listen_port>/` and the local path of the copied `config.yaml` (its `password:` line contains the login password).
+   - Windows: report `http://127.0.0.1:<listen_port><path>` instead, with `<path>` taken from the `workspace URL path: <path>` line of `start.ps1` (for example `/?folder=%2FC%3A%2FUsers%2Falice`). `start.ps1` does not pass the folder to code-server, because code-server on Windows redirects to a folder URL the browser cannot open; the plain root URL opens an empty window.
 
 Browser login sessions are scoped to the local port, so the user may need to log in again in a later session.
 
