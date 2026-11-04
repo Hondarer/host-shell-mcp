@@ -28,7 +28,8 @@ if (-not (Test-Path -LiteralPath $config.ConfigFile)) {
 if (-not (Test-Path -LiteralPath $workspace -PathType Container)) {
     throw "workspace folder not found: $workspace"
 }
-$listening = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | ForEach-Object { [int]$_.LocalPort })
+# IPGlobalProperties needs no CIM access, which a standard user connected over SSH does not have.
+$listening = @([System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners() | ForEach-Object { [int]$_.Port })
 if ($null -ne $config.Port) {
     $port = $config.Port
     if ($listening -contains $port) {

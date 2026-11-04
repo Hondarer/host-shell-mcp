@@ -159,6 +159,7 @@ Table: Specifying the display language
 | Generating `languagepacks.json` and writing `argv.json` (preserving comments and existing keys, regional tags, rejecting malformed input) | Automated tests (`tests/language-packs.test.mjs`) | Verified |
 | Windows targets (`install.ps1 -Locale`): registering `languagepacks.json`, writing `"locale": "ja"` to `argv.json`, and stopping with an error for a language without a pack (`-Locale fr`, no `argv.json` created) | Windows 11 Enterprise (build 26300, amd64) Hyper-V virtual machine (no route to the internet), Windows PowerShell 5.1, code-server 4.144.0 | Verified |
 | Japanese display in the browser on Windows targets | None | Unverified |
+| On a Windows target with a non-administrator connecting user (Users, Power Users): `install.ps1 -Locale` (`ja` and `fr`), starting with `start.ps1` and fetching `/login`, refusal of `uninstall.ps1` while running, and stopping with `job_stop` | Same (connecting user removed from Administrators) | Verified |
 | Linux arm64 targets | None | Unverified |
 
 Table: Display language verification status

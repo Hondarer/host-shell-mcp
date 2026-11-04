@@ -8,7 +8,8 @@
 - Paths accept `\` or `/`; absolute paths require a drive letter (e.g. `C:\work`).
 - Prefer `fs_*` tools over `Remove-Item`, `Copy-Item`, and similar cmdlets for cross-platform consistency.
 - `exec_sudo` is not available on Windows; privileges depend on the account running host-shell.
-- Stopping a job or hitting a timeout terminates the process tree (`taskkill /T /F`). Only the `kill` signal is supported, except in `pty` jobs where `interrupt` sends Ctrl-C.
+- Stopping a job, `proc_kill`, or hitting a timeout terminates the process (and, for jobs and timeouts, its descendants) with `TerminateProcess`. Only the `kill` signal is supported, except in `pty` jobs where `interrupt` sends Ctrl-C.
+- A non-administrator (Users or Power Users) connected over SSH gets a network logon. Windows then denies the Service Control Manager (`svc_list` and `svc_control`, also `sc.exe` and `Get-Service`), Event Log reads (`log_query`, including `System` and `Application`), and CIM/WMI (`Get-CimInstance`, `Get-Net*`, `Get-DnsClient*`, `taskkill`, `tasklist`). Other tools work; use `proc_list`, `proc_kill`, and `net_list_listeners` instead of those commands.
 - `pty` uses ConPTY (requires Windows 10 1809 / Windows Server 2019 or later).
 - `svc_list` and `svc_control` use the Service Control Manager; starting, stopping, or reconfiguring services requires an elevated administrator session. `log_query` reads the Event Log (`log`: `System`, `Application`, `Security`, or a channel name; `unit`: provider name); reading `Security` requires administrator privileges.
 - `reg_read`, `reg_write`, and `reg_delete` access the Windows registry. Writing to `HKLM\...` requires administrator privileges; `HKCU\...` does not.
@@ -18,15 +19,8 @@
 
 Windows has no per-process resolver hook. With `--remote-dns --remote-dns-listen 127.0.0.1:53` on the target (and `--remote-dns` on the bridge), host-shell serves A/AAAA queries on that loopback address through the bridge; `sys_get_info` reports it as `remote_dns_listen`. Programs that query DNS servers themselves (for example Node.js `dns.resolve4`) use it when the network adapter has no DNS server. For the OS resolver (`getaddrinfo`, .NET, curl, ping), queries must be routed to it. The change is machine-wide: ask the user and obtain explicit approval before making it, either way below; never make it on your own judgment.
 
-`--remote-dns-configure` (with `--remote-dns-listen 127.0.0.1:53`, in an elevated administrator session) adds the settings at startup and removes them on exit: an NRPT rule commented `host-shell-remote-dns pid=<pid>` and, only when there is no IPv4 default route, a loopback default route (metric 9999, active store only, so a reboot removes it). This is a paired add and remove, not a volatile setting: the rule is persistent, and if host-shell is killed it remains until the next start with the option removes leftovers of sessions that no longer run. `sys_get_info` lists the changes as `remote_dns_configured`. While the added route exists, direct outbound connections time out (about 21 seconds) instead of failing at once.
+`--remote-dns-configure` (with `--remote-dns-listen 127.0.0.1:53`, in an elevated administrator session) adds the settings at startup and removes them on exit: an NRPT rule commented `host-shell-remote-dns pid=<pid>` in a volatile registry key under `HKLM\SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig` and, only when there is no IPv4 default route, a loopback default route (metric 9999, active store). Nothing is written to disk and a restart clears both. If host-shell is killed they remain until the next start with the option removes leftovers of sessions that no longer run, or a restart. `sys_get_info` lists the changes as `remote_dns_configured`. While the added route exists, direct outbound connections time out (about 21 seconds) instead of failing at once.
 
-Without that option, an administrator can apply the rule by hand (with the same approval):
-
-```powershell
-Add-DnsClientNrptRule -Namespace '.' -NameServers 127.0.0.1 -Comment host-shell-remote-dns
-Clear-DnsClientCache
-# after the session
-Get-DnsClientNrptRule | Where-Object Comment -eq 'host-shell-remote-dns' | ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force }
-```
+Without that option, an administrator can apply the same volatile rule by hand (with the same approval) with the manual procedure in the remote DNS document. Do not use `Add-DnsClientNrptRule`: it writes a persistent rule.
 
 `getaddrinfo` returns IPv4 answers only when an IPv4 default route exists; on a network without a default gateway it reports "no data of the requested type". A target with a default gateway needs only the NRPT rule. Otherwise any next hop works, including the loopback interface (`New-NetRoute -DestinationPrefix 0.0.0.0/0 -InterfaceIndex (Get-NetIPAddress -IPAddress 127.0.0.1).InterfaceIndex -NextHop 0.0.0.0 -RouteMetric 9999 -PolicyStore ActiveStore`). `Resolve-DnsName` works without one. While the rule remains and no session serves the address, lookups fail immediately.

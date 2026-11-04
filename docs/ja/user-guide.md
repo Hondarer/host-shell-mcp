@@ -513,6 +513,28 @@ SSH のポート転送 (`-L`、`-R`、`-D`) や外部通信・外部 DNS が使�
 - `exec_sudo` は存在しません。管理者権限を要する操作 (サービス変更、HKLM レジストリ書き込みなど) は、管理者アカウントで起動した `host-shell` から実行します。
 - サービス (`svc_list`、`svc_control`)、イベント ログ (`log_query`)、レジストリ (`reg_read`、`reg_write`、`reg_delete`) を専用ツールで直接操作できます。
 - `pty` ジョブは ConPTY を使用します (Windows 10 1809 / Windows Server 2019 以降)。
+- `job_stop`、`proc_kill`、タイムアウトによる終了は、Windows API (`TerminateProcess`) で直接行います。ジョブとタイムアウトでは子孫のプロセスも終了します。
+
+#### 管理者でない接続ユーザー
+
+接続ユーザーが管理者でなくても (Users または Power Users)、`host-shell` の配置と主なツールは使えます。ただし、SSH の接続はネットワーク ログオンになるため、Windows はサービスの管理 (SCM)、イベント ログ、CIM/WMI へのアクセスを拒否します。この制限は `host-shell` 以外のコマンド (`sc.exe`、`Get-Service`、`Get-CimInstance`、`Get-Net*`、`taskkill`) にも同じように掛かります。
+
+| 対象 | 管理者でない接続ユーザーでの結果 |
+|---|---|
+| 配置 (`deploy.sh`、利用ガイドの手順)、`probe.sh` | 成功する |
+| `exec_run`、`job_start` (ConPTY を含む)、ファイル操作、`transfer_push`・`transfer_pull` | 成功する |
+| `job_stop`、`proc_kill`、タイムアウトによる終了 | 成功する (子孫のプロセスを含む) |
+| `proc_list`、`net_list_listeners`、`disk_list`、`reg_read`、HKCU への `reg_write`・`reg_delete` | 成功する |
+| HKLM への `reg_write` | 拒否される |
+| `svc_list`、`svc_control` | 拒否される (`open service control manager: Access is denied.`) |
+| `log_query` | `System` と `Application` を含めて拒否される |
+| クライアント経由 HTTP プロキシ、ローカル転送、リモート転送 | 成功する |
+| code-server の導入、起動、停止 | 成功する |
+| `remote-dns` のループバックの DNS サーバー | 成功する。OS の名前解決を向ける設定 (`--remote-dns-configure`、手動設定の手順) は管理者権限が必要で、拒否される |
+
+Table: 管理者でない接続ユーザーで使える範囲
+
+確認した環境は、Windows 11 Enterprise (ビルド 26300、amd64) の仮想マシンで、接続ユーザーを Administrators から外し、Users だけの場合と Power Users にも入れた場合です (検証済、[検証記録](../prompts/past/261105-windows-standard-user-validation.md))。2 つの場合の結果は同じでした。ドメイン ユーザー、Windows Server、arm64 は未検証です。
 
 ## トラブルシューティング
 

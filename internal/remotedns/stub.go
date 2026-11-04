@@ -44,23 +44,24 @@ func listenStub(addr string, ask askFunc) (*stub, error) {
 	if !ap.Addr().IsLoopback() {
 		return nil, fmt.Errorf("--remote-dns-listen %q: only loopback addresses are allowed", addr)
 	}
-	// Port 0 (tests) takes the port TCP received for UDP too; that port may be reserved for UDP
-	// (for example Hyper-V's excluded ranges on Windows), so try a few.
+	// Port 0 (tests) takes the port UDP received for TCP too. UDP goes first: on Windows, TCP hands out
+	// ephemeral ports in sequence, so they tend to fall into one of the UDP ranges Hyper-V reserves,
+	// while the UDP allocator skips them. The TCP side may still be taken, so try a few.
 	attempts := 1
 	if ap.Port() == 0 {
 		attempts = 10
 	}
 	for i := 0; ; i++ {
-		tcp, err := net.Listen("tcp", ap.String())
+		udp, err := net.ListenPacket("udp", ap.String())
 		if err != nil {
 			return nil, fmt.Errorf("remote DNS listen: %w", err)
 		}
-		bound := netip.AddrPortFrom(ap.Addr(), uint16(tcp.Addr().(*net.TCPAddr).Port))
-		udp, err := net.ListenPacket("udp", bound.String())
+		bound := netip.AddrPortFrom(ap.Addr(), uint16(udp.LocalAddr().(*net.UDPAddr).Port))
+		tcp, err := net.Listen("tcp", bound.String())
 		if err == nil {
 			return &stub{addr: bound.String(), udp: udp, tcp: tcp, ask: ask, trace: os.Getenv("HOST_SHELL_DNS_TRACE") != ""}, nil
 		}
-		tcp.Close()
+		udp.Close()
 		if i+1 >= attempts {
 			return nil, fmt.Errorf("remote DNS listen: %w", err)
 		}

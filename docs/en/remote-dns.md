@@ -85,31 +85,53 @@ host-shell bridge --remote-dns -- \
     --mcp --remote-dns --remote-dns-listen 127.0.0.1:53 --remote-dns-configure
 ```
 
-`--remote-dns-configure` adds (injects) the following settings to the OS at startup and deletes (removes) them on exit. They are not settings the OS discards by itself; adding and removing are one paired operation. The NRPT rule is stored in the registry, so when the target `host-shell` is killed or the machine loses power, the rule remains until the next start with `--remote-dns-configure` or manual removal.
-
-> [!IMPORTANT]
-> This change affects name resolution for the whole machine, including every user and service on the target. Before passing `--remote-dns-configure`, show the user what changes (the NRPT rule, the loopback default route when needed, and that the rule remains after an abnormal exit) and obtain their approval. The same applies to the manual procedure. Agents must not add this option or run the manual commands without that approval.
-
-The connecting user must be an administrator in an elevated session; Windows OpenSSH grants administrators an elevated token with public key authentication. Without elevation, startup stops with an error.
+`--remote-dns-configure` adds (injects) the following settings to the OS at startup and deletes (removes) them on exit. Both settings are volatile and nothing is written to disk: the NRPT rule goes into a volatile registry key (kept in memory only and gone after a restart), and the route goes into the ActiveStore (also cleared by a restart). The persistent registry and the persistent route store are not changed.
 
 | Setting | Content | On exit |
 |---|---|---|
-| NRPT rule | Sends queries for the namespace `.` (every name) to the listen address. The comment is `host-shell-remote-dns pid=<process ID>` | Removed |
-| Loopback default route | Only when there is no IPv4 default route: a route with the loopback interface as next hop (metric 9999) in the store that a reboot clears (ActiveStore). An existing default route is left alone | Removed if it was added |
+| NRPT rule | Sends queries for the namespace `.` (every name) to the listen address. Created as a volatile key under `DnsPolicyConfig`, commented `host-shell-remote-dns pid=<process ID>`. If the `DnsPolicyConfig` key itself is missing, it is created as a volatile key too | Removed (a `DnsPolicyConfig` key it created is removed when empty) |
+| Loopback default route | Only when there is no IPv4 default route: a route with the loopback interface as next hop (metric 9999) in the ActiveStore. Not added when a default route (a default gateway) exists | Removed if it was added |
 
 Table: Settings applied by `--remote-dns-configure`
 
-`sys_get_info` reports the applied settings as `remote_dns_configured`. The NRPT rule is stored in the registry and survives a reboot. When the target `host-shell` is killed and leaves the rule behind, the next start with `--remote-dns-configure` cleans it up: rules commented `host-shell-remote-dns` (including the manual procedure's rule) or carrying the ID of a process that no longer runs, and loopback default routes with metric 9999. If another running session owns a rule, startup stops with an error.
+How long the settings remain depends on how the session ends.
+
+| How it ends | What happens to the settings |
+|---|---|
+| Normal exit, client disconnect (including a killed client-side bridge or ssh) | Removed on exit |
+| Target `host-shell` killed | Cleaned up at the next start with `--remote-dns-configure`; until then they remain until a restart or manual removal. Nothing answers the leftover rule, so lookups fail immediately meanwhile |
+| Restart, power loss | All gone, because they are volatile |
+
+Table: How a session ends and what happens to the settings
+
+At startup, the cleanup covers rules commented `host-shell-remote-dns` (including the manual procedure's rule) or carrying the ID of a process that no longer runs, an empty volatile `DnsPolicyConfig` key, and loopback default routes with metric 9999. If another running session owns a rule, startup stops with an error. `sys_get_info` reports the applied settings as `remote_dns_configured`.
+
+> [!IMPORTANT]
+> Even though they are volatile, the settings affect name resolution for the whole machine while they exist, including every user and service on the target. Before passing `--remote-dns-configure`, show the user what changes (the NRPT rule, the loopback default route when needed, and that the settings remain until the next start or a restart if the target `host-shell` is killed) and obtain their approval. The same applies to the manual procedure. Agents must not add this option or run the manual commands without that approval.
+
+The connecting user must be an administrator in an elevated session; Windows OpenSSH grants administrators an elevated token with public key authentication. Without elevation, startup stops with an error.
+
+A persistent key cannot be created under a volatile key. While host-shell keeps a volatile `DnsPolicyConfig` key it created, an administrator cannot add persistent rules with `Add-DnsClientNrptRule`.
 
 ### Procedure (manual configuration)
 
-Without `--remote-dns-configure`, an administrator applies the settings after obtaining the user's approval.
+Without `--remote-dns-configure`, an administrator applies the settings after obtaining the user's approval. `Add-DnsClientNrptRule` creates persistent rules, so this procedure creates the volatile key directly.
 
 1. Start with the same command as the automatic procedure, without `--remote-dns-configure`.
-2. Add the NRPT rule from an elevated PowerShell, and a loopback default route when there is no IPv4 default route. `exec_run` can run it as well.
+2. From an elevated PowerShell, add a volatile NRPT rule, and a loopback default route in the ActiveStore when there is no IPv4 default route. `exec_run` can run it as well.
 
    ```powershell
-   Add-DnsClientNrptRule -Namespace '.' -NameServers 127.0.0.1 -Comment host-shell-remote-dns
+   $base = 'SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig'
+   $rw = [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree
+   $vol = [Microsoft.Win32.RegistryOptions]::Volatile
+   $hklm = [Microsoft.Win32.Registry]::LocalMachine
+   $p = $hklm.OpenSubKey($base, $true)
+   if (-not $p) { $p = $hklm.CreateSubKey($base, $rw, $vol); $p.SetValue('host-shell-remote-dns', 'volatile parent') }
+   $k = $p.CreateSubKey('{5f0c8b8e-6d1a-4c2e-9b7a-686f73747368}', $rw, $vol)
+   $k.SetValue('Version', 2, 'DWord'); $k.SetValue('ConfigOptions', 8, 'DWord')
+   $k.SetValue('GenericDNSServers', '127.0.0.1'); $k.SetValue('IPSECCARestriction', ''); $k.SetValue('DisplayName', '')
+   $k.SetValue('Name', [string[]]@('.'), 'MultiString'); $k.SetValue('Comment', 'host-shell-remote-dns')
+   $k.Close(); $p.Close()
    $lo = (Get-NetIPAddress -AddressFamily IPv4 -IPAddress 127.0.0.1).InterfaceIndex
    if (-not (Get-NetRoute -AddressFamily IPv4 -DestinationPrefix 0.0.0.0/0 -ErrorAction SilentlyContinue)) {
      New-NetRoute -DestinationPrefix 0.0.0.0/0 -InterfaceIndex $lo -NextHop 0.0.0.0 -RouteMetric 9999 -PolicyStore ActiveStore | Out-Null
@@ -120,8 +142,16 @@ Without `--remote-dns-configure`, an administrator applies the settings after ob
 3. Remove the rule and the added route when finished.
 
    ```powershell
-   Get-DnsClientNrptRule | Where-Object Comment -eq 'host-shell-remote-dns' |
-     ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force }
+   $base = 'SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig'
+   $hklm = [Microsoft.Win32.Registry]::LocalMachine
+   $p = $hklm.OpenSubKey($base, $true)
+   if ($p) {
+     $p.DeleteSubKey('{5f0c8b8e-6d1a-4c2e-9b7a-686f73747368}', $false)
+     $made = $p.GetValue('host-shell-remote-dns') -eq 'volatile parent'
+     $empty = $p.SubKeyCount -eq 0
+     $p.Close()
+     if ($made -and $empty) { $hklm.DeleteSubKey($base) }
+   }
    $lo = (Get-NetIPAddress -AddressFamily IPv4 -IPAddress 127.0.0.1).InterfaceIndex
    Get-NetRoute -AddressFamily IPv4 -DestinationPrefix 0.0.0.0/0 -InterfaceIndex $lo -ErrorAction SilentlyContinue |
      Where-Object RouteMetric -eq 9999 | Remove-NetRoute -Confirm:$false
@@ -144,7 +174,7 @@ Table: Resolution paths on Windows
 - **Answers**: A and AAAA are answered, with a CNAME when the canonical name differs from the query name. The TTL is 30 seconds. Other types (HTTPS, SVCB, PTR, MX, and so on) get an empty answer (NODATA). NXDOMAIN is returned only for names without addresses in any family, so the OS does not cache an IPv6-only name as missing.
 - **Listening**: Only loopback addresses are accepted. If another session uses the same address, startup stops with a bind error. The server listens only while connected and closes on disconnect. `sys_get_info` reports it as `remote_dns_listen`.
 - **Access control**: Unlike the private Linux socket, every user and service on the target can query it. The NRPT rule also applies to the whole machine.
-- **A rule left after disconnect**: With nothing answering, lookups fail immediately without waiting. Remove it with step 3 of the manual procedure, or start again with `--remote-dns-configure`.
+- **A rule left after disconnect**: With nothing answering, lookups fail immediately without waiting. Remove it with step 3 of the manual procedure, start again with `--remote-dns-configure`, or restart.
 - **Environment variables**: `exec_run` and `job_start` environments are unchanged. Because the relay is configured OS-wide, descendants such as code-server's extension host use the same path.
 
 ## Combine with the HTTP proxy
@@ -253,9 +283,10 @@ Windows targets were verified on a Windows 11 Enterprise (build 26300, amd64) Hy
 | Combined with the HTTP proxy | HTTPS to an allowed destination succeeds with `curl.exe --ssl-revoke-best-effort` | Same | Verified |
 | Failure cases | A second session on the same address stops at startup; with a leftover rule, lookups fail immediately | Same | Verified |
 | Next hop of the default route | With the loopback interface, on-link, or a non-forwarding host, `getaddrinfo` succeeds and nothing reaches outside. Direct outbound connections time out after about 21 seconds (about 0.1 seconds to fail without the route) | Same | Verified |
-| Persistence of the settings | After a reboot, the NRPT rule remains and the ActiveStore route is gone | Same | Verified |
-| `--remote-dns-configure` | Adding the rule and the loopback default route; resolution by .NET, Node.js `dns.lookup`, `curl.exe`, and `ping`; removal on exit; removal when the client side is killed; removal on the next start of the rule and route left by a killed target `host-shell`; no route added when a default route exists | Same | Verified |
-| `--remote-dns-configure` (non-elevated session) | Error at startup | None | Unverified |
+| Persistence of the settings | After a reboot, a rule from `Add-DnsClientNrptRule` remains; a rule in a volatile key, a volatile `DnsPolicyConfig` key, and the ActiveStore route are gone. The DNS Client follows rules in volatile keys right after they are added and removed | Same | Verified |
+| `--remote-dns-configure` | Adding the volatile rule (with and without an existing `DnsPolicyConfig`) and the loopback default route; resolution by .NET, Node.js `dns.lookup`, `curl.exe`, and `ping`; removal on exit; removal when the client side is killed; cleanup at the next start, and disappearance on restart, of the rule, key, and route left by a killed target `host-shell`; cleanup of the manual procedure's persistent rule; no route added when a default route exists | Same | Verified |
+| Manual procedure | The listed commands add and remove the volatile rule and route, and remove the `DnsPolicyConfig` key they created when it was missing | Same | Verified |
+| Non-administrator connecting user (Users, Power Users) | The DNS server listens (127.0.0.1:53, UDP and TCP); `Resolve-DnsName -Server 127.0.0.1` and Node.js `dns.resolve4` succeed. `--remote-dns-configure` stops at startup with an error saying administrator rights are needed, and the manual procedure is refused; neither changes OS settings | Same (tester removed from Administrators) | Verified |
 | code-server extension host, Copilot CLI and Copilot Chat | Behavior on Windows targets | None | Unverified |
 | Windows Server, arm64 | Behavior | None | Unverified |
 | `nslookup` | Interaction with the NRPT rule | None | Unverified |
@@ -268,7 +299,7 @@ Unverified:
 - Patched-copy mode on arm64 (archive inspection only)
 - Browser Web extensions
 
-The validation history is in [261102-remote-dns-validation.md](../prompts/past/261102-remote-dns-validation.md), [261103-copilot-chat-remote-dns-validation.md](../prompts/past/261103-copilot-chat-remote-dns-validation.md), [261104-windows-target-validation.md](../prompts/past/261104-windows-target-validation.md), [261104-windows-remote-dns-design.md](../prompts/past/261104-windows-remote-dns-design.md), and [261105-windows-remote-dns-configure-design.md](../prompts/past/261105-windows-remote-dns-configure-design.md) (Japanese only).
+The validation history is in [261102-remote-dns-validation.md](../prompts/past/261102-remote-dns-validation.md), [261103-copilot-chat-remote-dns-validation.md](../prompts/past/261103-copilot-chat-remote-dns-validation.md), [261104-windows-target-validation.md](../prompts/past/261104-windows-target-validation.md), [261104-windows-remote-dns-design.md](../prompts/past/261104-windows-remote-dns-design.md), [261105-windows-remote-dns-configure-design.md](../prompts/past/261105-windows-remote-dns-configure-design.md), and [261105-windows-remote-dns-volatile-design.md](../prompts/past/261105-windows-remote-dns-volatile-design.md) (Japanese only).
 
 Development validation commands (Linux, Node.js required):
 

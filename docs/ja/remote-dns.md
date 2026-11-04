@@ -85,31 +85,53 @@ host-shell bridge --remote-dns -- \
     --mcp --remote-dns --remote-dns-listen 127.0.0.1:53 --remote-dns-configure
 ```
 
-`--remote-dns-configure` は、起動時に次の設定を OS へ追加 (注入) し、終了時に削除 (除去) します。OS 側で自動的に消える設定ではなく、追加と削除を一組で行う操作です。NRPT 規則はレジストリーに保存されるので、接続先の `host-shell` が強制終了された場合や電源が切れた場合は、次に `--remote-dns-configure` で起動するか、手動で削除するまで残ります。
-
-> [!IMPORTANT]
-> この変更はマシン全体の名前解決に影響し、接続先のすべてのユーザーとサービスが対象になります。`--remote-dns-configure` を指定する前に、変更内容 (NRPT 規則、必要な場合のループバックのデフォルト ルート、異常終了時に規則が残ること) を利用者に示し、承諾を得てください。手動設定の手順で変更する場合も同じです。エージェントは承諾なしにこのオプションを付けたり、手動設定のコマンドを実行したりしてはいけません。
-
-接続ユーザーが管理者で、昇格済みのセッションである必要があります。Windows の OpenSSH は、公開鍵認証の管理者には昇格済みのトークンを渡します。昇格していない場合は、起動時にエラーで停止します。
+`--remote-dns-configure` は、起動時に次の設定を OS へ追加 (注入) し、終了時に削除 (除去) します。設定はどちらも揮発性で、ディスクには書き込みません。NRPT 規則は揮発性のレジストリー キー (メモリー上だけに置かれ、再起動で消えるキー) に、ルートは ActiveStore (再起動で消える領域) に置きます。永続するレジストリーと永続するルートの保存先は変更しません。
 
 | 設定 | 内容 | 終了時 |
 |---|---|---|
-| NRPT 規則 | 名前空間 `.` (すべての名前) の問い合わせ先を待ち受けアドレスにする。コメントは `host-shell-remote-dns pid=<プロセス ID>` | 削除する |
-| ループバックのデフォルト ルート | IPv4 のデフォルト ルートがない場合だけ、ループバック インターフェイスを次ホップにしたルート (メトリック 9999) を、再起動で消える領域 (ActiveStore) に追加する。既存のデフォルト ルートには触れない | 追加した場合だけ削除する |
+| NRPT 規則 | 名前空間 `.` (すべての名前) の問い合わせ先を待ち受けアドレスにする。`DnsPolicyConfig` の下に揮発性キーとして作り、コメントは `host-shell-remote-dns pid=<プロセス ID>`。`DnsPolicyConfig` キー自体がなければ、それも揮発性キーとして作る | 削除する (作った `DnsPolicyConfig` キーも、空なら削除する) |
+| ループバックのデフォルト ルート | IPv4 のデフォルト ルートがない場合だけ、ループバック インターフェイスを次ホップにしたルート (メトリック 9999) を ActiveStore に追加する。既存のデフォルト ルート (デフォルト ゲートウェイ) があれば追加しない | 追加した場合だけ削除する |
 
 Table: `--remote-dns-configure` が行う設定
 
-行った設定は、`sys_get_info` の `remote_dns_configured` で確認できます。NRPT 規則はレジストリーに保存されるので、再起動しても残ります。接続先の `host-shell` が強制終了されて規則が残った場合は、次に `--remote-dns-configure` で起動したときに片付けます。片付ける対象は、コメントが `host-shell-remote-dns` (手動手順の規則を含む) か、動いていないプロセスの ID を持つ規則と、メトリック 9999 のループバックのデフォルト ルートです。動いている別のセッションの規則があれば、起動時にエラーで停止します。
+設定がいつまで残るかは、終わり方によって変わります。
+
+| 終わり方 | 設定の扱い |
+|---|---|
+| 正常終了、接続元の切断 (接続元の bridge や ssh の強制終了を含む) | 終了時に削除する |
+| 接続先の `host-shell` の強制終了 | 次に `--remote-dns-configure` で起動したときに片付ける。それまでは、再起動するか手動で削除するまで残る。残った規則の問い合わせ先には応答するものがないため、その間の名前解決はすぐ失敗する |
+| 再起動、電源断 | 揮発性なので、すべて消える |
+
+Table: 終わり方と設定の扱い
+
+起動時に片付ける対象は、コメントが `host-shell-remote-dns` (手動手順の規則を含む) か、動いていないプロセスの ID を持つ規則です。空の揮発性の `DnsPolicyConfig` キーと、メトリック 9999 のループバックのデフォルト ルートも片付けます。動いている別のセッションの規則があれば、起動時にエラーで停止します。行った設定は、`sys_get_info` の `remote_dns_configured` で確認できます。
+
+> [!IMPORTANT]
+> 揮発性であっても、設定がある間はマシン全体の名前解決に影響し、接続先のすべてのユーザーとサービスが対象になります。`--remote-dns-configure` を指定する前に、変更内容 (NRPT 規則、必要な場合のループバックのデフォルト ルート、接続先の `host-shell` が強制終了されると次の起動か再起動まで残ること) を利用者に示し、承諾を得てください。手動設定の手順で変更する場合も同じです。エージェントは承諾なしにこのオプションを付けたり、手動設定のコマンドを実行したりしてはいけません。
+
+接続ユーザーが管理者で、昇格済みのセッションである必要があります。Windows の OpenSSH は、公開鍵認証の管理者には昇格済みのトークンを渡します。昇格していない場合は、起動時にエラーで停止します。
+
+揮発性のキーの下には、永続するキーを作れません。そのため、host-shell が `DnsPolicyConfig` キーを揮発性で作っている間は、管理者が `Add-DnsClientNrptRule` で永続する規則を追加できません。
 
 ### 手順 (手動設定)
 
-`--remote-dns-configure` を使わない場合は、利用者の承諾を得たうえで、管理者が設定します。
+`--remote-dns-configure` を使わない場合は、利用者の承諾を得たうえで、管理者が設定します。`Add-DnsClientNrptRule` は永続する規則を作るため、ここでは揮発性のキーを直接作ります。
 
 1. 自動設定と同じコマンドから `--remote-dns-configure` を除いて起動します。
-2. 管理者権限の PowerShell で NRPT 規則を追加します。IPv4 のデフォルト ルートがない場合は、ループバックのデフォルト ルートも追加します。`exec_run` からも実行できます。
+2. 管理者権限の PowerShell で、揮発性の NRPT 規則を追加します。IPv4 のデフォルト ルートがない場合は、ループバックのデフォルト ルートも ActiveStore に追加します。`exec_run` からも実行できます。
 
    ```powershell
-   Add-DnsClientNrptRule -Namespace '.' -NameServers 127.0.0.1 -Comment host-shell-remote-dns
+   $base = 'SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig'
+   $rw = [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree
+   $vol = [Microsoft.Win32.RegistryOptions]::Volatile
+   $hklm = [Microsoft.Win32.Registry]::LocalMachine
+   $p = $hklm.OpenSubKey($base, $true)
+   if (-not $p) { $p = $hklm.CreateSubKey($base, $rw, $vol); $p.SetValue('host-shell-remote-dns', 'volatile parent') }
+   $k = $p.CreateSubKey('{5f0c8b8e-6d1a-4c2e-9b7a-686f73747368}', $rw, $vol)
+   $k.SetValue('Version', 2, 'DWord'); $k.SetValue('ConfigOptions', 8, 'DWord')
+   $k.SetValue('GenericDNSServers', '127.0.0.1'); $k.SetValue('IPSECCARestriction', ''); $k.SetValue('DisplayName', '')
+   $k.SetValue('Name', [string[]]@('.'), 'MultiString'); $k.SetValue('Comment', 'host-shell-remote-dns')
+   $k.Close(); $p.Close()
    $lo = (Get-NetIPAddress -AddressFamily IPv4 -IPAddress 127.0.0.1).InterfaceIndex
    if (-not (Get-NetRoute -AddressFamily IPv4 -DestinationPrefix 0.0.0.0/0 -ErrorAction SilentlyContinue)) {
      New-NetRoute -DestinationPrefix 0.0.0.0/0 -InterfaceIndex $lo -NextHop 0.0.0.0 -RouteMetric 9999 -PolicyStore ActiveStore | Out-Null
@@ -120,8 +142,16 @@ Table: `--remote-dns-configure` が行う設定
 3. 使い終わったら、規則と追加したルートを削除します。
 
    ```powershell
-   Get-DnsClientNrptRule | Where-Object Comment -eq 'host-shell-remote-dns' |
-     ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force }
+   $base = 'SYSTEM\CurrentControlSet\Services\Dnscache\Parameters\DnsPolicyConfig'
+   $hklm = [Microsoft.Win32.Registry]::LocalMachine
+   $p = $hklm.OpenSubKey($base, $true)
+   if ($p) {
+     $p.DeleteSubKey('{5f0c8b8e-6d1a-4c2e-9b7a-686f73747368}', $false)
+     $made = $p.GetValue('host-shell-remote-dns') -eq 'volatile parent'
+     $empty = $p.SubKeyCount -eq 0
+     $p.Close()
+     if ($made -and $empty) { $hklm.DeleteSubKey($base) }
+   }
    $lo = (Get-NetIPAddress -AddressFamily IPv4 -IPAddress 127.0.0.1).InterfaceIndex
    Get-NetRoute -AddressFamily IPv4 -DestinationPrefix 0.0.0.0/0 -InterfaceIndex $lo -ErrorAction SilentlyContinue |
      Where-Object RouteMetric -eq 9999 | Remove-NetRoute -Confirm:$false
@@ -144,7 +174,7 @@ Table: Windows での名前解決の経路
 - **回答の内容**: A と AAAA に答え、canonical name が問い合わせ名と異なる場合は CNAME を付けます。TTL は 30 秒です。その他の種別 (HTTPS、SVCB、PTR、MX など) には回答なし (NODATA) を返します。NXDOMAIN は、どのアドレス ファミリーでもアドレスがない名前に限って返します (IPv6 だけの名前を「存在しない」と OS にキャッシュさせないため)。
 - **待ち受け**: ループバック アドレスだけを受け付けます。同じアドレスを別のセッションが使っている場合は、起動時に bind エラーで停止します。待ち受けは接続中だけで、切断時に閉じます。`sys_get_info` の `remote_dns_listen` で確認できます。
 - **アクセス制御**: Linux の非公開ソケットと異なり、接続先のすべてのユーザーとサービスが問い合わせできます。NRPT 規則もマシン全体に適用されます。
-- **切断後に規則が残った場合**: 問い合わせ先がないため、名前解決は待たずにすぐ失敗します。手動設定の手順 3 で削除するか、`--remote-dns-configure` で起動し直してください。
+- **切断後に規則が残った場合**: 問い合わせ先がないため、名前解決は待たずにすぐ失敗します。手動設定の手順 3 で削除するか、`--remote-dns-configure` で起動し直すか、再起動してください。
 - **環境変数**: `exec_run` と `job_start` の環境変数は変更しません。OS 全体の設定で中継するため、code-server の拡張ホストのような子孫プロセスにも同じ経路が使われます。
 
 ## HTTP プロキシとの併用
@@ -253,9 +283,10 @@ Windows の接続先は、Windows 11 Enterprise (ビルド 26300、amd64) の Hy
 | HTTP プロキシとの併用 | `curl.exe --ssl-revoke-best-effort` で許可済み宛先への HTTPS が成功する | 同上 | 検証済 |
 | 異常時 | 同じアドレスでの 2 つ目のセッションは起動時に停止する。規則が残った状態では名前解決がすぐ失敗する | 同上 | 検証済 |
 | デフォルト ルートの次ホップ | ループバック、オンリンク、転送しないホストのどれでも `getaddrinfo` が成功し、外部へは出られない。外部への直接の接続は約 21 秒でタイムアウトする (ルートがなければ約 0.1 秒で失敗) | 同上 | 検証済 |
-| 設定の永続性 | 再起動後、NRPT 規則は残り、ActiveStore のルートは消える | 同上 | 検証済 |
-| `--remote-dns-configure` | 規則とループバックのデフォルト ルートの追加、.NET・Node.js `dns.lookup`・`curl.exe`・`ping` の名前解決、終了時の削除、接続元を強制終了したときの削除、接続先の `host-shell` を強制終了して残った規則とルートの次回起動時の削除、既存のデフォルト ルートがあるときにルートを追加しないこと | 同上 | 検証済 |
-| `--remote-dns-configure` (昇格していないセッション) | 起動時のエラー | なし | 未検証 |
+| 設定の永続性 | 再起動後、`Add-DnsClientNrptRule` の規則は残る。揮発性キーの規則、揮発性の `DnsPolicyConfig` キー、ActiveStore のルートは消える。DNS Client は揮発性キーの規則にも、追加と削除の直後から従う | 同上 | 検証済 |
+| `--remote-dns-configure` | 揮発性の規則 (`DnsPolicyConfig` がある場合とない場合) とループバックのデフォルト ルートの追加、.NET・Node.js `dns.lookup`・`curl.exe`・`ping` の名前解決、終了時の削除、接続元を強制終了したときの削除、接続先の `host-shell` を強制終了して残った規則・キー・ルートの次回起動時の削除と再起動による消滅、手動手順の永続する規則の片付け、既存のデフォルト ルートがあるときにルートを追加しないこと | 同上 | 検証済 |
+| 手動設定の手順 | 記載のコマンドで揮発性の規則とルートを追加・削除し、`DnsPolicyConfig` がない場合は作ったキーも削除する | 同上 | 検証済 |
+| 管理者でない接続ユーザー (Users、Power Users) | DNS サーバーの待ち受け (127.0.0.1:53、UDP と TCP)、`Resolve-DnsName -Server 127.0.0.1`、Node.js `dns.resolve4` が成功する。`--remote-dns-configure` は起動時に管理者権限が必要というエラーで停止し、手動設定の手順も拒否される。どちらも OS の設定は変わらない | 同上 (tester を Administrators から外した状態) | 検証済 |
 | code-server の拡張ホスト、Copilot CLI・Copilot Chat | Windows の接続先での動作 | なし | 未検証 |
 | Windows Server、arm64 | 動作 | なし | 未検証 |
 | `nslookup` | NRPT 規則との関係 | なし | 未検証 |
@@ -268,7 +299,7 @@ Table: Windows の接続先での検証状況
 - 専用コピーモードの arm64 での動作 (アーカイブの検査のみ)
 - ブラウザー内の Web 拡張
 
-検証の経緯は [remote-dns の検証記録](../prompts/past/261102-remote-dns-validation.md)、[画面内 Copilot Chat の検証記録](../prompts/past/261103-copilot-chat-remote-dns-validation.md)、[Windows 接続先の検証記録](../prompts/past/261104-windows-target-validation.md)、[Windows 向け remote-dns の設計](../prompts/past/261104-windows-remote-dns-design.md)、[Windows の名前解決設定の自動化の設計](../prompts/past/261105-windows-remote-dns-configure-design.md) にあります。
+検証の経緯は [remote-dns の検証記録](../prompts/past/261102-remote-dns-validation.md)、[画面内 Copilot Chat の検証記録](../prompts/past/261103-copilot-chat-remote-dns-validation.md)、[Windows 接続先の検証記録](../prompts/past/261104-windows-target-validation.md)、[Windows 向け remote-dns の設計](../prompts/past/261104-windows-remote-dns-design.md)、[Windows の名前解決設定の自動化の設計](../prompts/past/261105-windows-remote-dns-configure-design.md)、[NRPT 規則の揮発化の設計](../prompts/past/261105-windows-remote-dns-volatile-design.md) にあります。
 
 開発時の検証コマンド (Linux、Node.js が必要):
 

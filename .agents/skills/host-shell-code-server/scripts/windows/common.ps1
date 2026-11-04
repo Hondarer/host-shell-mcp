@@ -96,10 +96,24 @@ function Invoke-HscsCli {
 }
 
 # Get-HscsRunningIds returns the node.exe processes serving code-server with this tool's configuration.
+# A standard user connected over SSH (a network logon) cannot reach CIM; then the processes running the
+# bundled node.exe count instead (Get-Process reports the path of the user's own processes).
 function Get-HscsRunningIds {
     param($Config)
     $ids = @()
-    foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue)) {
+    try {
+        $processes = @(Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction Stop)
+    }
+    catch {
+        $node = [System.IO.Path]::GetFullPath($Config.NodeExe)
+        foreach ($p in @(Get-Process -Name node -ErrorAction SilentlyContinue)) {
+            if ($p.Path -and [string]::Equals([System.IO.Path]::GetFullPath($p.Path), $node, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $ids += [int]$p.Id
+            }
+        }
+        return @($ids)
+    }
+    foreach ($p in $processes) {
         if ($null -eq $p) {
             continue
         }

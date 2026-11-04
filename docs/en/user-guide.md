@@ -512,6 +512,28 @@ Even on Shift_JIS or EUC-JP targets, `host-shell` converts text to and from UTF-
 - `exec_sudo` is unavailable on Windows. Run privileged operations (service control, `HKLM` registry writes, etc.) from a `host-shell` instance started under an administrator account.
 - Dedicated tools handle Windows services (`svc_list`, `svc_control`), Event Log (`log_query`), and registry keys (`reg_read`, `reg_write`, `reg_delete`).
 - `pty` jobs use ConPTY (Windows 10 1809 / Windows Server 2019 or later).
+- `job_stop`, `proc_kill`, and timeouts terminate processes directly through the Windows API (`TerminateProcess`); jobs and timeouts also terminate descendants.
+
+#### Non-administrator connecting users
+
+When the connecting user is not an administrator (Users or Power Users), deployment and the main tools still work. The SSH connection is a network logon, however, so Windows denies access to service management (SCM), the Event Log, and CIM/WMI. The same restriction applies to commands outside `host-shell` (`sc.exe`, `Get-Service`, `Get-CimInstance`, `Get-Net*`, `taskkill`).
+
+| Subject | Result for a non-administrator connecting user |
+|---|---|
+| Deployment (`deploy.sh`, the user guide procedure), `probe.sh` | Succeeds |
+| `exec_run`, `job_start` (including ConPTY), file operations, `transfer_push` and `transfer_pull` | Succeeds |
+| `job_stop`, `proc_kill`, termination on timeout | Succeeds (including descendants) |
+| `proc_list`, `net_list_listeners`, `disk_list`, `reg_read`, `reg_write` and `reg_delete` on HKCU | Succeeds |
+| `reg_write` on HKLM | Denied |
+| `svc_list`, `svc_control` | Denied (`open service control manager: Access is denied.`) |
+| `log_query` | Denied, including `System` and `Application` |
+| HTTP proxy through the client, local and remote forwards | Succeeds |
+| Installing, starting, and stopping code-server | Succeeds |
+| The `remote-dns` loopback DNS server | Succeeds. Routing the OS resolver to it (`--remote-dns-configure`, the manual procedure) needs administrator rights and is refused |
+
+Table: What works for non-administrator connecting users
+
+This was checked on a Windows 11 Enterprise (build 26300, amd64) virtual machine with the connecting user removed from Administrators, once in Users only and once also in Power Users (Verified; [validation record, Japanese](../prompts/past/261105-windows-standard-user-validation.md)). Both gave the same results. Domain users, Windows Server, and arm64 are Unverified.
 
 ## Troubleshooting
 

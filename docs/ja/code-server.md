@@ -159,6 +159,7 @@ Table: 表示言語の指定
 | `languagepacks.json` の生成と `argv.json` の書き込み (コメント・既存項目の保持、地域付きタグ、不正指定の拒否) | 自動テスト (`tests/language-packs.test.mjs`) | 検証済 |
 | Windows 接続先 (`install.ps1 -Locale`) で、`languagepacks.json` の登録、`argv.json` への `"locale": "ja"` の書き込み、未導入言語指定時のエラー停止 (`-Locale fr`、`argv.json` を作らない) | Windows 11 Enterprise (ビルド 26300、amd64) の Hyper-V 仮想マシン (インターネットへの経路なし)、Windows PowerShell 5.1、code-server 4.144.0 | 検証済 |
 | Windows 接続先のブラウザーでの日本語表示 | なし | 未検証 |
+| 管理者でない接続ユーザー (Users、Power Users) の Windows 接続先で、`install.ps1 -Locale` (`ja` と `fr`)、`start.ps1` の起動と `/login` の取得、実行中の `uninstall.ps1` の拒否、`job_stop` による停止 | 同上 (接続ユーザーを Administrators から外した状態) | 検証済 |
 | Linux arm64 の接続先 | なし | 未検証 |
 
 Table: 表示言語の検証状況
