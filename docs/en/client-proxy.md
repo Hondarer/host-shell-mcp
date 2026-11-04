@@ -54,6 +54,28 @@ This is an HTTP proxy, not a relay for the target OS's DNS queries. When an appl
 
 `destination not allowed` in `proxy_status` means the destination allowlist rejected the request; it is not a DNS error (HTTP returns 403, and HTTPS receives 403 for `CONNECT`). Compare requests to allowed hosts, denied hosts and ports, and application errors.
 
+### Windows targets
+
+On Windows targets, the following two clients need extra options.
+
+| Client | Symptom | Remedy |
+|---|---|---|
+| `curl.exe` (bundled with Windows, Schannel TLS) | `CONNECT` succeeds, but certificate revocation endpoints (CRL, OCSP) are unreachable and the request fails with `CRYPT_E_REVOCATION_OFFLINE` (exit code 35) | Pass `--ssl-revoke-best-effort` (skips the check when it cannot complete). To keep revocation checks, allow the certificate authority's CRL and OCSP destinations with `--proxy-allow-host` |
+| Windows PowerShell 5.1 `Invoke-WebRequest` and `Invoke-RestMethod` | They ignore `HTTPS_PROXY`, resolve the name on the target, and fail | Pass `-Proxy` and `-ProxyCredential` (below) |
+
+Table: Clients that need extra options on Windows targets
+
+```powershell
+$u = [Uri]$env:HTTPS_PROXY
+$user, $pass = $u.UserInfo.Split(':', 2)
+$cred = New-Object PSCredential($user, (ConvertTo-SecureString ([Uri]::UnescapeDataString($pass)) -AsPlainText -Force))
+Invoke-WebRequest -UseBasicParsing -Proxy "http://$($u.Authority)" -ProxyCredential $cred https://api.github.com/zen
+```
+
+The proxy URL contains credentials; do not print the variable's value.
+
+These were checked on a Windows 11 Enterprise (build 26300, amd64) target with curl 8.21.0 (Schannel) and Windows PowerShell 5.1.26100. With the remedies, HTTPS to the allowed `api.github.com:443` succeeded for both, and a destination not allowed received 403 for `CONNECT` (Verified). PowerShell 7 (`pwsh`) and other HTTP clients are unverified.
+
 ## Authentication and diagnostics
 
 The target proxy listener binds only to an ephemeral port on IPv4 loopback (`127.0.0.1`) and requires a session-specific proxy authentication token.

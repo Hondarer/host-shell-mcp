@@ -12,3 +12,4 @@
 - `pty` uses ConPTY (requires Windows 10 1809 / Windows Server 2019 or later).
 - `svc_list` and `svc_control` use the Service Control Manager; starting, stopping, or reconfiguring services requires an elevated administrator session. `log_query` reads the Event Log (`log`: `System`, `Application`, `Security`, or a channel name; `unit`: provider name); reading `Security` requires administrator privileges.
 - `reg_read`, `reg_write`, and `reg_delete` access the Windows registry. Writing to `HKLM\...` requires administrator privileges; `HKCU\...` does not.
+- Client proxy (`--client-proxy`): `curl.exe` (Schannel) fails with `CRYPT_E_REVOCATION_OFFLINE` when certificate revocation servers are unreachable; pass `--ssl-revoke-best-effort`. Windows PowerShell 5.1 `Invoke-WebRequest` ignores `HTTPS_PROXY`; pass `-Proxy` and `-ProxyCredential` built from the variable.

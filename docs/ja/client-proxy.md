@@ -54,6 +54,28 @@ flowchart LR
 
 `proxy_status` の `destination not allowed` は宛先許可規則による拒否であり、DNS エラーではありません (HTTP では 403、HTTPS では `CONNECT` に対する 403)。許可済みホストの通信、拒否されたホストとポート、アプリ側のエラーを照合して判断してください。
 
+### Windows の接続先
+
+Windows の接続先では、次の 2 つのクライアントに追加の指定が必要です。
+
+| クライアント | 症状 | 対処 |
+|---|---|---|
+| `curl.exe` (Windows 同梱、TLS は Schannel) | `CONNECT` は成功するが、証明書の失効確認先 (CRL、OCSP) に届かず `CRYPT_E_REVOCATION_OFFLINE` (終了コード 35) で失敗する | `--ssl-revoke-best-effort` (確認できなければ省略する) を指定する。失効確認を行う場合は、認証局の CRL・OCSP の宛先を `--proxy-allow-host` で許可する |
+| Windows PowerShell 5.1 の `Invoke-WebRequest`・`Invoke-RestMethod` | `HTTPS_PROXY` を読まず、接続先で名前解決しようとして失敗する | `-Proxy` と `-ProxyCredential` を指定する (下記) |
+
+Table: Windows の接続先で追加の指定が必要なクライアント
+
+```powershell
+$u = [Uri]$env:HTTPS_PROXY
+$user, $pass = $u.UserInfo.Split(':', 2)
+$cred = New-Object PSCredential($user, (ConvertTo-SecureString ([Uri]::UnescapeDataString($pass)) -AsPlainText -Force))
+Invoke-WebRequest -UseBasicParsing -Proxy "http://$($u.Authority)" -ProxyCredential $cred https://api.github.com/zen
+```
+
+プロキシの URL には認証情報が含まれるため、変数の値を表示しないでください。
+
+確認した環境は、Windows 11 Enterprise (ビルド 26300、amd64) の接続先で、curl 8.21.0 (Schannel) と Windows PowerShell 5.1.26100 です。どちらも、許可済みの `api.github.com:443` への HTTPS が対処の後で成功し、未許可の宛先は `CONNECT` に対する 403 になりました (検証済)。PowerShell 7 (`pwsh`) と他の HTTP クライアントは未検証です。
+
 ## 認証と診断
 
 接続先の中継プロキシは IPv4 ループバック (`127.0.0.1`) の動的ポートのみで待ち受け、セッション固有のトークンによるプロキシ認証を要求します。

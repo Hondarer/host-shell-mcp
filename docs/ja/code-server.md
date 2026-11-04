@@ -157,7 +157,8 @@ Table: 表示言語の指定
 | --- | --- | --- |
 | 初回日本語起動 (`--locale ja`)、コマンド パレットからの日英相互切り替え、未導入言語指定時のエラー停止 (`--locale fr`) | Oracle Linux 10.2 / x86_64 の Podman コンテナー (`--network none`、クライアント経由プロキシなし)、code-server 4.144.0、Chrome for Testing 148 (`127.0.0.1` 以外への通信を遮断) | 検証済 |
 | `languagepacks.json` の生成と `argv.json` の書き込み (コメント・既存項目の保持、地域付きタグ、不正指定の拒否) | 自動テスト (`tests/language-packs.test.mjs`) | 検証済 |
-| Windows 接続先 (`install.ps1`) | Windows PowerShell 5.1 での構文検査のみ | 未検証 |
+| Windows 接続先 (`install.ps1 -Locale`) で、`languagepacks.json` の登録、`argv.json` への `"locale": "ja"` の書き込み、未導入言語指定時のエラー停止 (`-Locale fr`、`argv.json` を作らない) | Windows 11 Enterprise (ビルド 26300、amd64) の Hyper-V 仮想マシン (インターネットへの経路なし)、Windows PowerShell 5.1、code-server 4.144.0 | 検証済 |
+| Windows 接続先のブラウザーでの日本語表示 | なし | 未検証 |
 | Linux arm64 の接続先 | なし | 未検証 |
 
 Table: 表示言語の検証状況
@@ -220,15 +221,15 @@ Table: 接続先のファイル配置
 
 ## 必要なディスク容量
 
-code-server 4.144.0 と既定の拡張機能 3 件を導入した場合の、接続先のディスク使用量の実測値です。Linux は開発環境 (WSL2、ext4) で実際に `install` を実行して計測しました。Windows は配布アーカイブと拡張機能を展開したサイズの計測値で、Windows 上での `install` の実行による計測ではありません。
+code-server 4.144.0 と既定の拡張機能 3 件を導入した場合の、接続先のディスク使用量の実測値です。どちらも実際に `install` を実行して計測しました。Linux は開発環境 (WSL2、ext4)、Windows は Windows 11 Enterprise (ビルド 26300) の仮想マシン (NTFS) です。Windows の値はファイル サイズの合計で、ドライブの空き容量は 836 MiB 減りました。
 
 | 配置先 | Linux x86_64 | Windows amd64 |
 | --- | --- | --- |
 | キット (配布アーカイブ、拡張機能、スクリプト) | 222 MiB | 204 MiB |
-| code-server 本体 | 683 MiB | 632 MiB |
+| code-server 本体 | 683 MiB | 611 MiB |
 | 拡張機能 | 5 MiB | 5 MiB |
-| ユーザー データ (設定) | 1 MiB | (未計測) |
-| 合計 | 912 MiB | 約 840 MiB |
+| ユーザー データ (設定) | 1 MiB | 1 MiB |
+| 合計 | 912 MiB | 821 MiB |
 
 Table: 接続先のディスク使用量 (実測値)
 

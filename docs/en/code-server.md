@@ -157,7 +157,8 @@ Table: Specifying the display language
 | --- | --- | --- |
 | First-start Japanese UI (`--locale ja`), offline switching between Japanese and English via the Command Palette, and failing on an uninstalled locale (`--locale fr`) | Oracle Linux 10.2 / x86_64 Podman container (`--network none`, no client proxy), code-server 4.144.0, Chrome for Testing 148 (requests other than to `127.0.0.1` blocked) | Verified |
 | Generating `languagepacks.json` and writing `argv.json` (preserving comments and existing keys, regional tags, rejecting malformed input) | Automated tests (`tests/language-packs.test.mjs`) | Verified |
-| Windows targets (`install.ps1`) | Syntax check with Windows PowerShell 5.1 only | Unverified |
+| Windows targets (`install.ps1 -Locale`): registering `languagepacks.json`, writing `"locale": "ja"` to `argv.json`, and stopping with an error for a language without a pack (`-Locale fr`, no `argv.json` created) | Windows 11 Enterprise (build 26300, amd64) Hyper-V virtual machine (no route to the internet), Windows PowerShell 5.1, code-server 4.144.0 | Verified |
+| Japanese display in the browser on Windows targets | None | Unverified |
 | Linux arm64 targets | None | Unverified |
 
 Table: Display language verification status
@@ -220,15 +221,15 @@ In addition to the paths above, code-server and its extensions may create small 
 
 ## Required disk space
 
-The table below shows measured disk usage on the target with code-server 4.144.0 and the three default extensions. The Linux figures come from running `install` in a development environment (WSL2, ext4). The Windows figures are the sizes of the extracted release archive and extensions, not a measurement of `install` running on Windows.
+The table below shows measured disk usage on the target with code-server 4.144.0 and the three default extensions. Both were measured by running `install`: Linux in a development environment (WSL2, ext4), and Windows on a Windows 11 Enterprise (build 26300) virtual machine (NTFS). The Windows figures are sums of file sizes; free space on the drive dropped by 836 MiB.
 
 | Location | Linux x86_64 | Windows amd64 |
 | --- | --- | --- |
 | Kit (release archive, extensions, scripts) | 222 MiB | 204 MiB |
-| code-server | 683 MiB | 632 MiB |
+| code-server | 683 MiB | 611 MiB |
 | Extensions | 5 MiB | 5 MiB |
-| User data (settings) | 1 MiB | (not measured) |
-| Total | 912 MiB | about 840 MiB |
+| User data (settings) | 1 MiB | 1 MiB |
+| Total | 912 MiB | 821 MiB |
 
 Table: Disk usage on the target (measured)
 

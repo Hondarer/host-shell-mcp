@@ -100,7 +100,7 @@ Table: Default locations
 "$SKILL"/scripts/remote.sh hop1,target true | od -c | head
 ```
 
-- Empty output means the route is clean.
+- Empty output means the route is clean. On Windows targets `true` is not a `cmd` command; its error goes to standard error and the check still works.
 - Any output means a shell startup file on a jump host or the target writes to standard output during non-interactive sessions, which corrupts MCP communication. Ask the user to silence non-interactive output in their startup file and stop (for bash, add `case $- in *i*) ;; *) return;; esac` at the top of `.bashrc`).
 - On authentication errors (`Permission denied`, `Host key verification failed`), ask the user to configure passwordless SSH for each hop and stop.
 
