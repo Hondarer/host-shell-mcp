@@ -3,7 +3,7 @@
 > [!NOTE]
 > This is an English translation. The Japanese version ([../ja/coding-agents.md](../ja/coding-agents.md)) is the single source of truth (SSOT) and takes precedence if they differ.
 
-This guide describes deploying Copilot, agy, Claude Code, Codex, and Grok CLIs into a target user's directories and running them from the [code-server](code-server.md) terminal. The goal is to use the CLIs through SSH relays even in isolated environments where the target cannot reach the internet directly. Only Copilot CLI has been checked end to end on a target ([Verified scope](#verified-scope)). The code-server skill does not automatically install or authenticate CLI coding agents.
+This guide describes deploying Copilot, agy, Claude Code, Codex, and Grok CLIs into a target user's directories and running them from the [code-server](code-server.md) terminal. The goal is to use the CLIs through SSH relays even in isolated environments where the target cannot reach the internet directly. Only Copilot CLI has been checked end to end on a target ([Verified scope](#verified-scope)). With [BYOK](#byok-models-the-user-provides) (a model the user provides), Copilot CLI and the in-editor Copilot Chat work without a GitHub sign-in. The code-server skill does not automatically install or authenticate CLI coding agents.
 
 An agent workflow scaffold is available in the [host-shell-coding-agents skill](../../.agents/skills/host-shell-coding-agents/SKILL.md). It does not yet include verified installers for individual CLIs.
 
@@ -121,6 +121,41 @@ Table: Copilot destinations
 
 At startup, the in-editor Copilot Chat fetches the known-model catalog for BYOK (external models using the user's own API keys) from `main.vscode-cdn.net` ([fetching implementation](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts)). When not allowed, `Failed to update known models list` is logged. To allow fetching the catalog, add `--proxy-allow-host main.vscode-cdn.net:443` (or apply it in a running session via [`proxy_rules_update`](client-proxy.md#proxy_rules_update-bridge)). Telemetry and experimentation hosts (such as `mobile.events.data.microsoft.com` and `default.exp-tas.com`) are not needed.
 
+## BYOK (models the user provides)
+
+BYOK (Bring Your Own Key) runs inference on a model endpoint and API key the user provides. Both Copilot CLI and the in-editor Copilot Chat can use BYOK models without signing in to GitHub. Features that need GitHub authentication (Copilot CLI `/delegate`, the GitHub MCP server, inline completions in Chat, and so on) are unavailable. Inference requests and prompts go to the configured endpoint.
+
+As with other traffic, `bridge` relays the target's route to the endpoint. Use a [remote forward](port-forward.md) for an endpoint on the client or inside the closed network, and an allowed destination of the [HTTP proxy through the client](client-proxy.md) (for example `<resource>.openai.azure.com:443`) for an external one.
+
+### Copilot CLI
+
+Write the endpoint in `providers.json` and point the `COPILOT_PROVIDERS_CONFIG` environment variable at it. With `COPILOT_OFFLINE=true`, the CLI does not contact GitHub's servers (telemetry included). An Azure OpenAI example (replace `apiKey` with the real key and restrict the file to the user):
+
+```json
+{
+  "providers": [
+    {
+      "name": "myazure",
+      "type": "azure",
+      "baseUrl": "https://<resource>.openai.azure.com/openai",
+      "apiKey": "<API key>",
+      "azure": { "apiVersion": "2024-10-21" }
+    }
+  ],
+  "models": [
+    { "id": "gpt", "provider": "myazure", "wireModel": "<deployment>", "modelId": "gpt-4.1" }
+  ]
+}
+```
+
+Select the model with `--model myazure/gpt` at startup (`/model` during a session). With `type: azure`, the CLI sends the key in the `api-key` header to `<baseUrl>/deployments/<wireModel>/chat/completions?api-version=<apiVersion>`. Adding `"wireApi": "responses"` to the provider switches to the Responses API (`<baseUrl>/responses?api-version=...`). The model and endpoint must support tool calling and streaming ([Using BYOK models](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-byok-models)).
+
+### In-editor Copilot Chat
+
+From the chat model picker, choose "+", then "Add Models" in the language models view, and pick a provider (Azure, OpenAI, Custom Endpoint, and so on). After a group name and the API key, `User/chatLanguageModels.json` in the user data opens. The key is stored as a secret; the file holds only a reference (`${input:chat.lm.secret...}`). Fill in `id`, `name`, and `url` of `models` (for Azure, the deployment's Chat Completions URL such as `https://<resource>.openai.azure.com/openai/deployments/<deployment>/chat/completions?api-version=2024-10-21`), save, and reload the page in the browser; the model then appears in the picker. In validation, Chat sent the key in an `Authorization: Bearer` header (the `url` was a dummy endpoint, not `*.openai.azure.com`).
+
+Without a sign-in, the chat box shows "Set BYOK utility models". According to the VS Code documentation, choosing BYOK models for the utility tasks enables them as well (Unverified).
+
 ## Clipboard copying fails only inside Copilot CLI
 
 Use this when copying works in an ordinary terminal, but inside Copilot CLI's interactive screen `Copied` appears without updating the clipboard. Verified with Copilot CLI 1.0.83, code-server 4.144.0, and Microsoft Edge. The copied range was verified by copying from Chrome for Testing 148 (WSLg) to the Windows clipboard.
@@ -160,6 +195,18 @@ Verified with Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz` from [github/copilo
 
 Table: Copilot CLI validation stages
 
+### BYOK
+
+The inference endpoint was a dummy Azure OpenAI-style endpoint on the host (a test server that returns a fixed text for Chat Completions and the Responses API, and tool calls on request). The target reached it through a remote forward (the target's `127.0.0.1:18443` to the dummy on the client). No GitHub sign-in was done. Traffic with a real Azure OpenAI endpoint is not covered.
+
+| Subject | Checked | Method and environment | Status |
+| --- | --- | --- | --- |
+| Copilot CLI 1.0.105 (`copilot-win32-x64.zip`, SHA-256 `34e16e9cf47de0e1534920171d6f39fa246638bddbb6ece820870b382bcc061a`) | With and without `COPILOT_OFFLINE=true`, `-p` prompts get answers from the BYOK model, over both Chat Completions and the Responses API. With `--allow-all-tools`, `create` creates a file and `powershell` runs a command on the target, and the results go back to the model | Windows 11 Enterprise (build 26300, amd64) Hyper-V virtual machine, run through `exec_run` | Verified |
+| In-editor Copilot Chat (GitHub Copilot Chat 0.72.0 in code-server 4.144.0) | A BYOK model registered under the Azure provider answers; the agent's `create_file` and `read_file` run on the target and their results go back to the model | Same, operated from Chrome on the host | Verified |
+| A real Azure OpenAI endpoint, reaching it through the client HTTP proxy | Traffic and answers | None | Unverified |
+
+Table: BYOK verification status
+
 ### Other CLIs
 
 Only `--version` has been checked, both standalone and through a local host-shell PTY `job_start` on a local Linux x86_64 machine. Source verification, target deployment, authentication, and inference are unverified.
@@ -177,4 +224,4 @@ On a read-only file system, Codex warns that it cannot create its PATH alias. Ve
 
 ### Recording validation
 
-For new validation, record OS, CPU, and libc; CLI, code-server, and host-shell versions; source and hash; authentication method (without secrets); allowed destinations; and verified stages with failure causes. Keep the history in `docs/prompts/past/` (Japanese only) and reflect only the results here. Past history is in [261102-coding-agents-validation.md](../prompts/past/261102-coding-agents-validation.md), [261103-copilot-cli-operation-validation.md](../prompts/past/261103-copilot-cli-operation-validation.md), [261103-copilot-cli-copy-scope-validation.md](../prompts/past/261103-copilot-cli-copy-scope-validation.md), and [261103-coding-agents-shutdown-validation.md](../prompts/past/261103-coding-agents-shutdown-validation.md).
+For new validation, record OS, CPU, and libc; CLI, code-server, and host-shell versions; source and hash; authentication method (without secrets); allowed destinations; and verified stages with failure causes. Keep the history in `docs/prompts/past/` (Japanese only) and reflect only the results here. Past history is in [261102-coding-agents-validation.md](../prompts/past/261102-coding-agents-validation.md), [261103-copilot-cli-operation-validation.md](../prompts/past/261103-copilot-cli-operation-validation.md), [261103-copilot-cli-copy-scope-validation.md](../prompts/past/261103-copilot-cli-copy-scope-validation.md), [261103-coding-agents-shutdown-validation.md](../prompts/past/261103-coding-agents-shutdown-validation.md), and [261105-copilot-byok-validation.md](../prompts/past/261105-copilot-byok-validation.md).

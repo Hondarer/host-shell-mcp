@@ -3,7 +3,7 @@
 > [!NOTE]
 > この文書が正本です。英訳は [../en/coding-agents.md](../en/coding-agents.md) にあります。内容が一致しない場合は日本語版が優先されます。
 
-Copilot、agy、Claude Code、Codex、Grok の CLI を接続先のユーザー領域へ配置し、[code-server](code-server.md) のターミナルから利用する構成と検証手順を説明します。接続先から直接インターネットへ通信できない隔離環境でも、SSH 経由の中継で CLI を利用することが目的です。実機で一通り確認できているのは Copilot CLI だけです ([検証済みの範囲](#検証済みの範囲))。code-server 用スキルは CLI 型 AI コーディングエージェントの導入・認証を自動実行しません。
+Copilot、agy、Claude Code、Codex、Grok の CLI を接続先のユーザー領域へ配置し、[code-server](code-server.md) のターミナルから利用する構成と検証手順を説明します。接続先から直接インターネットへ通信できない隔離環境でも、SSH 経由の中継で CLI を利用することが目的です。実機で一通り確認できているのは Copilot CLI だけです ([検証済みの範囲](#検証済みの範囲))。利用者が用意したモデルを使う [BYOK](#byok-利用者が用意するモデル) では、Copilot CLI と画面内の Copilot Chat を GitHub へのサインインなしで使えます。code-server 用スキルは CLI 型 AI コーディングエージェントの導入・認証を自動実行しません。
 
 エージェント向けの手順のひな型は [host-shell-coding-agents スキル](../../.agents/skills/host-shell-coding-agents/SKILL.md) にあります。CLI ごとの実証済みインストーラーはまだ含まれていません。
 
@@ -121,6 +121,41 @@ Table: Copilot の許可先
 
 画面内の Copilot Chat は、起動時に BYOK (利用者自身の API キーなどを使う外部モデル) の既知モデル一覧を `main.vscode-cdn.net` から取得します ([取得処理の実装](https://github.com/microsoft/vscode/blob/main/extensions/copilot/src/extension/byok/vscode-node/byokContribution.ts))。未許可の場合は `Failed to update known models list` が記録されます。取得を許可する場合は `--proxy-allow-host main.vscode-cdn.net:443` を追加します (実行中セッションでは [`proxy_rules_update`](client-proxy.md#proxy_rules_update-bridge) でも反映できます)。テレメトリーや実験用の宛先 (`mobile.events.data.microsoft.com`、`default.exp-tas.com` など) は不要です。
 
+## BYOK (利用者が用意するモデル)
+
+BYOK (Bring Your Own Key) は、利用者が用意したモデルのエンドポイントと API キーで推論する方式です。Copilot CLI も画面内の Copilot Chat も、BYOK のモデルは GitHub へのサインインなしで使えます。GitHub の認証が要る機能 (Copilot CLI の `/delegate`、GitHub MCP サーバー、Chat のインライン補完など) は使えません。推論の要求とプロンプトは、指定したエンドポイントへ送られます。
+
+接続先からエンドポイントへの経路は、ほかの通信と同じく `bridge` が中継します。手元や閉じたネットワーク内のエンドポイントには[リモート転送](port-forward.md)を、外部のエンドポイントには[クライアント経由 HTTP プロキシ](client-proxy.md)の許可先 (例: `<リソース名>.openai.azure.com:443`) を使います。
+
+### Copilot CLI
+
+エンドポイントを `providers.json` に書き、環境変数 `COPILOT_PROVIDERS_CONFIG` でそのパスを指定します。`COPILOT_OFFLINE=true` を指定すると、GitHub のサーバーへの通信 (テレメトリーを含む) を行いません。Azure OpenAI の例です (`apiKey` は実際のキーに置き換えます。ファイルの権限は利用者だけに絞ります)。
+
+```json
+{
+  "providers": [
+    {
+      "name": "myazure",
+      "type": "azure",
+      "baseUrl": "https://<リソース名>.openai.azure.com/openai",
+      "apiKey": "<API キー>",
+      "azure": { "apiVersion": "2024-10-21" }
+    }
+  ],
+  "models": [
+    { "id": "gpt", "provider": "myazure", "wireModel": "<デプロイ名>", "modelId": "gpt-4.1" }
+  ]
+}
+```
+
+起動時に `--model myazure/gpt` でモデルを選びます (対話中は `/model`)。`type: azure` の場合、CLI は `<baseUrl>/deployments/<wireModel>/chat/completions?api-version=<apiVersion>` へ `api-key` ヘッダーでキーを送ります。プロバイダーに `"wireApi": "responses"` を加えると、Responses API (`<baseUrl>/responses?api-version=...`) を使います。モデルとエンドポイントは、ツール呼び出しとストリーミングに対応している必要があります ([BYOK モデルの利用](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/use-byok-models))。
+
+### 画面内の Copilot Chat
+
+チャット欄のモデル選択から「+」を選び、言語モデルの画面の「モデルの追加」で提供元 (Azure、OpenAI、Custom Endpoint など) を選びます。グループ名と API キーを入力すると、ユーザー データの `User/chatLanguageModels.json` が開きます。キーは秘密情報として保存され、ファイルには参照 (`${input:chat.lm.secret...}`) だけが書かれます。`models` の `id`、`name`、`url` (Azure ではデプロイの Chat Completions の URL、例: `https://<リソース名>.openai.azure.com/openai/deployments/<デプロイ名>/chat/completions?api-version=2024-10-21`) を埋めて保存し、ブラウザーでページを読み込み直すと、モデル選択に表示されます。検証では、Chat はキーを `Authorization: Bearer` ヘッダーで送りました (`url` は `*.openai.azure.com` ではないダミーのエンドポイント)。
+
+サインインしていない場合、チャット欄に「Set BYOK utility models」と表示されます。VS Code の文書によると、補助処理に使うモデルを BYOK のモデルから選ぶと、その処理も使えるようになります (未検証)。
+
 ## Copilot CLI のコピーが動作しない場合
 
 通常のターミナルではコピーできるのに、Copilot CLI の対話画面内でだけ、`Copied` と表示されてもクリップボードが更新されない場合の対処です。Copilot CLI 1.0.83、code-server 4.144.0、Microsoft Edge の組み合わせで確認しています。コピーされる範囲は、Chrome for Testing 148 (WSLg) から Windows のクリップボードへコピーした内容で確認しています。
@@ -160,6 +195,18 @@ Copilot CLI 1.0.83 (`copilot-linux-x64.tar.gz`、[github/copilot-cli の v1.0.83
 
 Table: Copilot CLI の検証段階
 
+### BYOK
+
+推論先には、手元のホストで動かした Azure OpenAI 形式のダミーのエンドポイント (Chat Completions と Responses API に固定の文を返し、指示に応じてツール呼び出しを返す検証用のもの) を使いました。接続先からは、リモート転送 (接続先の `127.0.0.1:18443` から手元のダミー) で到達させています。GitHub へのサインインは行っていません。実際の Azure OpenAI との通信は確認していません。
+
+| 対象 | 確認内容 | 方法・環境 | 状態 |
+| --- | --- | --- | --- |
+| Copilot CLI 1.0.105 (`copilot-win32-x64.zip`、SHA-256 `34e16e9cf47de0e1534920171d6f39fa246638bddbb6ece820870b382bcc061a`) | `COPILOT_OFFLINE=true` の有無の両方で、`-p` の質問に BYOK のモデルから応答が返る。Chat Completions と Responses API の両方。`--allow-all-tools` で `create` によるファイル作成と `powershell` によるコマンド実行が接続先で行われ、結果がモデルへ戻る | Windows 11 Enterprise (ビルド 26300、amd64) の Hyper-V 仮想マシン、`exec_run` から実行 | 検証済 |
+| 画面内の Copilot Chat (code-server 4.144.0 の GitHub Copilot Chat 0.72.0) | Azure の提供元で BYOK のモデルを登録し、応答が表示される。エージェントの `create_file` と `read_file` が接続先で実行され、結果がモデルへ戻る | 同上、ホストの Chrome から操作 | 検証済 |
+| 実際の Azure OpenAI、クライアント経由プロキシでの到達 | 通信と応答 | なし | 未検証 |
+
+Table: BYOK の検証状況
+
 ### その他の CLI
 
 手元の Linux x86_64 で、単体実行とローカル host-shell の PTY 付き `job_start` の両方で `--version` が成功することだけを確認しています。配布元の照合、接続先への配置、認証・推論は未検証です。
@@ -177,4 +224,4 @@ Codex は読み取り専用ファイルシステムでは、PATH 用エイリア
 
 ### 検証の記録
 
-新しく検証するときは、OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、検証済みの段階と失敗理由を記録します。経緯の記録は `docs/prompts/past/` に置き、この文書には結果だけを反映します。これまでの経緯は [CLI 型 AI コーディングエージェントの検証記録](../prompts/past/261102-coding-agents-validation.md) 、[Copilot CLI の操作段階の検証記録](../prompts/past/261103-copilot-cli-operation-validation.md)、[Copilot CLI のコピー範囲の検証記録](../prompts/past/261103-copilot-cli-copy-scope-validation.md)、[終了段階の検証記録](../prompts/past/261103-coding-agents-shutdown-validation.md) にあります。
+新しく検証するときは、OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、検証済みの段階と失敗理由を記録します。経緯の記録は `docs/prompts/past/` に置き、この文書には結果だけを反映します。これまでの経緯は [CLI 型 AI コーディングエージェントの検証記録](../prompts/past/261102-coding-agents-validation.md) 、[Copilot CLI の操作段階の検証記録](../prompts/past/261103-copilot-cli-operation-validation.md)、[Copilot CLI のコピー範囲の検証記録](../prompts/past/261103-copilot-cli-copy-scope-validation.md)、[終了段階の検証記録](../prompts/past/261103-coding-agents-shutdown-validation.md)、[BYOK の検証記録](../prompts/past/261105-copilot-byok-validation.md) にあります。
