@@ -195,13 +195,19 @@ Windows target (when `sshd` uses `cmd` as the default shell):
 
 ```bash
 ssh target "echo %TEMP%"
-ssh target "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force C:/Users/alice/AppData/Local/Temp/host-shell | Out-Null; \$i=[Console]::OpenStandardInput(); \$o=[IO.File]::Create('C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe'); \$i.CopyTo(\$o); \$o.Close()\"" \
-    < dist/host-shell-windows-amd64.exe
-ssh target "powershell -NoProfile -Command \"(Get-FileHash C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe).Hash\""
+recv=$(cat <<'EOF'
+powershell -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; $p='C:\Users\alice\AppData\Local\Temp\host-shell\host-shell.exe'; New-Item -ItemType Directory -Force (Split-Path $p) | Out-Null; $o=[IO.File]::Create($p); $s=[Console]::OpenStandardInput(); $h=$s.GetType().GetField('_handle', [Reflection.BindingFlags]'NonPublic,Instance').GetValue($s); try { $i=New-Object IO.FileStream($h, [IO.FileAccess]::Read, 65536, $true) } catch { $i=$s }; try { $i.CopyTo($o) } finally { $o.Close() }; (Get-FileHash $p).Hash"
+EOF
+)
+ssh target "$recv" < dist/host-shell-windows-amd64.exe
 sha256sum dist/host-shell-windows-amd64.exe
 ```
 
-`cmd` on the target invokes `powershell -NoProfile -Command "..."`, which copies raw standard input bytes into the file. If the hash does not match, check `DefaultShell` in `sshd_config`.
+Windows PowerShell 5.1 on the target writes standard input to the file as is and prints its SHA-256 at the end. Replace `$p` with the destination path. The command goes into the variable `recv` through a here-document so that the local shell does not interpret its `'` and `$`. If no hash is printed, check that `DefaultShell` in `sshd_config` is `cmd`.
+
+OpenSSH for Windows (Win32-OpenSSH) gives the command an asynchronous I/O pipe (opened with `FILE_FLAG_OVERLAPPED`) as standard input. Reading that pipe synchronously stalls after about 128 KiB. A plain `CopyTo` from `[Console]::OpenStandardInput()` is such a read, and other .NET Framework programs stall the same way. The procedure above reopens the same handle as an asynchronous `FileStream`, so it does not stall. When the handle is synchronous, `FileStream` refuses it and the procedure falls back to the ordinary read.
+
+This procedure and the Windows transfer in `deploy.sh` were checked on Windows 11 Enterprise (build 26300, amd64) with Windows PowerShell 5.1.26100 and the OpenSSH_for_Windows 9.5p2 `sshd`: a deployment of about 13 MiB with matching SHA-256, and standard input that arrives late (Verified; [validation record, Japanese](../prompts/past/261105-windows-ssh-stdin-validation.md)). Windows Server, arm64, and other OpenSSH versions are Unverified. The procedure targets standard input over SSH; feeding standard input from a file locally on the target is out of scope.
 
 Once `host-shell` is running, you can also upload newer versions via `fs_write` (`base64` with `offset`) or `transfer_push` and swap the binary with `exec_run`. On Windows, a running `host-shell.exe` cannot be overwritten in place; upload to a temporary name and rename it before the next session.
 

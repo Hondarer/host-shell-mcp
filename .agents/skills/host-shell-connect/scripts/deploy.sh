@@ -69,11 +69,18 @@ space_check() {
 	printf '%s' 'a=$(df -Pk "$d" 2>/dev/null | tail -n 1 | tr -s " " | cut -d" " -f4)
 case $a in "" | *[!0-9]*) ;; *) if [ "$a" -lt '"$size_kib"' ]; then echo "not enough disk space in $d: '"$size_kib"' KiB needed, $a KiB available" >&2; exit 1; fi ;; esac'
 }
+# Reads standard input into $o (a FileStream) in Windows PowerShell 5.1. Win32-OpenSSH hands the command an
+# overlapped (asynchronous) pipe, and synchronous reads such as [Console]::OpenStandardInput() stop after
+# about 128 KiB on it; the handle is therefore reopened as an asynchronous FileStream. FileStream rejects a
+# synchronous handle (for example a pipe from cmd), and the console stream reads that one correctly.
+recv_ps='$s=[Console]::OpenStandardInput(); $h=$s.GetType().GetField('"'_handle'"', [Reflection.BindingFlags]'"'NonPublic,Instance'"').GetValue($s); try { $i=New-Object IO.FileStream($h, [IO.FileAccess]::Read, 65536, $true) } catch { $i=$s }; try { $i.CopyTo($o) } finally { $o.Close() }'
 # Writes to a temporary .new file and renames it into place so an active Linux binary can be replaced atomically.
 upload_cmd() {
 	case $os in
 	linux) printf 'd=$(dirname %s); [ -d "$d" ] || mkdir -p -m 700 "$d" || exit 1\n%s\n%s\necho writing; cat > %s.new && chmod 755 %s.new && mv -f %s.new %s && sha256sum %s' "$1" "$safe_dir" "$(space_check)" "$1" "$1" "$1" "$1" "$1" ;;
-	windows) printf '%s "$p=%s; New-Item -ItemType Directory -Force (Split-Path $p) | Out-Null; $f=$null; try { $f=(New-Object IO.DriveInfo ([IO.Path]::GetPathRoot($p))).AvailableFreeSpace } catch {}; if ($f -ne $null -and $f -lt %s) { [Console]::Error.WriteLine(%s + [int64]($f / 1KB) + %s); exit 1 }; %s; $i=[Console]::OpenStandardInput(); $o=[IO.File]::Create($p + %s); $i.CopyTo($o); $o.Close(); Move-Item -Force ($p + %s) $p; (Get-FileHash $p).Hash"' "$ps" "'$1'" "$size" "'not enough disk space: $size_kib KiB needed, '" "' KiB available'" "'writing'" "'.new'" "'.new'" ;;
+	windows)
+		printf '%s "$ErrorActionPreference=%s; $p=%s; New-Item -ItemType Directory -Force (Split-Path $p) | Out-Null; $f=$null; try { $f=(New-Object IO.DriveInfo ([IO.Path]::GetPathRoot($p))).AvailableFreeSpace } catch {}; if ($f -ne $null -and $f -lt %s) { [Console]::Error.WriteLine(%s + [int64]($f / 1KB) + %s); exit 1 }; %s; $o=[IO.File]::Create($p + %s); %s; Move-Item -Force ($p + %s) $p; (Get-FileHash $p).Hash"' \
+			"$ps" "'Stop'" "'$1'" "$size" "'not enough disk space: $size_kib KiB needed, '" "' KiB available'" "'writing'" "'.new'" "$recv_ps" "'.new'" ;;
 	esac
 }
 # Removes the binary (and its parent directory if created by this run and empty).

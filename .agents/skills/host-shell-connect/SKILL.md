@@ -34,7 +34,7 @@ No script uses SFTP or port forwarding.
 |---|---|
 | `remote.sh ROUTE COMMAND` | Runs `COMMAND` on the target over nested `ssh` hops (and `exec -i` into a container when the route ends with one) and forwards standard input |
 | `detect.sh ROUTE` | Prints the target environment type (`linux-amd64`, `linux-arm64`, `windows-amd64`, `windows-arm64`) |
-| `deploy.sh ROUTE TYPE [REMOTE_PATH]` | Transfers the `TYPE` executable from `bin/` over the route's standard input, verifies its SHA-256, and checks startup. Skips transfer if an identical file exists; removes the file if startup fails. Tries default locations in order when `REMOTE_PATH` is omitted. On glibc Linux targets, also places the remote DNS adapter beside it as `libhostshell_dns.so` and checks that the target can preload it |
+| `deploy.sh ROUTE TYPE [REMOTE_PATH]` | Transfers the `TYPE` executable from `bin/` over the route's standard input (on Windows, Windows PowerShell 5.1 reads it asynchronously, because synchronous reads stall on the pipe OpenSSH provides), verifies its SHA-256, and checks startup. Skips transfer if an identical file exists; removes the file if startup fails. Tries default locations in order when `REMOTE_PATH` is omitted. On glibc Linux targets, also places the remote DNS adapter beside it as `libhostshell_dns.so` and checks that the target can preload it |
 | `probe.sh ROUTE REMOTE_PATH [OPTIONS...]` | Sends MCP `initialize` and `tools/list` requests to `host-shell` on the target and verifies the responses |
 
 Table: Scripts

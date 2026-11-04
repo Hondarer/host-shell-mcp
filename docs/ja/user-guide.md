@@ -195,13 +195,19 @@ Windows の接続先 (sshd の既定シェルが `cmd` の場合):
 
 ```bash
 ssh target "echo %TEMP%"
-ssh target "powershell -NoProfile -Command \"New-Item -ItemType Directory -Force C:/Users/alice/AppData/Local/Temp/host-shell | Out-Null; \$i=[Console]::OpenStandardInput(); \$o=[IO.File]::Create('C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe'); \$i.CopyTo(\$o); \$o.Close()\"" \
-    < dist/host-shell-windows-amd64.exe
-ssh target "powershell -NoProfile -Command \"(Get-FileHash C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe).Hash\""
+recv=$(cat <<'EOF'
+powershell -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; $p='C:\Users\alice\AppData\Local\Temp\host-shell\host-shell.exe'; New-Item -ItemType Directory -Force (Split-Path $p) | Out-Null; $o=[IO.File]::Create($p); $s=[Console]::OpenStandardInput(); $h=$s.GetType().GetField('_handle', [Reflection.BindingFlags]'NonPublic,Instance').GetValue($s); try { $i=New-Object IO.FileStream($h, [IO.FileAccess]::Read, 65536, $true) } catch { $i=$s }; try { $i.CopyTo($o) } finally { $o.Close() }; (Get-FileHash $p).Hash"
+EOF
+)
+ssh target "$recv" < dist/host-shell-windows-amd64.exe
 sha256sum dist/host-shell-windows-amd64.exe
 ```
 
-接続先の `cmd` に `powershell -NoProfile -Command "..."` が渡され、PowerShell が標準入力のバイト列をそのままファイルへ書き込みます。ハッシュが一致しない場合は sshd の既定シェル設定 (`DefaultShell`) を確認してください。
+接続先の Windows PowerShell 5.1 が標準入力をそのままファイルへ書き込み、最後に SHA-256 を表示します。`$p` を配置先のパスに置き換えてください。ヒア ドキュメントで変数 `recv` に入れているのは、コマンドに含まれる `'` と `$` をローカル シェルに解釈させないためです。ハッシュが表示されない場合は、sshd の既定シェル設定 (`DefaultShell`) が `cmd` であることを確認してください。
+
+Windows の OpenSSH (Win32-OpenSSH) は、コマンドの標準入力に非同期 I/O 用のパイプ (`FILE_FLAG_OVERLAPPED` 付き) を渡します。このパイプを同期的に読むと、約 128 KiB で読み取りが止まります。`[Console]::OpenStandardInput()` を `CopyTo` するだけの手順もこれに当たり、ほかの .NET Framework のプログラムでも同じように止まります。上の手順は同じハンドルを非同期の `FileStream` として開き直して読むので止まりません。同期 I/O 用のハンドルが渡された場合は `FileStream` が開けないので、通常の読み取りに戻ります。
+
+この手順と `deploy.sh` の Windows 向けの転送は、Windows 11 Enterprise (ビルド 26300、amd64)、Windows PowerShell 5.1.26100、OpenSSH_for_Windows 9.5p2 の `sshd` で、約 13 MiB の配置と SHA-256 の一致、標準入力が遅れて届く場合を確認しました (検証済、[検証記録](../prompts/past/261105-windows-ssh-stdin-validation.md))。Windows Server、arm64、ほかの OpenSSH の版は未検証です。この手順は SSH 経由の標準入力を対象とし、接続先のローカルでファイルから標準入力を与える使い方は対象外です。
 
 一度 `host-shell` を配置した後は、新バージョンを `fs_write` (`base64` と `offset`) または `transfer_push` で転送し、`exec_run` で置き換えることもできます。Windows では実行中の `host-shell.exe` を上書きできないため、別名で転送し、次回接続前にリネームしてください。
 
