@@ -85,6 +85,7 @@ func parseFlags(fs *flag.FlagSet, args []string) (cfg config.Config, showVersion
 		dnsMode    = fs.Bool("remote-dns", false, "inject Linux/glibc getaddrinfo relay over the bridge; requires cc or --remote-dns-library")
 		dnsLibrary = fs.String("remote-dns-library", "", "prebuilt Linux/glibc DNS adapter (requires --remote-dns)")
 		dnsListen  = fs.String("remote-dns-listen", "", "also serve A/AAAA queries through the bridge on this loopback address, e.g. 127.0.0.1:53 (requires --remote-dns; required on Windows)")
+		dnsConfig  = fs.Bool("remote-dns-configure", false, "Windows: add settings routing the OS resolver to --remote-dns-listen at startup (NRPT rule, plus a loopback IPv4 default route when none exists) and remove them on exit; the rule persists if host-shell is killed until the next start cleans it up; machine-wide, use only with the user's approval; needs an elevated administrator session")
 		proxyMode  = fs.Bool("client-proxy", false, "route HTTP/HTTPS through an explicitly enabled local bridge")
 		fwdLocal   = fs.Bool("allow-forward-local", false, "permit the bridge's local forwards and SOCKS5 to connect from this host (takes no value; destinations follow --allow-host)")
 		fwdRemote  = fs.Bool("allow-forward-remote", false, "permit the bridge's remote forwards to listen on this host's loopback (takes no value)")
@@ -127,6 +128,10 @@ func parseFlags(fs *flag.FlagSet, args []string) (cfg config.Config, showVersion
 	}
 	if *dnsListen != "" && !*dnsMode {
 		return cfg, false, errors.New("--remote-dns-listen requires --remote-dns")
+	}
+	cfg.RemoteDNSConfigure = *dnsConfig
+	if *dnsConfig && *dnsListen == "" {
+		return cfg, false, errors.New("--remote-dns-configure requires --remote-dns and --remote-dns-listen")
 	}
 	cfg.ForwardLocal = *fwdLocal
 	cfg.ForwardRemote = *fwdRemote
@@ -177,7 +182,7 @@ func run(cfg config.Config) error {
 	var channelOptions channel.Options
 	sess := server.Session{Audit: al}
 	if cfg.RemoteDNS {
-		target, err := remotedns.NewTarget(ctx, remotedns.TargetOptions{Library: cfg.RemoteDNSLibrary, Listen: cfg.RemoteDNSListen})
+		target, err := remotedns.NewTarget(ctx, remotedns.TargetOptions{Library: cfg.RemoteDNSLibrary, Listen: cfg.RemoteDNSListen, Configure: cfg.RemoteDNSConfigure})
 		if err != nil {
 			return err
 		}

@@ -24,23 +24,29 @@ type TargetOptions struct {
 	// Listen is a loopback address (for example 127.0.0.1:53) for a DNS server answering A and AAAA
 	// queries through the bridge. It is required where no preload adapter exists (Windows).
 	Listen string
+	// Configure routes the OS resolver to Listen for the life of the target (Windows: an NRPT rule and,
+	// without an IPv4 default route, a loopback default route) and undoes it on Close.
+	Configure bool
 }
 
 // Target owns a private per-session resolver socket and native adapter, and optionally a loopback DNS server.
 type Target struct {
 	Library, Socket string
 	// Listen is the address of the loopback DNS server, if enabled.
-	Listen   string
-	dir      string
-	listener net.Listener
-	stub     *stub
-	ctx      context.Context
-	cancel   context.CancelFunc
-	conn     *channel.Conn
-	once     sync.Once
-	mu       sync.Mutex
-	closed   bool
-	wg       sync.WaitGroup
+	Listen string
+	// Configured lists the OS resolver changes made for --remote-dns-configure.
+	Configured []string
+	undo       func()
+	dir        string
+	listener   net.Listener
+	stub       *stub
+	ctx        context.Context
+	cancel     context.CancelFunc
+	conn       *channel.Conn
+	once       sync.Once
+	mu         sync.Mutex
+	closed     bool
+	wg         sync.WaitGroup
 }
 
 // NewTarget prepares the native hook (Linux) and the optional loopback DNS server; a supplied library must
@@ -55,7 +61,7 @@ func NewTarget(ctx context.Context, opt TargetOptions) (*Target, error) {
 		}
 	} else if opt.Listen == "" {
 		t.Close()
-		return nil, fmt.Errorf("--remote-dns on %s needs --remote-dns-listen 127.0.0.1:53 and an administrator-added resolver route to it (help_get topic windows)", runtime.GOOS)
+		return nil, fmt.Errorf("--remote-dns on %s needs --remote-dns-listen 127.0.0.1:53, and --remote-dns-configure or an administrator-added resolver route to it (help_get topic windows)", runtime.GOOS)
 	} else if opt.Library != "" {
 		t.Close()
 		return nil, fmt.Errorf("--remote-dns-library is for Linux/glibc targets; use --remote-dns-listen on %s", runtime.GOOS)
@@ -67,6 +73,17 @@ func NewTarget(ctx context.Context, opt TargetOptions) (*Target, error) {
 			return nil, err
 		}
 		t.stub, t.Listen = s, s.addr
+	}
+	if opt.Configure {
+		// Configure only after the server holds the address, so a second session fails before touching the OS.
+		server, err := resolverAddress(t.Listen)
+		if err == nil {
+			t.undo, t.Configured, err = configureResolver(ctx, server)
+		}
+		if err != nil {
+			t.Close()
+			return nil, err
+		}
 	}
 	return t, nil
 }
@@ -184,6 +201,10 @@ func (t *Target) servePreload() {
 
 func (t *Target) Close() {
 	t.once.Do(func() {
+		// Restore the OS resolver first so lookups stop reaching a server that is going away.
+		if t.undo != nil {
+			t.undo()
+		}
 		t.mu.Lock()
 		t.closed = true
 		if t.cancel != nil {

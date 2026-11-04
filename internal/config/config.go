@@ -19,6 +19,8 @@ type Config struct {
 	RemoteDNSLibrary string
 	// RemoteDNSListen is the loopback address of the DNS server answering through the bridge (--remote-dns-listen).
 	RemoteDNSListen string
+	// RemoteDNSConfigure routes the OS resolver to RemoteDNSListen during the session (--remote-dns-configure).
+	RemoteDNSConfigure bool
 	// ForwardLocal and ForwardRemote permit the bridge's port forwards (--allow-forward-local/--allow-forward-remote).
 	ForwardLocal, ForwardRemote bool
 	// ForwardRemotePorts limits the ports remote forwards listen on (--allow-forward-remote-port); nil permits any port.

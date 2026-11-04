@@ -75,32 +75,60 @@ flowchart LR
     Channel --> Resolver["Client: Go standard resolver"]
 ```
 
-### Procedure
+### Procedure (automatic configuration)
 
-1. Pass `--remote-dns` on both ends, and the listen address with `--remote-dns-listen` on the target. On a Windows target, omitting `--remote-dns-listen` stops startup with an error.
+Pass `--remote-dns` on both ends; on the target, pass the listen address with `--remote-dns-listen` and automate the OS settings with `--remote-dns-configure`. On a Windows target, omitting `--remote-dns-listen` stops startup with an error.
 
-   ```bash
-   host-shell bridge --remote-dns -- \
-     ssh -T target C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe \
-       --mcp --remote-dns --remote-dns-listen 127.0.0.1:53
-   ```
+```bash
+host-shell bridge --remote-dns -- \
+  ssh -T target C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe \
+    --mcp --remote-dns --remote-dns-listen 127.0.0.1:53 --remote-dns-configure
+```
 
-2. Add the NRPT rule from an elevated PowerShell. It changes name resolution for the whole machine, so obtain the user's consent first. If the connecting user is an administrator, `exec_run` can run it as well (Windows OpenSSH grants an elevated token with public key authentication).
+`--remote-dns-configure` adds (injects) the following settings to the OS at startup and deletes (removes) them on exit. They are not settings the OS discards by itself; adding and removing are one paired operation. The NRPT rule is stored in the registry, so when the target `host-shell` is killed or the machine loses power, the rule remains until the next start with `--remote-dns-configure` or manual removal.
+
+> [!IMPORTANT]
+> This change affects name resolution for the whole machine, including every user and service on the target. Before passing `--remote-dns-configure`, show the user what changes (the NRPT rule, the loopback default route when needed, and that the rule remains after an abnormal exit) and obtain their approval. The same applies to the manual procedure. Agents must not add this option or run the manual commands without that approval.
+
+The connecting user must be an administrator in an elevated session; Windows OpenSSH grants administrators an elevated token with public key authentication. Without elevation, startup stops with an error.
+
+| Setting | Content | On exit |
+|---|---|---|
+| NRPT rule | Sends queries for the namespace `.` (every name) to the listen address. The comment is `host-shell-remote-dns pid=<process ID>` | Removed |
+| Loopback default route | Only when there is no IPv4 default route: a route with the loopback interface as next hop (metric 9999) in the store that a reboot clears (ActiveStore). An existing default route is left alone | Removed if it was added |
+
+Table: Settings applied by `--remote-dns-configure`
+
+`sys_get_info` reports the applied settings as `remote_dns_configured`. The NRPT rule is stored in the registry and survives a reboot. When the target `host-shell` is killed and leaves the rule behind, the next start with `--remote-dns-configure` cleans it up: rules commented `host-shell-remote-dns` (including the manual procedure's rule) or carrying the ID of a process that no longer runs, and loopback default routes with metric 9999. If another running session owns a rule, startup stops with an error.
+
+### Procedure (manual configuration)
+
+Without `--remote-dns-configure`, an administrator applies the settings after obtaining the user's approval.
+
+1. Start with the same command as the automatic procedure, without `--remote-dns-configure`.
+2. Add the NRPT rule from an elevated PowerShell, and a loopback default route when there is no IPv4 default route. `exec_run` can run it as well.
 
    ```powershell
    Add-DnsClientNrptRule -Namespace '.' -NameServers 127.0.0.1 -Comment host-shell-remote-dns
+   $lo = (Get-NetIPAddress -AddressFamily IPv4 -IPAddress 127.0.0.1).InterfaceIndex
+   if (-not (Get-NetRoute -AddressFamily IPv4 -DestinationPrefix 0.0.0.0/0 -ErrorAction SilentlyContinue)) {
+     New-NetRoute -DestinationPrefix 0.0.0.0/0 -InterfaceIndex $lo -NextHop 0.0.0.0 -RouteMetric 9999 -PolicyStore ActiveStore | Out-Null
+   }
    Clear-DnsClientCache
    ```
 
-3. Remove the rule when finished.
+3. Remove the rule and the added route when finished.
 
    ```powershell
    Get-DnsClientNrptRule | Where-Object Comment -eq 'host-shell-remote-dns' |
      ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force }
+   $lo = (Get-NetIPAddress -AddressFamily IPv4 -IPAddress 127.0.0.1).InterfaceIndex
+   Get-NetRoute -AddressFamily IPv4 -DestinationPrefix 0.0.0.0/0 -InterfaceIndex $lo -ErrorAction SilentlyContinue |
+     Where-Object RouteMetric -eq 9999 | Remove-NetRoute -Confirm:$false
    Clear-DnsClientCache
    ```
 
-`host-shell` neither adds nor removes NRPT rules. Only the administrator running steps 2 and 3 changes OS settings.
+Without `--remote-dns-configure`, `host-shell` does not change OS settings.
 
 ### Results by resolution path
 
@@ -112,11 +140,11 @@ flowchart LR
 
 Table: Resolution paths on Windows
 
-- **Default route**: Without an IPv4 default route, Windows `getaddrinfo` returns `The requested name is valid, but no data of the requested type was found` (WSANO_DATA) even after receiving an answer. On a closed network without a default gateway, a route whose next hop is a host that does not forward packets satisfies the condition.
+- **Default route**: Without an IPv4 default route, Windows `getaddrinfo` returns `The requested name is valid, but no data of the requested type was found` (WSANO_DATA) even after receiving an answer. A target with a default gateway needs no added route; the NRPT rule alone is enough. Without a gateway, any next hop works for the added route: the loopback interface, the local network (on-link), or a host that does not forward packets. While the route exists, direct outbound connections no longer fail at once with "network unreachable" but time out after about 21 seconds. None of these routes reaches outside.
 - **Answers**: A and AAAA are answered, with a CNAME when the canonical name differs from the query name. The TTL is 30 seconds. Other types (HTTPS, SVCB, PTR, MX, and so on) get an empty answer (NODATA). NXDOMAIN is returned only for names without addresses in any family, so the OS does not cache an IPv6-only name as missing.
 - **Listening**: Only loopback addresses are accepted. If another session uses the same address, startup stops with a bind error. The server listens only while connected and closes on disconnect. `sys_get_info` reports it as `remote_dns_listen`.
 - **Access control**: Unlike the private Linux socket, every user and service on the target can query it. The NRPT rule also applies to the whole machine.
-- **A rule left after disconnect**: With nothing answering, lookups fail immediately without waiting. Remove the rule with step 3.
+- **A rule left after disconnect**: With nothing answering, lookups fail immediately without waiting. Remove it with step 3 of the manual procedure, or start again with `--remote-dns-configure`.
 - **Environment variables**: `exec_run` and `job_start` environments are unchanged. Because the relay is configured OS-wide, descendants such as code-server's extension host use the same path.
 
 ## Combine with the HTTP proxy
@@ -224,6 +252,10 @@ Windows targets were verified on a Windows 11 Enterprise (build 26300, amd64) Hy
 | Node.js `dns.resolve4` | Succeeds even without the NRPT rule | Same (Node.js bundled with code-server 4.144.0) | Verified |
 | Combined with the HTTP proxy | HTTPS to an allowed destination succeeds with `curl.exe --ssl-revoke-best-effort` | Same | Verified |
 | Failure cases | A second session on the same address stops at startup; with a leftover rule, lookups fail immediately | Same | Verified |
+| Next hop of the default route | With the loopback interface, on-link, or a non-forwarding host, `getaddrinfo` succeeds and nothing reaches outside. Direct outbound connections time out after about 21 seconds (about 0.1 seconds to fail without the route) | Same | Verified |
+| Persistence of the settings | After a reboot, the NRPT rule remains and the ActiveStore route is gone | Same | Verified |
+| `--remote-dns-configure` | Adding the rule and the loopback default route; resolution by .NET, Node.js `dns.lookup`, `curl.exe`, and `ping`; removal on exit; removal when the client side is killed; removal on the next start of the rule and route left by a killed target `host-shell`; no route added when a default route exists | Same | Verified |
+| `--remote-dns-configure` (non-elevated session) | Error at startup | None | Unverified |
 | code-server extension host, Copilot CLI and Copilot Chat | Behavior on Windows targets | None | Unverified |
 | Windows Server, arm64 | Behavior | None | Unverified |
 | `nslookup` | Interaction with the NRPT rule | None | Unverified |
@@ -236,7 +268,7 @@ Unverified:
 - Patched-copy mode on arm64 (archive inspection only)
 - Browser Web extensions
 
-The validation history is in [261102-remote-dns-validation.md](../prompts/past/261102-remote-dns-validation.md), [261103-copilot-chat-remote-dns-validation.md](../prompts/past/261103-copilot-chat-remote-dns-validation.md), [261104-windows-target-validation.md](../prompts/past/261104-windows-target-validation.md), and [261104-windows-remote-dns-design.md](../prompts/past/261104-windows-remote-dns-design.md) (Japanese only).
+The validation history is in [261102-remote-dns-validation.md](../prompts/past/261102-remote-dns-validation.md), [261103-copilot-chat-remote-dns-validation.md](../prompts/past/261103-copilot-chat-remote-dns-validation.md), [261104-windows-target-validation.md](../prompts/past/261104-windows-target-validation.md), [261104-windows-remote-dns-design.md](../prompts/past/261104-windows-remote-dns-design.md), and [261105-windows-remote-dns-configure-design.md](../prompts/past/261105-windows-remote-dns-configure-design.md) (Japanese only).
 
 Development validation commands (Linux, Node.js required):
 

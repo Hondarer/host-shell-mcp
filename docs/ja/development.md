@@ -251,7 +251,7 @@ flowchart TB
 - **共有部品**: `internal/channel/` は、その上の機能が共通に使う部品も提供します。着信ストリームへの応答 (発信、失敗時の拒否、受け付け) は `Incoming.Answer`、双方向の中継 (半クローズの伝達、アイドル タイムアウト、残存時間) は `Relay`、失敗コードから結果 (`allowed`、`denied`、`failed`) と固定の理由文字列への対応は `Describe` が担います。状態ツールの出力は `EventHead`、`Outcome`、`Recent` を埋め込んで構成し、`Snapshot` で履歴とセッション状態から生成します。理由は固定文字列とし、認証情報を含みうるネットワーク エラーの文字列は記録しません。
 - **`internal/clientproxy/`**: `internal/channel/` の上に、認証付きローカル HTTP プロキシ、上流接続、および診断・ルール更新機能 (`proxy_status`、`proxy_rules_update`) を実装します。
 - **`internal/forward/`**: `internal/channel/` の上に、ローカル転送、リモート転送、SOCKS5、および転送管理ツール (`forward_*`) を実装します。
-- **`internal/remotedns/`**: `internal/channel/` の上に、接続先側の UNIX ドメイン ソケット待ち受け、名前解決アダプター (`preload.c`) の配置、ループバックの DNS サーバー (`stub.go`、Windows 接続先で使用)、および `bridge` 側での名前解決を実装します。
+- **`internal/remotedns/`**: `internal/channel/` の上に、接続先側の UNIX ドメイン ソケット待ち受け、名前解決アダプター (`preload.c`) の配置、ループバックの DNS サーバー (`stub.go`、Windows 接続先で使用)、Windows の名前解決設定の追加と削除 (`osconfig_windows.go`、`--remote-dns-configure`)、および `bridge` 側での名前解決を実装します。
 
 ## code-server 導入スキルの保守
 

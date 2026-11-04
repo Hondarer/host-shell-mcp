@@ -97,8 +97,10 @@ type SysGetInfoOutput struct {
 	RemoteDNSLibrary string `json:"remote_dns_library,omitempty"`
 	RemoteDNSSocket  string `json:"remote_dns_socket,omitempty"`
 	RemoteDNSListen  string `json:"remote_dns_listen,omitempty" jsonschema:"loopback address of the DNS server answering A/AAAA through the bridge (--remote-dns-listen)"`
-	ClientProxy      bool   `json:"client_proxy"`
-	ProxyURLFile     string `json:"proxy_url_file,omitempty"`
+	// RemoteDNSConfigured lists the OS resolver changes made for --remote-dns-configure; they are undone on exit.
+	RemoteDNSConfigured []string `json:"remote_dns_configured,omitempty" jsonschema:"OS resolver changes made for this session (--remote-dns-configure), undone when it ends"`
+	ClientProxy         bool     `json:"client_proxy"`
+	ProxyURLFile        string   `json:"proxy_url_file,omitempty"`
 	// Port forwarding permitted by this host; remote forwards are addresses the bridge listens on here.
 	ForwardLocal   bool                    `json:"forward_local" jsonschema:"the bridge's local forwards and SOCKS5 may connect from this host (--allow-forward-local)"`
 	ForwardRemote  bool                    `json:"forward_remote" jsonschema:"the bridge's remote forwards may listen on this host (--allow-forward-remote)"`
@@ -141,6 +143,7 @@ func (d *Deps) sysGetInfo(context.Context, *mcp.CallToolRequest, struct{}) (*mcp
 		out.RemoteDNSLibrary = d.DNS.Library
 		out.RemoteDNSSocket = d.DNS.Socket
 		out.RemoteDNSListen = d.DNS.Listen
+		out.RemoteDNSConfigured = d.DNS.Configured
 	}
 	if d.Proxy != nil {
 		out.ClientProxy = true

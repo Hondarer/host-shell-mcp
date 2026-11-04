@@ -251,7 +251,7 @@ flowchart TB
 - **Shared parts**: `internal/channel/` also provides parts the features on top of it share. `Incoming.Answer` answers an incoming stream (dial, reject on failure, accept), `Relay` relays both directions (passing half-closes on, idle timeout, linger), and `Describe` maps failure codes to results (`allowed`, `denied`, `failed`) and fixed reason strings. Status tool outputs embed `EventHead`, `Outcome` and `Recent`, and `Snapshot` builds them from the history and the session state. Reasons are fixed strings; network error text, which can contain credentials, is never recorded.
 - **`internal/clientproxy/`**: Implements the authenticated local HTTP proxy, upstream dialing, and diagnostics and rule updates (`proxy_status`, `proxy_rules_update`) on top of `internal/channel/`.
 - **`internal/forward/`**: Implements local forwards, remote forwards, SOCKS5, and the forwarding management tools (`forward_*`) on top of `internal/channel/`.
-- **`internal/remotedns/`**: Implements the target-side UNIX domain socket listener, remote DNS adapter (`preload.c`) placement, the loopback DNS server (`stub.go`, used on Windows targets), and `bridge`-side name resolution on top of `internal/channel/`.
+- **`internal/remotedns/`**: Implements the target-side UNIX domain socket listener, remote DNS adapter (`preload.c`) placement, the loopback DNS server (`stub.go`, used on Windows targets), adding and removing the Windows resolver settings (`osconfig_windows.go`, `--remote-dns-configure`), and `bridge`-side name resolution on top of `internal/channel/`.
 
 ## Maintaining the code-server injection skill
 

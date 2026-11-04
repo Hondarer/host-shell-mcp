@@ -16,7 +16,11 @@
 
 ## Remote DNS on Windows
 
-Windows has no per-process resolver hook. With `--remote-dns --remote-dns-listen 127.0.0.1:53` on the target (and `--remote-dns` on the bridge), host-shell serves A/AAAA queries on that loopback address through the bridge; `sys_get_info` reports it as `remote_dns_listen`. Programs that query DNS servers themselves (for example Node.js `dns.resolve4`) use it when the network adapter has no DNS server. For the OS resolver (`getaddrinfo`, .NET, curl, ping), an administrator must route queries to it, and only with the user's consent, because the change is machine-wide:
+Windows has no per-process resolver hook. With `--remote-dns --remote-dns-listen 127.0.0.1:53` on the target (and `--remote-dns` on the bridge), host-shell serves A/AAAA queries on that loopback address through the bridge; `sys_get_info` reports it as `remote_dns_listen`. Programs that query DNS servers themselves (for example Node.js `dns.resolve4`) use it when the network adapter has no DNS server. For the OS resolver (`getaddrinfo`, .NET, curl, ping), queries must be routed to it. The change is machine-wide: ask the user and obtain explicit approval before making it, either way below; never make it on your own judgment.
+
+`--remote-dns-configure` (with `--remote-dns-listen 127.0.0.1:53`, in an elevated administrator session) adds the settings at startup and removes them on exit: an NRPT rule commented `host-shell-remote-dns pid=<pid>` and, only when there is no IPv4 default route, a loopback default route (metric 9999, active store only, so a reboot removes it). This is a paired add and remove, not a volatile setting: the rule is persistent, and if host-shell is killed it remains until the next start with the option removes leftovers of sessions that no longer run. `sys_get_info` lists the changes as `remote_dns_configured`. While the added route exists, direct outbound connections time out (about 21 seconds) instead of failing at once.
+
+Without that option, an administrator can apply the rule by hand (with the same approval):
 
 ```powershell
 Add-DnsClientNrptRule -Namespace '.' -NameServers 127.0.0.1 -Comment host-shell-remote-dns
@@ -25,4 +29,4 @@ Clear-DnsClientCache
 Get-DnsClientNrptRule | Where-Object Comment -eq 'host-shell-remote-dns' | ForEach-Object { Remove-DnsClientNrptRule -Name $_.Name -Force }
 ```
 
-`getaddrinfo` returns IPv4 answers only when an IPv4 default route exists; on a network without a default gateway it reports "no data of the requested type". `Resolve-DnsName` works without one. While the rule remains and no session serves the address, lookups fail immediately.
+`getaddrinfo` returns IPv4 answers only when an IPv4 default route exists; on a network without a default gateway it reports "no data of the requested type". A target with a default gateway needs only the NRPT rule. Otherwise any next hop works, including the loopback interface (`New-NetRoute -DestinationPrefix 0.0.0.0/0 -InterfaceIndex (Get-NetIPAddress -IPAddress 127.0.0.1).InterfaceIndex -NextHop 0.0.0.0 -RouteMetric 9999 -PolicyStore ActiveStore`). `Resolve-DnsName` works without one. While the rule remains and no session serves the address, lookups fail immediately.

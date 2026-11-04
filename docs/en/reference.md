@@ -71,6 +71,7 @@ If none of `--mcp`, `bridge`, or `--version` is specified, `host-shell` prints u
 | `--remote-dns` | None | Disabled | Relay Linux/glibc `getaddrinfo` to the client; enable at both ends ([remote-dns](remote-dns.md)) |
 | `--remote-dns-library` | Path | Build automatically | Prebuilt adapter matching target ABI; requires `--remote-dns` |
 | `--remote-dns-listen` | Loopback `IP:port` | Disabled | Run a DNS server on this address that answers A and AAAA queries through the client (for example `127.0.0.1:53`); requires `--remote-dns` and is required on Windows ([Windows targets](remote-dns.md#windows-targets)) |
+| `--remote-dns-configure` | None | Disabled | On Windows targets, add the settings that route the OS resolver to `--remote-dns-listen` (port 53) at startup and remove them on exit: an NRPT rule and, without an IPv4 default route, a loopback default route. The rule is persistent, so after an abnormal exit it remains until the next start cleans it up. Machine-wide, so the user's approval is required before passing it; needs an elevated administrator session ([Procedure (automatic configuration)](remote-dns.md#procedure-automatic-configuration)) |
 | `--allow-forward-local` | None | | Permits local forwards and SOCKS5 connections originating from the target via `bridge` ([Port forwarding](port-forward.md)) |
 | `--allow-forward-remote` | None | | Permits remote forwards listening on the target's loopback via `bridge` ([Port forwarding](port-forward.md)) |
 | `--allow-forward-remote-port` | `PORT` or `PORT-PORT` (comma-separated, repeatable) | None (unrestricted) | Restricts target listening ports for remote forwards; requires `--allow-forward-remote` ([Port forwarding](port-forward.md)) |
@@ -1197,6 +1198,7 @@ Returns information about the target environment, published tool groups, and act
 | `client_proxy`, `proxy_url_file` | boolean, string | Whether the client HTTP proxy is enabled, and the path to its credential URL file |
 | `remote_dns`, `remote_dns_library`, `remote_dns_socket` | boolean, string, string | DNS relay state and session adapter/socket paths |
 | `remote_dns_listen` | string | Listen address of the DNS server (only with `--remote-dns-listen`) |
+| `remote_dns_configured` | string[] | OS setting changes made by `--remote-dns-configure` (restored on exit) |
 | `forward_local`, `forward_remote` | boolean | Port forwarding directions permitted on the target (`--allow-forward-local`, `--allow-forward-remote`) |
 | `remote_forwards` | object[] | Active remote forwards listening on the target (`forward_id`, `address`; omitted when none are active) |
 
@@ -1582,7 +1584,7 @@ When the corresponding options are enabled on both `bridge` and the target, `bri
 
 - **Client HTTP proxy**: For startup options (`--proxy`, `--proxy-allow-host`, `--proxy-allow-rule-updates`, `--client-proxy`), `proxy_status` and `proxy_rules_update` tools, environment variable precedence, and limits, see [HTTP proxy through the client](client-proxy.md).
 - **Port forwarding**: For local forwards, remote forwards, SOCKS5, permission matching, `forward_open`, `forward_close`, and `forward_status` tools, and limits, see [Port forwarding over SSH stdio](port-forward.md).
-- **Client-side name resolution (`remote-dns`)**: For `getaddrinfo` relaying on Linux/glibc targets, the loopback DNS server on Windows targets, `--remote-dns` on both ends, `--remote-dns-library` and `--remote-dns-listen` on the target, and limitations, see [Client-side name resolution (remote-dns)](remote-dns.md).
+- **Client-side name resolution (`remote-dns`)**: For `getaddrinfo` relaying on Linux/glibc targets, the loopback DNS server on Windows targets, `--remote-dns` on both ends, `--remote-dns-library`, `--remote-dns-listen`, and `--remote-dns-configure` on the target, and limitations, see [Client-side name resolution (remote-dns)](remote-dns.md).
 
 ## Starting and ending processes
 
