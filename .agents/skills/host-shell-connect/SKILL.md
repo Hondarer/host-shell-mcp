@@ -193,7 +193,7 @@ After registration, instruct the user to reload the MCP server in their agent (i
 
 ## WSL on Windows targets
 
-When the user wants to use Linux in WSL 2 on a Windows target, recommend running sshd inside WSL and reaching it with the Windows sshd as a ProxyJump host; WSL is then an ordinary Linux route and every script here works unchanged. Follow "Connecting to Linux in WSL" in `docs/en/user-guide.md` for the setup (port, systemd, `.wslconfig` idle timeouts, host key). Without sshd in WSL, `ssh -T <windows> wsl -d <distribution> -- <host-shell> --mcp` works for registration, but `remote.sh`, `detect.sh`, `deploy.sh`, and `probe.sh` cannot target it (the Windows `cmd` hop interprets `|`, `>`, and `&&`); place the binary manually as that section describes.
+When the user wants to use Linux in WSL 2 on a Windows target, recommend running sshd inside WSL and reaching it with the Windows sshd as a ProxyJump host; WSL is then an ordinary Linux route and every script here works unchanged. Follow "Connecting to Linux in WSL" in `docs/en/user-guide.md` for the setup (port, systemd, `.wslconfig` idle timeouts, host key) and the client config: `HostName 127.0.0.1` (mirrored networking does not answer on `::1`) and a `Match host <wsl> exec "ssh -n <windows> wsl.exe -d <distribution> --exec true"` line, without which the connection fails after Windows restarts because WSL is not running. After WSL restarts `/tmp` is empty, so run `deploy.sh` again. Without sshd in WSL, `ssh -T <windows> wsl -d <distribution> -- <host-shell> --mcp` works for registration, but `remote.sh`, `detect.sh`, `deploy.sh`, and `probe.sh` cannot target it (the Windows `cmd` hop interprets `|`, `>`, and `&&`); place the binary manually as that section describes.
 
 ## Containers
 

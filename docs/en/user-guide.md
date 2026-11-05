@@ -542,7 +542,7 @@ To use a WSL 2 Linux distribution on a Windows target, run sshd inside WSL and c
 ```mermaid
 flowchart LR
     Client["Client<br/>ssh (ProxyJump)"] -->|"SSH (22)"| WinSSHD["Windows sshd"]
-    WinSSHD -->|"TCP forward<br/>localhost:2222"| WSLSSHD["sshd in WSL"]
+    WinSSHD -->|"TCP forward<br/>127.0.0.1:2222"| WSLSSHD["sshd in WSL"]
     WSLSSHD --> HS["host-shell (Linux)"]
 ```
 
@@ -567,8 +567,8 @@ Preparation (run the WSL steps as root; from the Windows target, use `wsl -d <di
    vmIdleTimeout=-1
    ```
 
-5. After `wsl --shutdown`, start WSL once (`wsl -d <distribution> -- true`) and check that `systemctl is-active ssh.socket` reports `active`. Ubuntu 24.04 uses socket activation, so `ssh.socket` is generated from the `Port` value. After Windows restarts, sshd does not listen until WSL is started once.
-6. Obtain the WSL sshd host key (`/etc/ssh/ssh_host_ed25519_key.pub`) through the Windows target and add it to the client's known_hosts as `[localhost]:2222 ssh-ed25519 ...`.
+5. After `wsl --shutdown`, start WSL once (`wsl -d <distribution> -- true`) and check that `systemctl is-active ssh.socket` reports `active`. Ubuntu 24.04 uses socket activation, so `ssh.socket` is generated from the `Port` value.
+6. Obtain the WSL sshd host key (`/etc/ssh/ssh_host_ed25519_key.pub`) through the Windows target and add it to the client's known_hosts as `[127.0.0.1]:2222 ssh-ed25519 ...`.
 
 An example `~/.ssh/config` on the client. The Windows sshd must have `AllowTcpForwarding` enabled (the default).
 
@@ -577,14 +577,24 @@ Host win-target
     HostName 192.0.2.10
     User alice
 
+Match host wsl-target exec "ssh -n win-target wsl.exe -d ubuntu --exec true"
+
 Host wsl-target
-    HostName localhost
+    HostName 127.0.0.1
     Port 2222
     User alice
     ProxyJump win-target
 ```
 
-From then on, treat `wsl-target` as an ordinary Linux target (for example `scripts/deploy.sh wsl-target linux-amd64`). When passing the configuration file with `-F` on a Windows client, use `/` as the path separator: the path ProxyJump hands to the jump ssh loses its `\` characters.
+From then on, treat `wsl-target` as an ordinary Linux target (for example `scripts/deploy.sh wsl-target linux-amd64`). The key points of this configuration:
+
+- The `Match ... exec` line starts WSL on the Windows target on every connection to `wsl-target`. After Windows restarts, sshd does not listen until something starts WSL, so without this line the connection fails (`Connection closed by UNKNOWN port 65535`). It adds about 12 seconds when WSL is stopped and about 1 second when it is running. It leaves no autostart setting on Windows.
+- The ssh inside `Match ... exec` does not inherit the `-F` given to the client ssh. When you pass the configuration file with `-F`, give the same `-F` to the ssh inside `exec` too. On a Windows client, use `/` as the path separator: the path ProxyJump hands to the jump ssh loses its `\` characters.
+- Chaining the WSL start and `ssh -W` with `&&` in `ProxyCommand` does not work. OpenSSH prefixes `ProxyCommand` with `exec`, so the output of the first ssh is taken as the SSH stream.
+- Set `HostName` to `127.0.0.1`, not `localhost`. In mirrored networking (`networkingMode=mirrored`), the WSL sshd does not answer connections from Windows to `::1` port 2222, so the connection fails when `localhost` resolves to `::1`. In NAT mode (the default), either form works.
+- Restarting WSL empties `/tmp`, which removes `/tmp/host-shell-<uid>/host-shell` placed by `deploy.sh`. Run `deploy.sh` again, as after a Linux reboot.
+
+In mirrored mode the WSL sshd also listens on the Windows IP addresses, but the Hyper-V firewall blocks direct connections from the network by default (WSL's `DefaultInboundAction` is `Block`). A direct connection needs an inbound allow rule created with `New-NetFirewallHyperVRule`, which is a setting that stays on Windows. ProxyJump does not need this rule.
 
 If sshd cannot be set up, host-shell can also be started through `wsl.exe` from the Windows sshd:
 
@@ -596,13 +606,14 @@ Standard input and output arrive intact on this route, but the skill's scripts d
 
 | Configuration | Checked | Environment | Status |
 |---|---|---|---|
-| sshd in WSL with ProxyJump | `detect.sh` (`linux-amd64`), `deploy.sh` (placement and `up to date`), `probe.sh`, and through bridge: `exec_run`, pty jobs, `transfer_push` and `transfer_pull` of about 13 MiB (SHA-256 match), `svc_list`, remote forwards. With the `.wslconfig` settings, connecting still works 30 seconds or more after the sessions close | Windows 11 Enterprise (build 26300) Hyper-V virtual machine, WSL 3.0.3, Ubuntu 24.04 (systemd, openssh-server 9.6p1), Windows OpenSSH client | Verified |
+| sshd in WSL with ProxyJump (NAT mode) | `detect.sh` (`linux-amd64`), `deploy.sh` (placement and `up to date`), `probe.sh`, and through bridge: `exec_run`, pty jobs, `transfer_push` and `transfer_pull` of about 13 MiB (SHA-256 match), `svc_list`, remote forwards. With the `.wslconfig` settings, connecting still works 30 seconds or more after the sessions close. `HostName` both `localhost` and `127.0.0.1` | Windows 11 Enterprise (build 26300) Hyper-V virtual machine, WSL 3.0.3, Ubuntu 24.04 (systemd, openssh-server 9.6p1). Client ssh: Git for Windows OpenSSH 10.6p1 for the scripts; that and Windows OpenSSH 9.5p1 for the operations through bridge | Verified |
+| Connecting after Windows restarts | Without `Match ... exec`, the connection fails. With it, `detect.sh`, `deploy.sh`, and `probe.sh` right after the restart, and the operations above through bridge after `wsl --shutdown`. Starting WSL with `Match ... exec` works with both ssh clients | Same | Verified |
+| Mirrored networking (`networkingMode=mirrored`) | With ProxyJump to `HostName 127.0.0.1`, the scripts and operations through bridge above (Git for Windows OpenSSH), and running a command with Windows OpenSSH. `::1` does not answer. Direct connections from the network are blocked by default and work after allowing them with `New-NetFirewallHyperVRule` | Same | Verified |
 | Route through `wsl.exe` | Starting MCP, 1,020,000 bytes of standard input, symbol interpretation by cmd | Same | Verified |
-| Connecting directly to the WSL sshd in mirrored networking (`networkingMode=mirrored`) | Behavior | None | Unverified |
 
 Table: Verification status of connecting to Linux in WSL
 
-The history is in [261105-wsl-connection-validation.md](../prompts/past/261105-wsl-connection-validation.md) (Japanese only).
+The history is in [261105-wsl-connection-validation.md](../prompts/past/261105-wsl-connection-validation.md) and [261105-wsl-boot-mirrored-validation.md](../prompts/past/261105-wsl-boot-mirrored-validation.md) (Japanese only).
 
 ## Troubleshooting
 

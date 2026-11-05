@@ -543,7 +543,7 @@ Windows の接続先で WSL 2 の Linux を使う場合は、WSL の中で sshd 
 ```mermaid
 flowchart LR
     Client["接続元<br/>ssh (ProxyJump)"] -->|"SSH (22)"| WinSSHD["Windows の sshd"]
-    WinSSHD -->|"TCP 転送<br/>localhost:2222"| WSLSSHD["WSL の sshd"]
+    WinSSHD -->|"TCP 転送<br/>127.0.0.1:2222"| WSLSSHD["WSL の sshd"]
     WSLSSHD --> HS["host-shell (Linux)"]
 ```
 
@@ -568,8 +568,8 @@ flowchart LR
    vmIdleTimeout=-1
    ```
 
-5. `wsl --shutdown` の後に WSL を一度起動し (`wsl -d <ディストリビューション> -- true`)、`systemctl is-active ssh.socket` が `active` であることを確認します。Ubuntu 24.04 はソケット起動のため、`Port` の値から `ssh.socket` が作られます。Windows の再起動後は、WSL を一度起動するまで sshd は待ち受けません。
-6. WSL の sshd のホスト鍵 (`/etc/ssh/ssh_host_ed25519_key.pub`) を、Windows の接続先を経由して取得し、接続元の known_hosts に `[localhost]:2222 ssh-ed25519 ...` の形で登録します。
+5. `wsl --shutdown` の後に WSL を一度起動し (`wsl -d <ディストリビューション> -- true`)、`systemctl is-active ssh.socket` が `active` であることを確認します。Ubuntu 24.04 はソケット起動のため、`Port` の値から `ssh.socket` が作られます。
+6. WSL の sshd のホスト鍵 (`/etc/ssh/ssh_host_ed25519_key.pub`) を、Windows の接続先を経由して取得し、接続元の known_hosts に `[127.0.0.1]:2222 ssh-ed25519 ...` の形で登録します。
 
 接続元の `~/.ssh/config` の例です。Windows の sshd は `AllowTcpForwarding` が有効 (既定) である必要があります。
 
@@ -578,14 +578,24 @@ Host win-target
     HostName 192.0.2.10
     User alice
 
+Match host wsl-target exec "ssh -n win-target wsl.exe -d ubuntu --exec true"
+
 Host wsl-target
-    HostName localhost
+    HostName 127.0.0.1
     Port 2222
     User alice
     ProxyJump win-target
 ```
 
-以降は `wsl-target` を通常の Linux の接続先として扱います (例: `scripts/deploy.sh wsl-target linux-amd64`)。設定ファイルを `-F` で指定する場合、Windows の接続元ではパスの区切りを `/` にします。ProxyJump が中継用の ssh に渡すパスから `\` が失われるためです。
+以降は `wsl-target` を通常の Linux の接続先として扱います (例: `scripts/deploy.sh wsl-target linux-amd64`)。設定の要点は次のとおりです。
+
+- `Match ... exec` の行は、`wsl-target` に接続するたびに Windows の接続先で WSL を起動します。Windows の再起動後は、誰かが WSL を起動するまで sshd が待ち受けないため、この行がないと接続できません (`Connection closed by UNKNOWN port 65535` で失敗する)。WSL が止まっている場合は接続に 12 秒ほど、動いている場合も 1 秒ほど余分にかかります。Windows 側に自動起動の設定は残りません。
+- `Match ... exec` の中の ssh には、接続元の ssh に渡した `-F` が引き継がれません。設定ファイルを `-F` で指定する場合は、`exec` の中の ssh にも同じ `-F` を書きます。Windows の接続元では、パスの区切りを `/` にします。ProxyJump が中継用の ssh に渡すパスから `\` が失われるためです。
+- `ProxyCommand` で WSL の起動と `ssh -W` を `&&` でつなぐ方法は使えません。OpenSSH が `ProxyCommand` の先頭に `exec` を付けるため、最初の ssh の出力が SSH の通信として扱われます。
+- `HostName` は `localhost` ではなく `127.0.0.1` にします。ミラー モードのネットワーク (`networkingMode=mirrored`) では、Windows から `::1` の 2222 番に接続しても WSL の sshd が応答せず、`localhost` が `::1` に解決されると接続できません。NAT モード (既定) では、どちらの書き方でも接続できます。
+- WSL を起動し直すと `/tmp` が空になり、`deploy.sh` が置いた `/tmp/host-shell-<uid>/host-shell` も消えます。Linux を再起動した後と同じく、`deploy.sh` を実行し直します。
+
+ミラー モードでは、WSL の sshd が Windows の IP アドレスでも待ち受けますが、ネットワークからの直接の接続は Hyper-V ファイアウォールが既定で遮断します (WSL の `DefaultInboundAction` が `Block`)。直接接続するには `New-NetFirewallHyperVRule` で受信を許可する規則が必要で、これは Windows に残る設定です。ProxyJump を使えば、この規則は不要です。
 
 sshd を用意できない場合は、Windows の sshd から `wsl.exe` を挟んで起動することもできます。
 
@@ -597,13 +607,14 @@ ssh -T win-target wsl -d ubuntu -- /home/alice/.local/bin/host-shell --mcp
 
 | 構成 | 確認内容 | 環境 | 状態 |
 |---|---|---|---|
-| WSL の sshd と ProxyJump | `detect.sh` (`linux-amd64`)、`deploy.sh` (配置と `up to date`)、`probe.sh`、bridge 経由の `exec_run`、pty ジョブ、約 13 MiB の `transfer_push`・`transfer_pull` (SHA-256 一致)、`svc_list`、リモート転送。`.wslconfig` の設定後、セッションを閉じて 30 秒以上たっても接続できる | Windows 11 Enterprise (ビルド 26300) の Hyper-V 仮想マシン、WSL 3.0.3、Ubuntu 24.04 (systemd、openssh-server 9.6p1)、接続元は Windows の OpenSSH | 検証済 |
+| WSL の sshd と ProxyJump (NAT モード) | `detect.sh` (`linux-amd64`)、`deploy.sh` (配置と `up to date`)、`probe.sh`、bridge 経由の `exec_run`、pty ジョブ、約 13 MiB の `transfer_push`・`transfer_pull` (SHA-256 一致)、`svc_list`、リモート転送。`.wslconfig` の設定後、セッションを閉じて 30 秒以上たっても接続できる。`HostName` は `localhost` と `127.0.0.1` の両方 | Windows 11 Enterprise (ビルド 26300) の Hyper-V 仮想マシン、WSL 3.0.3、Ubuntu 24.04 (systemd、openssh-server 9.6p1)。接続元の ssh は、スクリプトでは Git for Windows の OpenSSH 10.6p1、bridge 経由の操作では同 10.6p1 と Windows の OpenSSH 9.5p1 | 検証済 |
+| Windows の再起動後の接続 | `Match ... exec` がない場合は接続できない。ある場合は再起動直後の `detect.sh`、`deploy.sh`、`probe.sh` と、`wsl --shutdown` の後の bridge 経由の上記の操作。`Match ... exec` による WSL の起動は両方の ssh で動作 | 同上 | 検証済 |
+| ミラー モードのネットワーク (`networkingMode=mirrored`) | `HostName 127.0.0.1` の ProxyJump で、上記のスクリプトと bridge 経由の操作 (Git for Windows の OpenSSH)、Windows の OpenSSH でのコマンド実行。`::1` には応答しない。ネットワークからの直接の接続は既定で遮断され、`New-NetFirewallHyperVRule` で許可すると接続できる | 同上 | 検証済 |
 | `wsl.exe` を挟む経路 | MCP の起動、1,020,000 バイトの標準入力、cmd による記号の解釈 | 同上 | 検証済 |
-| ミラー モードのネットワーク (`networkingMode=mirrored`) で WSL の sshd に直接接続 | 動作 | なし | 未検証 |
 
 Table: WSL の Linux への接続の検証状況
 
-経緯は [WSL の Linux への接続の検証記録](../prompts/past/261105-wsl-connection-validation.md) にあります。
+経緯は [WSL の Linux への接続の検証記録](../prompts/past/261105-wsl-connection-validation.md) と [再起動後の接続とミラー モードの検証記録](../prompts/past/261105-wsl-boot-mirrored-validation.md) にあります。
 
 ## トラブルシューティング
 
