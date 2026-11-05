@@ -156,7 +156,7 @@ BYOK (Bring Your Own Key) は、利用者が用意したモデルのエンドポ
 
 `apiKey` が受け付けるのは、セキュア ストレージに保存したキーへの参照 (`${input:chat.lm.secret...}`) だけです。キーは画面から入力し、ファイルに直接書かないでください。直接書いた値はキーとして使われず、Azure の提供元では Microsoft アカウントでのサインイン (Entra ID の認証) を求められます。
 
-サインインしていない場合、チャット欄に「Set BYOK utility models」と表示されます。VS Code の文書によると、補助処理に使うモデルを BYOK のモデルから選ぶと、その処理も使えるようになります (未検証)。
+サインインしていない場合、チャット欄に「Set BYOK utility models」と表示され、補助処理 (進行中の表示文の生成など) は動きません。この表示の「Configure」から設定 `chat.byokUtilityModelDefault` を「Main Agent Model」(`mainAgent`) にすると、補助処理にも選択中の BYOK のモデルが使われ、表示は消えます。補助処理の要求も同じエンドポイントへ送られます。補助処理ごとに別のモデルを指定する `chat.utilityModel` と `chat.utilitySmallModel` は未検証です。
 
 ### HTTPS のエンドポイントとプロキシ
 
@@ -164,7 +164,7 @@ BYOK (Bring Your Own Key) は、利用者が用意したモデルのエンドポ
 
 - **Copilot CLI**: 認証局の証明書 (PEM) を接続先に置き、`NODE_EXTRA_CA_CERTS` にそのパスを指定して起動します。Windows 版と Linux 版の両方で、指定しないと証明書の検証で失敗し、指定すると応答します。
 - **画面内の Copilot Chat (Linux)**: `NODE_EXTRA_CA_CERTS` は使われません。接続先の既定の証明書の束 (Ubuntu では `/etc/ssl/certs/ca-certificates.crt`) と認証局の証明書をつないだファイルを利用者の領域に作り、code-server を起動する `job_start` の `env` で `SSL_CERT_FILE` にそのパスを指定します。
-- **画面内の Copilot Chat (Windows)**: `NODE_EXTRA_CA_CERTS` と `SSL_CERT_FILE` のどちらも使われず、`unable to verify the first certificate` で失敗します。OS の証明書ストアへの登録が必要と考えられますが、これは接続先に残る設定のため、host-shell では扱わず、未検証です。
+- **画面内の Copilot Chat (Windows)**: `NODE_EXTRA_CA_CERTS` と `SSL_CERT_FILE` のどちらも使われず、`unable to verify the first certificate` で失敗します。認証局を Windows の証明書ストア (ローカル コンピューターの「信頼されたルート証明機関」) に登録すると、環境変数なしで接続できます。登録には管理者の権限が要り、接続先に残る設定のため、host-shell では行いません。必要な場合は、接続先の管理者の了承を得て登録します。
 
 画面内の Copilot Chat は、エンドポイントのホスト名が `localhost` の場合、`HTTPS_PROXY` があってもプロキシを通さずに接続先の `localhost` へ直接接続します。手元のエンドポイントには、リモート転送を使います。
 
@@ -220,7 +220,9 @@ Table: Copilot CLI の検証段階
 | Copilot CLI 1.0.105 (Windows 版、Linux 版) の HTTPS とクライアント経由プロキシ | `NODE_EXTRA_CA_CERTS` なしでは証明書の検証で失敗し、ありでは Chat Completions と Responses API の応答とツール実行が成功する。`proxy_status` で許可した宛先だけを経由 | Windows 版は上記の仮想マシン、Linux 版は同じ仮想マシンの WSL 2 (WSL の sshd と ProxyJump で接続) | 検証済 |
 | 画面内の Copilot Chat (Linux 版 code-server 4.144.0) の HTTPS とクライアント経由プロキシ | `SSL_CERT_FILE` で応答とツール実行が成功する。`NODE_EXTRA_CA_CERTS` だけでは証明書の検証で失敗する。`localhost` の宛先はプロキシを通らない | 同上の WSL 2、ホストの Chrome から操作 | 検証済 |
 | 画面内の Copilot Chat (Windows 版 code-server 4.144.0) の HTTPS とクライアント経由プロキシ | `NODE_EXTRA_CA_CERTS` と `SSL_CERT_FILE` のどちらでも証明書の検証で失敗する | 上記の仮想マシン、ホストの Chrome から操作 | 検証済 |
-| 画面内の Copilot Chat (Windows) で、OS の証明書ストアに認証局を登録した場合 | 応答 | なし | 未検証 |
+| 画面内の Copilot Chat (Windows) で、認証局を証明書ストアに登録した場合 | ローカル コンピューターの `Root` に登録すると、環境変数なしで応答とツール実行が成功する | 上記の仮想マシン、ホストの Chrome から操作 | 検証済 |
+| 画面内の Copilot Chat (Windows) の補助用モデル | `chat.byokUtilityModelDefault` を `mainAgent` にすると「Set BYOK utility models」の表示が消え、補助処理 (進行中の表示文の生成) の要求が BYOK のエンドポイントへ送られる | 同上 | 検証済 |
+| `chat.utilityModel`、`chat.utilitySmallModel` による個別の指定 | 動作 | なし | 未検証 |
 | 実際の Azure OpenAI | 通信と応答 | なし | 未検証 |
 
 Table: BYOK の検証状況
@@ -242,4 +244,4 @@ Codex は読み取り専用ファイルシステムでは、PATH 用エイリア
 
 ### 検証の記録
 
-新しく検証するときは、OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、検証済みの段階と失敗理由を記録します。経緯の記録は `docs/prompts/past/` に置き、この文書には結果だけを反映します。これまでの経緯は [CLI 型 AI コーディングエージェントの検証記録](../prompts/past/261102-coding-agents-validation.md) 、[Copilot CLI の操作段階の検証記録](../prompts/past/261103-copilot-cli-operation-validation.md)、[Copilot CLI のコピー範囲の検証記録](../prompts/past/261103-copilot-cli-copy-scope-validation.md)、[終了段階の検証記録](../prompts/past/261103-coding-agents-shutdown-validation.md)、[BYOK の検証記録](../prompts/past/261105-copilot-byok-validation.md)、[WSL での BYOK の検証記録](../prompts/past/261105-wsl-byok-validation.md)、[BYOK の HTTPS とプロキシの検証記録](../prompts/past/261105-byok-https-proxy-validation.md) にあります。
+新しく検証するときは、OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、検証済みの段階と失敗理由を記録します。経緯の記録は `docs/prompts/past/` に置き、この文書には結果だけを反映します。これまでの経緯は [CLI 型 AI コーディングエージェントの検証記録](../prompts/past/261102-coding-agents-validation.md) 、[Copilot CLI の操作段階の検証記録](../prompts/past/261103-copilot-cli-operation-validation.md)、[Copilot CLI のコピー範囲の検証記録](../prompts/past/261103-copilot-cli-copy-scope-validation.md)、[終了段階の検証記録](../prompts/past/261103-coding-agents-shutdown-validation.md)、[BYOK の検証記録](../prompts/past/261105-copilot-byok-validation.md)、[WSL での BYOK の検証記録](../prompts/past/261105-wsl-byok-validation.md)、[BYOK の HTTPS とプロキシの検証記録](../prompts/past/261105-byok-https-proxy-validation.md)、[証明書ストアと補助用モデルの検証記録](../prompts/past/261105-byok-certstore-utility-validation.md) にあります。
