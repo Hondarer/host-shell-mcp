@@ -154,7 +154,19 @@ Select the model with `--model myazure/gpt` at startup (`/model` during a sessio
 
 From the chat model picker, choose "+", then "Add Models" in the language models view, and pick a provider (Azure, OpenAI, Custom Endpoint, and so on). After a group name and the API key, `User/chatLanguageModels.json` in the user data opens. The key is stored as a secret; the file holds only a reference (`${input:chat.lm.secret...}`). Fill in `id`, `name`, and `url` of `models` (for Azure, the deployment's Chat Completions URL such as `https://<resource>.openai.azure.com/openai/deployments/<deployment>/chat/completions?api-version=2024-10-21`), save, and reload the page in the browser; the model then appears in the picker. In validation, Chat sent the key in an `Authorization: Bearer` header (the `url` was a dummy endpoint, not `*.openai.azure.com`).
 
+`apiKey` accepts only a reference to a key kept in secure storage (`${input:chat.lm.secret...}`). Enter the key in the UI and do not write it in the file. A value written directly is not used as a key; with the Azure provider, a Microsoft account sign-in (Entra ID authentication) is requested instead.
+
 Without a sign-in, the chat box shows "Set BYOK utility models". According to the VS Code documentation, choosing BYOK models for the utility tasks enables them as well (Unverified).
+
+### HTTPS endpoints and the proxy
+
+With the client HTTP proxy, the CLI and code-server on the target follow `HTTPS_PROXY` and go through the client with `CONNECT`; TLS runs between the target process and the endpoint, so the endpoint certificate is verified on the target. Certificates from public CAs (such as Azure OpenAI) should need no extra setting, but this is unverified with a real Azure OpenAI endpoint. For an endpoint whose certificate comes from a CA the target does not trust, such as a company CA, pass the CA certificate as follows:
+
+- **Copilot CLI**: place the CA certificate (PEM) on the target and start the CLI with `NODE_EXTRA_CA_CERTS` set to its path. On both the Windows and Linux builds, it fails certificate verification without the variable and answers with it.
+- **In-editor Copilot Chat (Linux)**: `NODE_EXTRA_CA_CERTS` is not used. Create a file in the user's area that joins the target's default certificate bundle (on Ubuntu, `/etc/ssl/certs/ca-certificates.crt`) and the CA certificate, and set `SSL_CERT_FILE` to its path in the `env` of the `job_start` that starts code-server.
+- **In-editor Copilot Chat (Windows)**: neither `NODE_EXTRA_CA_CERTS` nor `SSL_CERT_FILE` is used, and the request fails with `unable to verify the first certificate`. Registering the CA in the OS certificate store is probably required, but that is a setting that stays on the target, so host-shell does not handle it, and it is unverified.
+
+When the endpoint host name is `localhost`, the in-editor Copilot Chat connects directly to `localhost` on the target without the proxy, even with `HTTPS_PROXY` set. Use a remote forward for endpoints on the client.
 
 ## Clipboard copying fails only inside Copilot CLI
 
@@ -197,7 +209,7 @@ Table: Copilot CLI validation stages
 
 ### BYOK
 
-The inference endpoint was a dummy Azure OpenAI-style endpoint on the host (a test server that returns a fixed text for Chat Completions and the Responses API, and tool calls on request). The target reached it through a remote forward (the target's `127.0.0.1:18443` to the dummy on the client). No GitHub sign-in was done. Traffic with a real Azure OpenAI endpoint is not covered.
+The inference endpoint was a dummy Azure OpenAI-style endpoint on the host (a test server that returns a fixed text for Chat Completions and the Responses API, and tool calls on request). The target reached it through a remote forward (the target's `127.0.0.1:18443` to the dummy on the client). For the HTTPS checks, the dummy served HTTPS with a certificate issued by a test CA, and the target reached it through the client HTTP proxy (allowing only the dummy's host name and port). No GitHub sign-in was done. Traffic with a real Azure OpenAI endpoint is not covered.
 
 | Subject | Checked | Method and environment | Status |
 | --- | --- | --- | --- |
@@ -205,7 +217,11 @@ The inference endpoint was a dummy Azure OpenAI-style endpoint on the host (a te
 | In-editor Copilot Chat (GitHub Copilot Chat 0.72.0 in code-server 4.144.0) | A BYOK model registered under the Azure provider answers; the agent's `create_file` and `read_file` run on the target and their results go back to the model | Same, operated from Chrome on the host | Verified |
 | Linux build of Copilot CLI 1.0.105 (`copilot-linux-x64.tar.gz`, SHA-256 `aba1f06f27bc0447656647f76e0a4cf58b4b2a341c75ff04a750982b6aeb6bd2`) | The same checks as on Windows; the tools run were `create` and `bash` | WSL 2 on the same virtual machine (WSL 3.0.3, Ubuntu 24.04, x86_64, glibc 2.39); the target `host-shell` was started with `ssh <target> wsl -d ubuntu -- <host-shell> --mcp` | Verified |
 | In-editor Copilot Chat (Linux build of code-server 4.144.0) | The same checks as on Windows | Same, operated from Chrome on the host | Verified |
-| A real Azure OpenAI endpoint, reaching it through the client HTTP proxy | Traffic and answers | None | Unverified |
+| Copilot CLI 1.0.105 (Windows and Linux builds) over HTTPS through the client HTTP proxy | Without `NODE_EXTRA_CA_CERTS` certificate verification fails; with it, answers over Chat Completions and the Responses API and tool runs succeed. `proxy_status` shows only the allowed destination | Windows build on the virtual machine above; Linux build in WSL 2 on the same machine (reached through the WSL sshd with ProxyJump) | Verified |
+| In-editor Copilot Chat (Linux build of code-server 4.144.0) over HTTPS through the client HTTP proxy | Answers and tool runs succeed with `SSL_CERT_FILE`; with `NODE_EXTRA_CA_CERTS` alone certificate verification fails. `localhost` destinations bypass the proxy | The same WSL 2, operated from Chrome on the host | Verified |
+| In-editor Copilot Chat (Windows build of code-server 4.144.0) over HTTPS through the client HTTP proxy | Certificate verification fails with either `NODE_EXTRA_CA_CERTS` or `SSL_CERT_FILE` | The virtual machine above, operated from Chrome on the host | Verified |
+| In-editor Copilot Chat (Windows) with the CA registered in the OS certificate store | Answers | None | Unverified |
+| A real Azure OpenAI endpoint | Traffic and answers | None | Unverified |
 
 Table: BYOK verification status
 
@@ -226,4 +242,4 @@ On a read-only file system, Codex warns that it cannot create its PATH alias. Ve
 
 ### Recording validation
 
-For new validation, record OS, CPU, and libc; CLI, code-server, and host-shell versions; source and hash; authentication method (without secrets); allowed destinations; and verified stages with failure causes. Keep the history in `docs/prompts/past/` (Japanese only) and reflect only the results here. Past history is in [261102-coding-agents-validation.md](../prompts/past/261102-coding-agents-validation.md), [261103-copilot-cli-operation-validation.md](../prompts/past/261103-copilot-cli-operation-validation.md), [261103-copilot-cli-copy-scope-validation.md](../prompts/past/261103-copilot-cli-copy-scope-validation.md), [261103-coding-agents-shutdown-validation.md](../prompts/past/261103-coding-agents-shutdown-validation.md), [261105-copilot-byok-validation.md](../prompts/past/261105-copilot-byok-validation.md), and [261105-wsl-byok-validation.md](../prompts/past/261105-wsl-byok-validation.md).
+For new validation, record OS, CPU, and libc; CLI, code-server, and host-shell versions; source and hash; authentication method (without secrets); allowed destinations; and verified stages with failure causes. Keep the history in `docs/prompts/past/` (Japanese only) and reflect only the results here. Past history is in [261102-coding-agents-validation.md](../prompts/past/261102-coding-agents-validation.md), [261103-copilot-cli-operation-validation.md](../prompts/past/261103-copilot-cli-operation-validation.md), [261103-copilot-cli-copy-scope-validation.md](../prompts/past/261103-copilot-cli-copy-scope-validation.md), [261103-coding-agents-shutdown-validation.md](../prompts/past/261103-coding-agents-shutdown-validation.md), [261105-copilot-byok-validation.md](../prompts/past/261105-copilot-byok-validation.md), [261105-wsl-byok-validation.md](../prompts/past/261105-wsl-byok-validation.md), and [261105-byok-https-proxy-validation.md](../prompts/past/261105-byok-https-proxy-validation.md).
