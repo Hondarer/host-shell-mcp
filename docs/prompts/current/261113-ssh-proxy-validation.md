@@ -117,3 +117,5 @@ Windows 側の Claude のセッションが上の手順で実施した結果で�
 
 - test (macos-latest)、test (windows-latest)、dns-lib (amd64・arm64) は成功した。`internal/routeproxy` のテストが macOS でも成功した。
 - test (ubuntu-latest) は、`internal/server` の `TestSudoPassword` だけが失敗した。ubuntu-latest が ubuntu-26.04 のイメージになり、`sudo -n` のメッセージが `interactive authentication is required` (sudo-rs) に変わったため、メッセージに `password` を含むことを確かめる部分が成り立たなくなった。今回の変更とは関係しない。テストは `password` または `authentication` を含めばよいように直した。
+
+修正後のコミット 93a458b で CI を再実行し、test (ubuntu-latest・windows-latest・macos-latest)、dns-lib、build のすべてが成功した ([run 43387111019](https://github.com/Hondarer/host-shell-mcp/actions/runs/43387111019))。
