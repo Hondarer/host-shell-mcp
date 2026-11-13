@@ -267,8 +267,6 @@ Table: 検証済みの範囲
 
 スクリプトの自動試験 (`tests/scripts.test.sh`、偽の配布物と偽の sshd を使う) は、Oracle Linux 8 と 10 のコンテナーで検証済です。実行方法は [開発ガイド](development.md#vs-code-remote---ssh-接続スキルの保守) を参照してください。
 
-検証の記録は、[検証記録](../prompts/past/261103-vscode-remote-ssh-validation.md) と [残課題一覧](../prompts/past/261103-vscode-remote-ssh-backlog.md) にあります。
-
 ## 制限
 
 - 内側の sshd はシェルを提供するため、ファイルの転送を完全には防げません。sftp と SFTP 方式の scp は拒否しますが、シェルを経由する従来方式の scp (`scp -O`) や、シェルでのファイルの読み書きは防げません。

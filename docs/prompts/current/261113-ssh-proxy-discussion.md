@@ -36,9 +36,9 @@
     - ✅ 3.1. `261113-ssh-proxy-design.md` の作成 (connect 互換の仕様と原典 (connect.c、Tera Term の TTProxy) との照合を含む)
     - ✅ 3.2. 受入条件と整合性の確認
     - ✅ 3.3. 最終仕様の承認の受付 (第 2 ゲート。最終仕様の版 3 を 2026-11-13 に対話「承認」で承認)
-- ⚠️ 4. 承認された最終仕様に従った作業の実施
+- ✅ 4. 承認された最終仕様に従った作業の実施
     - ✅ 4.1. `host-shell connect` の実装 (`cmd/host-shell/main.go`、`internal/routeproxy/`)
-    - ⚠️ 4.2. 自動テスト (試験用 CONNECT プロキシ、Basic 認証の成否、407・403・接続失敗、標準入出力の 8 ビット透過、終了処理)。Linux と Windows で成功。macOS は vet のみで、テストの実行が未確認 (CI は PR か手動起動が必要)
+    - ✅ 4.2. 自動テスト (試験用 CONNECT プロキシ、Basic 認証の成否、407・403・接続失敗、標準入出力の 8 ビット透過、終了処理)。Linux、Windows、macOS (CI) で成功
     - ✅ 4.3. 検証環境の構築 (Podman の Squid (Basic 認証) と、Squid 経由でしか到達できない sshd コンテナー)
     - ✅ 4.4. 経路にプロキシを含む構成の検証 (Linux のコンテナー) と `261113-ssh-proxy-validation.md` への記録 (MCP 接続、多段 (入れ子と `ProxyJump`)、bridge の `--proxy` との併用、無通信切断)
     - ✅ 4.5. Windows の実機での検証 (Windows 側のセッション。Git for Windows の OpenSSH と Windows の OpenSSH、Tera Term での同じ Squid への接続) と検証記録への追記。Windows 側のセッションで実施した。Tera Term はユーザーの判断で対象外とした
@@ -46,7 +46,7 @@
     - ✅ 4.7. 用語の置き換えと文章の推敲 (`agy --dangerously-skip-permissions` に依頼し、差分を確認して取り込む。文書、`SKILL.md`、埋め込み help、スクリプトの出力、コードのコメント、ログ・`proxy_status` の文字列、および [Q-015](#q-015-コードの識別子の置き換え) による識別子。文書の候補は `client-proxy.md`、`code-server.md`、`user-guide.md`、`remote-dns.md`、`coding-agents.md`、`vscode-remote-ssh.md`、`README.md`、`docs/README.md` と各英訳)
     - ✅ 4.8. スキルの整理 (`host-shell-connect` に経路プロキシの扱い、全スキルに「プロキシ」がどちらを指すか不明な場合の問い合わせ)
     - ✅ 4.9. 埋め込み help (`help_get`) と `--help` の更新 (`--help` の使い方に `host-shell connect` を追加。埋め込み help は接続先のツールの案内であり、変更不要)
-    - ⚠️ 4.10. 受入条件への適合確認 (自動テストの Linux・Windows 分、Linux のコンテナー、Windows の実機、文書の旧称の検索は適合。macOS での自動テストが未確認)
+    - ✅ 4.10. 受入条件への適合確認 (自動テスト (Linux、Windows、macOS)、Linux のコンテナー、Windows の実機、文書の旧称の検索がすべて適合)
     - ✅ 4.11. 残課題一覧 (`261113-ssh-proxy-backlog.md`) の整理
 - 🔄 5. 成果物の承認の受付 (第 3 ゲート)
     - 🔄 5.1. 成果物・検証結果・残課題の提示 ← **CURRENT**

@@ -26,6 +26,6 @@ Dates and numbers that are part of the specification stay: supported versions, m
 ### Updating
 
 - When a result changes, rewrite the specification in place. Do not append a dated section.
-- Record the history of a task (discussions, designs, backlogs, validation records) in `docs/prompts/past/yymmdd-<topic>-<kind>.md`, in Japanese only. `<kind>` is `discussion`, `design`, `backlog`, or `validation`. A document's verified-scope section may link to the relevant record.
+- Record the history of a task (discussions, designs, backlogs, validation records) in `docs/prompts/past/yymmdd-<topic>-<kind>.md`, in Japanese only. `<kind>` is `discussion`, `design`, `backlog`, or `validation`. Documents do not link to records in `docs/prompts/`; records may link to documents.
 - Records in `docs/prompts/past/` are snapshots. Do not update them to match the current state.
 - Edit the Japanese version (`docs/ja/`) first and reflect the same change in `docs/en/` in the same commit.

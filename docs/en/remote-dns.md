@@ -304,8 +304,6 @@ Unverified:
 - Patched-copy mode on arm64 (archive inspection only)
 - Browser Web extensions
 
-The validation history is in [261102-remote-dns-validation.md](../prompts/past/261102-remote-dns-validation.md), [261103-copilot-chat-remote-dns-validation.md](../prompts/past/261103-copilot-chat-remote-dns-validation.md), [261104-windows-target-validation.md](../prompts/past/261104-windows-target-validation.md), [261104-windows-remote-dns-design.md](../prompts/past/261104-windows-remote-dns-design.md), [261105-windows-remote-dns-configure-design.md](../prompts/past/261105-windows-remote-dns-configure-design.md), [261105-windows-remote-dns-volatile-design.md](../prompts/past/261105-windows-remote-dns-volatile-design.md), and [261105-windows-remaining-validation.md](../prompts/past/261105-windows-remaining-validation.md) (Japanese only).
-
 Development validation commands (Linux, Node.js required):
 
 ```bash

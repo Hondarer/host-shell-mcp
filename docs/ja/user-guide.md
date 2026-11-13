@@ -209,7 +209,7 @@ sha256sum dist/host-shell-windows-amd64.exe
 
 Windows の OpenSSH (Win32-OpenSSH) は、コマンドの標準入力に非同期 I/O 用のパイプ (`FILE_FLAG_OVERLAPPED` 付き) を渡します。このパイプを同期的に読むと、約 128 KiB で読み取りが止まります。`[Console]::OpenStandardInput()` を `CopyTo` するだけの手順もこれに当たり、ほかの .NET Framework のプログラムでも同じように止まります。上の手順は同じハンドルを非同期の `FileStream` として開き直して読むので止まりません。同期 I/O 用のハンドルが渡された場合は `FileStream` が開けないので、通常の読み取りに戻ります。
 
-この手順と `deploy.sh` の Windows 向けの転送は、Windows 11 Enterprise (ビルド 26300、amd64)、Windows PowerShell 5.1.26100、OpenSSH_for_Windows 9.5p2 の `sshd` で、約 13 MiB の配置と SHA-256 の一致、標準入力が遅れて届く場合を確認しました (検証済、[検証記録](../prompts/past/261105-windows-ssh-stdin-validation.md))。Windows Server、arm64、ほかの OpenSSH の版は未検証です。この手順は SSH 経由の標準入力を対象とし、接続先のローカルでファイルから標準入力を与える使い方は対象外です。
+この手順と `deploy.sh` の Windows 向けの転送は、Windows 11 Enterprise (ビルド 26300、amd64)、Windows PowerShell 5.1.26100、OpenSSH_for_Windows 9.5p2 の `sshd` で、約 13 MiB の配置と SHA-256 の一致、標準入力が遅れて届く場合を確認しました (検証済)。Windows Server、arm64、ほかの OpenSSH の版は未検証です。この手順は SSH 経由の標準入力を対象とし、接続先のローカルでファイルから標準入力を与える使い方は対象外です。
 
 一度 `host-shell` を配置した後は、新バージョンを `fs_write` (`base64` と `offset`) または `transfer_push` で転送し、`exec_run` で置き換えることもできます。Windows では実行中の `host-shell.exe` を上書きできないため、別名で転送し、次回接続前にリネームしてください。
 
@@ -536,7 +536,7 @@ SSH のポート転送 (`-L`、`-R`、`-D`) や外部通信・外部 DNS が使�
 
 Table: 管理者でない接続ユーザーで使える範囲
 
-確認した環境は、Windows 11 Enterprise (ビルド 26300、amd64) の仮想マシンで、接続ユーザーを Administrators から外し、Users だけの場合と Power Users にも入れた場合です (検証済、[検証記録](../prompts/past/261105-windows-standard-user-validation.md))。2 つの場合の結果は同じでした。ドメイン ユーザー、Windows Server、arm64 は未検証です。
+確認した環境は、Windows 11 Enterprise (ビルド 26300、amd64) の仮想マシンで、接続ユーザーを Administrators から外し、Users だけの場合と Power Users にも入れた場合です (検証済)。2 つの場合の結果は同じでした。ドメイン ユーザー、Windows Server、arm64 は未検証です。
 
 #### WSL の Linux への接続
 
@@ -615,8 +615,6 @@ ssh -T win-target wsl -d ubuntu -- /home/alice/.local/bin/host-shell --mcp
 | `wsl.exe` を挟む経路 | MCP の起動、1,020,000 バイトの標準入力、cmd による記号の解釈 | 同上 | 検証済 |
 
 Table: WSL の Linux への接続の検証状況
-
-経緯は [WSL の Linux への接続の検証記録](../prompts/past/261105-wsl-connection-validation.md) と [再起動後の接続とミラー モードの検証記録](../prompts/past/261105-wsl-boot-mirrored-validation.md) にあります。
 
 ## トラブルシューティング
 

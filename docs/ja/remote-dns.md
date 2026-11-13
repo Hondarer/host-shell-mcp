@@ -304,8 +304,6 @@ Table: Windows の接続先での検証状況
 - 専用コピーモードの arm64 での動作 (アーカイブの検査のみ)
 - ブラウザー内の Web 拡張
 
-検証の経緯は [remote-dns の検証記録](../prompts/past/261102-remote-dns-validation.md)、[画面内 Copilot Chat の検証記録](../prompts/past/261103-copilot-chat-remote-dns-validation.md)、[Windows 接続先の検証記録](../prompts/past/261104-windows-target-validation.md)、[Windows 向け remote-dns の設計](../prompts/past/261104-windows-remote-dns-design.md)、[Windows の名前解決設定の自動化の設計](../prompts/past/261105-windows-remote-dns-configure-design.md)、[NRPT 規則の揮発化の設計](../prompts/past/261105-windows-remote-dns-volatile-design.md)、[Windows 接続先の残りの自動検証の記録](../prompts/past/261105-windows-remaining-validation.md) にあります。
-
 開発時の検証コマンド (Linux、Node.js が必要):
 
 ```bash

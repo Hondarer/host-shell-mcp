@@ -48,7 +48,7 @@ flowchart LR
 - **各ツールの優先順位**: `net_request_http` で `proxy` 引数 (プロキシ URL または `none`) を明示指定した場合はその指定が優先され、省略時は接続先中継プロキシ設定と `NO_PROXY` に従います (`unix_socket` 指定時は直接接続します)。`exec_sudo` は `sudo` 自身の環境変数引き継ぎ規則に従うため、プロキシ環境変数が自動伝播するとは限りません。
 - **制限の範囲**: 本機能は OS 全体の通信を隔離するものではありません。`CONNECT` は許可されたポートへの任意の TCP ストリームを中継できるため、必要な宛先とポートのみを許可してください。接続先に `--allow-host` が指定されている場合は、ネットワーク ツール (`net_*`) に対する制限として引き続き適用されます。
 
-インターネット向けプロキシ (`bridge` の起動環境の `HTTPS_PROXY`) は、Squid 6.10 (Basic 認証。資格情報は URL エンコードして URL に指定) で確認しています。外部への経路がない接続先 (Podman コンテナー) の `net_request_http` と `curl` が、接続先中継プロキシ、`bridge`、Squid を順に経由して `api.github.com` から応答を取得し、`bridge` の許可規則にない宛先は 403 になりました (検証済、[SSH 経路プロキシの検証記録](../prompts/current/261113-ssh-proxy-validation.md))。NTLM など Basic 以外の認証を要求するプロキシは未検証です。
+インターネット向けプロキシ (`bridge` の起動環境の `HTTPS_PROXY`) は、Squid 6.10 (Basic 認証。資格情報は URL エンコードして URL に指定) で確認しています。外部への経路がない接続先 (Podman コンテナー) の `net_request_http` と `curl` が、接続先中継プロキシ、`bridge`、Squid を順に経由して `api.github.com` から応答を取得し、`bridge` の許可規則にない宛先は 403 になりました (検証済)。NTLM など Basic 以外の認証を要求するプロキシは未検証です。
 
 ### DNS と許可対象外の切り分け
 

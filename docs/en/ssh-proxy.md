@@ -224,7 +224,7 @@ Adding `-d` to `ProxyCommand` prints the connection, request transmission, respo
 | --- | --- | --- |
 | Handshake of `host-shell connect`, order of credential sources, errors, 8-bit transparency, half-close, timeout, password file permissions (Linux) | Automated tests with a test `CONNECT` proxy, run on Linux | Verified |
 | The same automated tests on Windows (including the permission check) | Windows 11 Pro for Workstations (build 26300, amd64), go1.27.4 | Verified |
-| The same automated tests on macOS | None | Unverified |
+| The same automated tests on macOS | CI (GitHub Actions macos-latest) | Verified |
 | Connection through Squid and error messages (407, 403, 503, unreachable proxy, password file permissions) | Podman containers: Squid 6.10 (Basic authentication), sshd with OpenSSH 9.9p1 on Oracle Linux 10.2, client with OpenSSH 8.0p1 on Oracle Linux 8.10 (WSL2). Squid is the only route from the client to sshd | Verified |
 | Scripts of the `host-shell-connect` skill (`remote.sh`, `detect.sh`, `deploy.sh`, `probe.sh`), nested multi-hop routes and `ProxyJump` | Same as above | Verified |
 | MCP operations through `bridge` (`exec_run`, 20 MB `transfer_push` and `transfer_pull`) | Same as above | Verified |
@@ -234,8 +234,6 @@ Adding `-d` to `ProxyCommand` prints the connection, request transmission, respo
 | Typing the password on a terminal with a Windows client (the input is not echoed) | Same as above, typed one character at a time through a pseudo console (ConPTY) | Verified (typing by hand in a console window is unverified) |
 
 Table: Verification status of the SSH route proxy
-
-The validation record is in [the SSH route proxy validation record](../prompts/current/261113-ssh-proxy-validation.md) (Japanese).
 
 ## Limitations
 

@@ -50,7 +50,9 @@ func TestSudoPassword(t *testing.T) {
 	cs := connect(t)
 	// Test failure cases before the valid password, as sudo caches successful authentication.
 	out := testutil.Call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "id -un"})
-	if out.ExitCode == 0 || !strings.Contains(out.Stderr, "password") {
+	// sudo says "a password is required"; sudo-rs (the default sudo of Ubuntu 26.04) says
+	// "interactive authentication is required".
+	if out.ExitCode == 0 || !(strings.Contains(out.Stderr, "password") || strings.Contains(out.Stderr, "authentication")) {
 		t.Errorf("without a password: %+v", out)
 	}
 	out = testutil.Call[sudoOut](t, cs, "exec_sudo", map[string]any{"command": "id -un", "password": "wrong-" + password})

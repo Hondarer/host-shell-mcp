@@ -244,4 +244,4 @@ Codex は読み取り専用ファイルシステムでは、PATH 用エイリア
 
 ### 検証の記録
 
-新しく検証するときは、OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、検証済みの段階と失敗理由を記録します。経緯の記録は `docs/prompts/past/` に置き、この文書には結果だけを反映します。これまでの経緯は [CLI 型 AI コーディングエージェントの検証記録](../prompts/past/261102-coding-agents-validation.md) 、[Copilot CLI の操作段階の検証記録](../prompts/past/261103-copilot-cli-operation-validation.md)、[Copilot CLI のコピー範囲の検証記録](../prompts/past/261103-copilot-cli-copy-scope-validation.md)、[終了段階の検証記録](../prompts/past/261103-coding-agents-shutdown-validation.md)、[BYOK の検証記録](../prompts/past/261105-copilot-byok-validation.md)、[WSL での BYOK の検証記録](../prompts/past/261105-wsl-byok-validation.md)、[BYOK の HTTPS とプロキシの検証記録](../prompts/past/261105-byok-https-proxy-validation.md)、[証明書ストアと補助用モデルの検証記録](../prompts/past/261105-byok-certstore-utility-validation.md) にあります。
+新しく検証するときは、OS・CPU・libc、CLI と code-server と host-shell のバージョン、配布元・ハッシュ、認証方式 (秘密値を除く)、許可先、検証済みの段階と失敗理由を記録します。経緯の記録は `docs/prompts/past/` に置き、この文書には結果だけを反映します。

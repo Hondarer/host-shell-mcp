@@ -167,8 +167,6 @@ Table: Specifying the display language
 
 Table: Display language verification status
 
-The validation history is in [261103-code-server-offline-locale-validation.md](../prompts/past/261103-code-server-offline-locale-validation.md) and [261105-windows-code-server-browser-validation.md](../prompts/past/261105-windows-code-server-browser-validation.md) (Japanese only).
-
 ### Fetching extensions
 
 `extensions.txt` lists one extension per line as `publisher.name` or `publisher.name@version` (text after `#` is treated as a comment). On the client, the `download` script fetches extensions from Open VSX for the target platform:

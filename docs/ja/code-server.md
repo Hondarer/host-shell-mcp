@@ -167,8 +167,6 @@ Table: 表示言語の指定
 
 Table: 表示言語の検証状況
 
-経緯は [code-server の表示言語のオフライン化の検証記録](../prompts/past/261103-code-server-offline-locale-validation.md)、[Windows 接続先の code-server のブラウザー検証記録](../prompts/past/261105-windows-code-server-browser-validation.md) にあります。
-
 ### 拡張機能の取得
 
 `extensions.txt` には 1 行に 1 件ずつ `publisher.name` または `publisher.name@version` を記述します (`#` 以降はコメント)。クライアント側の `download` スクリプトが、接続先のアーキテクチャーごとに Open VSX から拡張機能を取得します。

@@ -224,7 +224,7 @@ Table: SSH 経路プロキシのトラブルシューティング
 | --- | --- | --- |
 | `host-shell connect` の手順、資格情報の優先順位、エラー、8 ビット透過、half-close、タイムアウト、パスワード ファイルの権限 (Linux) | 自動テスト (試験用の `CONNECT` プロキシ) を Linux で実行 | 検証済 |
 | 同じ自動テストの Windows での実行 (アクセス許可の判定を含む) | Windows 11 Pro for Workstations (ビルド 26300、amd64)、go1.27.4 | 検証済 |
-| 同じ自動テストの macOS での実行 | なし | 未検証 |
+| 同じ自動テストの macOS での実行 | CI (GitHub Actions の macos-latest) | 検証済 |
 | Squid 経由の接続とエラー表示 (407、403、503、接続不可、パスワード ファイルの権限) | Podman のコンテナー。Squid 6.10 (Basic 認証)、sshd は Oracle Linux 10.2 の OpenSSH 9.9p1、クライアントは Oracle Linux 8.10 (WSL2) の OpenSSH 8.0p1。クライアントから sshd への経路は Squid のみ | 検証済 |
 | `host-shell-connect` のスクリプト (`remote.sh`、`detect.sh`、`deploy.sh`、`probe.sh`)、入れ子の多段と `ProxyJump` | 同上 | 検証済 |
 | `bridge` 経由の MCP の操作 (`exec_run`、20 MB の `transfer_push`・`transfer_pull`) | 同上 | 検証済 |
@@ -234,8 +234,6 @@ Table: SSH 経路プロキシのトラブルシューティング
 | Windows のクライアントでの端末からのパスワード入力 (入力が表示されないこと) | 同上。疑似コンソール (ConPTY) から 1 文字ずつ入力して確認 | 検証済 (コンソール ウィンドウでの手入力は未検証) |
 
 Table: SSH 経路プロキシの検証状況
-
-検証の記録は [SSH 経路プロキシの検証記録](../prompts/current/261113-ssh-proxy-validation.md) にあります。
 
 ## 制限
 

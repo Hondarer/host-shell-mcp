@@ -209,7 +209,7 @@ Windows PowerShell 5.1 on the target writes standard input to the file as is and
 
 OpenSSH for Windows (Win32-OpenSSH) gives the command an asynchronous I/O pipe (opened with `FILE_FLAG_OVERLAPPED`) as standard input. Reading that pipe synchronously stalls after about 128 KiB. A plain `CopyTo` from `[Console]::OpenStandardInput()` is such a read, and other .NET Framework programs stall the same way. The procedure above reopens the same handle as an asynchronous `FileStream`, so it does not stall. When the handle is synchronous, `FileStream` refuses it and the procedure falls back to the ordinary read.
 
-This procedure and the Windows transfer in `deploy.sh` were checked on Windows 11 Enterprise (build 26300, amd64) with Windows PowerShell 5.1.26100 and the OpenSSH_for_Windows 9.5p2 `sshd`: a deployment of about 13 MiB with matching SHA-256, and standard input that arrives late (Verified; [validation record, Japanese](../prompts/past/261105-windows-ssh-stdin-validation.md)). Windows Server, arm64, and other OpenSSH versions are Unverified. The procedure targets standard input over SSH; feeding standard input from a file locally on the target is out of scope.
+This procedure and the Windows transfer in `deploy.sh` were checked on Windows 11 Enterprise (build 26300, amd64) with Windows PowerShell 5.1.26100 and the OpenSSH_for_Windows 9.5p2 `sshd`: a deployment of about 13 MiB with matching SHA-256, and standard input that arrives late (Verified). Windows Server, arm64, and other OpenSSH versions are Unverified. The procedure targets standard input over SSH; feeding standard input from a file locally on the target is out of scope.
 
 Once `host-shell` is running, you can also upload newer versions via `fs_write` (`base64` with `offset`) or `transfer_push` and swap the binary with `exec_run`. On Windows, a running `host-shell.exe` cannot be overwritten in place; upload to a temporary name and rename it before the next session.
 
@@ -535,7 +535,7 @@ When the connecting user is not an administrator (Users or Power Users), deploym
 
 Table: What works for non-administrator connecting users
 
-This was checked on a Windows 11 Enterprise (build 26300, amd64) virtual machine with the connecting user removed from Administrators, once in Users only and once also in Power Users (Verified; [validation record, Japanese](../prompts/past/261105-windows-standard-user-validation.md)). Both gave the same results. Domain users, Windows Server, and arm64 are Unverified.
+This was checked on a Windows 11 Enterprise (build 26300, amd64) virtual machine with the connecting user removed from Administrators, once in Users only and once also in Power Users (Verified). Both gave the same results. Domain users, Windows Server, and arm64 are Unverified.
 
 #### Connecting to Linux in WSL
 
@@ -614,8 +614,6 @@ Standard input and output arrive intact on this route, but the skill's scripts d
 | Route through `wsl.exe` | Starting MCP, 1,020,000 bytes of standard input, symbol interpretation by cmd | Same | Verified |
 
 Table: Verification status of connecting to Linux in WSL
-
-The history is in [261105-wsl-connection-validation.md](../prompts/past/261105-wsl-connection-validation.md) and [261105-wsl-boot-mirrored-validation.md](../prompts/past/261105-wsl-boot-mirrored-validation.md) (Japanese only).
 
 ## Troubleshooting
 

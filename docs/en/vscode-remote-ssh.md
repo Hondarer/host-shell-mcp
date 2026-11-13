@@ -265,8 +265,6 @@ Table: Verified scope
 
 The automated tests of the scripts (`tests/scripts.test.sh`, using fake distributions and a fake sshd) are verified in Oracle Linux 8 and 10 containers. See the [Development Guide](development.md#maintaining-the-vs-code-remote---ssh-skill) for how to run them.
 
-The validation records are in the [validation record](../prompts/past/261103-vscode-remote-ssh-validation.md) and the [backlog](../prompts/past/261103-vscode-remote-ssh-backlog.md) (Japanese).
-
 ## Limitations
 
 - The inner sshd provides a shell, so file transfer cannot be prevented completely. sftp and scp in SFTP mode are refused, but legacy scp through the shell (`scp -O`) and reading or writing files from the shell are not.
