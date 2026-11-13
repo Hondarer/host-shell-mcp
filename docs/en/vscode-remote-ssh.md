@@ -1,7 +1,7 @@
 # Using a target with VS Code Remote - SSH
 
 > [!NOTE]
-> This is an English translation. The Japanese version [../ja/vscode-remote-ssh.md](../ja/vscode-remote-ssh.md) is authoritative; if they differ, the Japanese version takes precedence.
+> This is an English translation. The Japanese version ([../ja/vscode-remote-ssh.md](../ja/vscode-remote-ssh.md)) is the single source of truth (SSOT) and takes precedence if they differ.
 
 This guide describes how to edit files on a Linux `host-shell` target from your local VS Code (the Remote - SSH extension), and how to use its terminal and Copilot Chat there. It also works when the target is in a closed network without internet access.
 

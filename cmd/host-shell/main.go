@@ -112,7 +112,7 @@ func parseFlags(fs *flag.FlagSet, args []string) (cfg config.Config, showVersion
 		dnsMode    = fs.Bool("remote-dns", false, "inject Linux/glibc getaddrinfo relay over the bridge; requires cc or --remote-dns-library")
 		dnsLibrary = fs.String("remote-dns-library", "", "prebuilt Linux/glibc DNS adapter (requires --remote-dns)")
 		dnsListen  = fs.String("remote-dns-listen", "", "also serve A/AAAA queries through the bridge on this loopback address, e.g. 127.0.0.1:53 (requires --remote-dns; required on Windows)")
-		dnsConfig  = fs.Bool("remote-dns-configure", false, "Windows: add volatile settings routing the OS resolver to --remote-dns-listen at startup (NRPT rule in a volatile registry key, plus a loopback IPv4 default route in the active store when none exists) and remove them on exit; if host-shell is killed they remain until the next start or a restart; machine-wide, use only with the user's approval; needs an elevated administrator session")
+		dnsConfig  = fs.Bool("remote-dns-configure", false, "Windows: route OS resolver to --remote-dns-listen at startup via volatile settings (volatile NRPT rule + active-store loopback default route) and clean up on exit; requires elevated administrator privileges and user approval")
 		proxyMode  = fs.Bool("client-proxy", false, "route HTTP/HTTPS through an explicitly enabled local bridge")
 		fwdLocal   = fs.Bool("allow-forward-local", false, "permit the bridge's local forwards and SOCKS5 to connect from this host (takes no value; destinations follow --allow-host)")
 		fwdRemote  = fs.Bool("allow-forward-remote", false, "permit the bridge's remote forwards to listen on this host's loopback (takes no value)")

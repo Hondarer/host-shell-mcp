@@ -41,7 +41,7 @@ When updating documentation, edit the Japanese version first and update the Engl
 | クライアント経由 HTTP プロキシ | [ja/client-proxy.md](ja/client-proxy.md) | [en/client-proxy.md](en/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |
 | ポート転送 | [ja/port-forward.md](ja/port-forward.md) | [en/port-forward.md](en/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
 | 接続元を使う名前解決 | [ja/remote-dns.md](ja/remote-dns.md) | [en/remote-dns.md](en/remote-dns.md) | 名前解決を既存の MCP 接続で接続元へ中継する任意機能 (Linux/glibc の getaddrinfo、Windows ではループバックの DNS サーバー) |
-| CLI 型 AI コーディングエージェントの導入 | [ja/coding-agents.md](ja/coding-agents.md) | [en/coding-agents.md](en/coding-agents.md) | CLI 型 AI コーディングエージェントの配置と認証・API 通信の検証 |
+| CLI 型 AI コーディング エージェントの導入 | [ja/coding-agents.md](ja/coding-agents.md) | [en/coding-agents.md](en/coding-agents.md) | CLI 型 AI コーディング エージェントの配置と認証・API 通信の検証 |
 | code-server の導入 | [ja/code-server.md](ja/code-server.md) | [en/code-server.md](en/code-server.md) | 閉鎖環境の接続先への code-server・既定設定・拡張機能の導入とローカル転送での利用 |
 | VS Code Remote - SSH での利用 | [ja/vscode-remote-ssh.md](ja/vscode-remote-ssh.md) | [en/vscode-remote-ssh.md](en/vscode-remote-ssh.md) | 利用者権限の sshd とローカル転送による手元の VS Code からの接続、VS Code Server のオフライン配置とクライアントの版への固定 |
 | コンテナーへの接続 | [ja/container.md](ja/container.md) | [en/container.md](en/container.md) | 稼働中の Podman、Docker、Kubernetes コンテナー内への `exec -i` による `host-shell` の配置と登録 |

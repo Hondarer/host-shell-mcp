@@ -14,21 +14,21 @@ flowchart LR
     Resolver --> DNS["接続元の DNS / hosts"]
 ```
 
-## ユースケース
+## ユース ケース
 
-| ユースケース | 使う機能 |
+| ユース ケース | 使う機能 |
 |---|---|
 | 接続先に DNS がなく、プログラムが接続前に自分で名前解決する (例: Copilot CLI 内蔵の Web Fetch が `failed to lookup address information` で失敗する) | remote-dns |
 | DNS も外向き通信もない接続先から Web にアクセスする | remote-dns と [クライアント経由 HTTP プロキシ](client-proxy.md) |
-| code-server の拡張ホスト・エージェントホスト (画面内の Copilot Chat など) でも接続元の名前解決を使う | 上記に加えて [code-server の専用コピーモード](#code-server-の拡張エージェントホストへの適用) |
+| code-server の拡張ホスト・エージェント ホスト (画面内の Copilot Chat など) でも接続元の名前解決を使う | 上記に加えて [code-server の専用コピー モード](#code-server-の拡張エージェントホストへの適用) |
 
-Table: ユースケース
+Table: ユース ケース
 
 HTTP プロキシに対応したプログラム (curl など) は、宛先のホスト名をプロキシに渡し、接続元側で名前解決されます。そのため、プロキシ経由の通信だけなら remote-dns は不要です。
 
 ## 有効化
 
-クライアント側 (`bridge`) と接続先の両方で `--remote-dns` を指定します。接続先には名前解決用のアダプター (共有ライブラリー) が必要です。
+クライアント側 (`bridge`) と接続先の両方で `--remote-dns` を指定します。接続先には名前解決用のアダプター (共有ライブラリ) が必要です。
 
 | アダプターの用意 | 接続先の指定 | 条件 |
 |---|---|---|
@@ -40,7 +40,7 @@ Table: アダプターの用意
 
 ### スキルを使う場合
 
-`deploy.sh` は、glibc の Linux 接続先に本体を配置するとき、対応するアダプターを同じディレクトリーに `libhostshell_dns.so` として配置します。接続先で実際に `LD_PRELOAD` で読み込めるかを確認し、`dns adapter deployed: <絶対パス>` と表示します。スキルは、このパスを `--remote-dns-library` に指定した登録コマンドを示します。利用者がアダプターを用意する必要はありません。
+`deploy.sh` は、glibc の Linux 接続先に本体を配置するとき、対応するアダプターを同じディレクトリに `libhostshell_dns.so` として配置します。接続先で実際に `LD_PRELOAD` で読み込めるかを確認し、`dns adapter deployed: <絶対パス>` と表示します。スキルは、このパスを `--remote-dns-library` に指定した登録コマンドを示します。利用者がアダプターを用意する必要はありません。
 
 ```bash
 host-shell bridge --remote-dns -- \
@@ -60,7 +60,7 @@ host-shell bridge --remote-dns -- \
 
 - `exec_run` / `job_start` に `LD_PRELOAD`、`HOST_SHELL_DNS_LIBRARY`、`HOST_SHELL_DNS_SOCKET` が自動設定されます。既存の `LD_PRELOAD` は保持します。ポリシーの `--unset-env` と、呼び出しの `env` による明示設定はその後に適用されます。
 - `sys_get_info` の `remote_dns`、`remote_dns_library`、`remote_dns_socket` で設定を確認できます。
-- アダプターとソケットはセッションごとの非公開一時ディレクトリーに置き、切断時に削除します。`--remote-dns-library` で指定した原本は削除しません。
+- アダプターとソケットはセッションごとの非公開一時ディレクトリに置き、切断時に削除します。`--remote-dns-library` で指定した原本は削除しません。
 - bridge なしで `--remote-dns` 付きの接続先を起動すると、`bridge must enable --remote-dns` で停止します。
 
 ## Windows の接続先
@@ -85,7 +85,7 @@ host-shell bridge --remote-dns -- \
     --mcp --remote-dns --remote-dns-listen 127.0.0.1:53 --remote-dns-configure
 ```
 
-`--remote-dns-configure` は、起動時に次の設定を OS へ追加 (注入) し、終了時に削除 (除去) します。設定はどちらも揮発性で、ディスクには書き込みません。NRPT 規則は揮発性のレジストリー キー (メモリー上だけに置かれ、再起動で消えるキー) に、ルートは ActiveStore (再起動で消える領域) に置きます。永続するレジストリーと永続するルートの保存先は変更しません。
+`--remote-dns-configure` は、起動時に次の設定を OS へ追加 (注入) し、終了時に削除 (除去) します。設定はどちらも揮発性で、ディスクには書き込みません。NRPT 規則は揮発性のレジストリ キー (メモリ上だけに置かれ、再起動で消えるキー) に、ルートは ActiveStore (再起動で消える領域) に置きます。永続するレジストリと永続するルートの保存先は変更しません。
 
 | 設定 | 内容 | 終了時 |
 |---|---|---|
@@ -174,7 +174,7 @@ Table: Windows での名前解決の経路
 - **回答の内容**: A と AAAA に答え、canonical name が問い合わせ名と異なる場合は CNAME を付けます。TTL は 30 秒です。その他の種別 (HTTPS、SVCB、PTR、MX など) には回答なし (NODATA) を返します。NXDOMAIN は、どのアドレス ファミリーでもアドレスがない名前に限って返します (IPv6 だけの名前を「存在しない」と OS にキャッシュさせないため)。
 - **待ち受け**: ループバック アドレスだけを受け付けます。同じアドレスを別のセッションが使っている場合は、起動時に bind エラーで停止します。待ち受けは接続中だけで、切断時に閉じます。`sys_get_info` の `remote_dns_listen` で確認できます。
 - **アクセス制御**: Linux の非公開ソケットと異なり、接続先のすべてのユーザーとサービスが問い合わせできます。NRPT 規則もマシン全体に適用されます。
-- **OS のサービスの問い合わせ**: NRPT 規則がある間は、Windows Defender、Windows Update、テレメトリーなど、OS のサービスの名前解決も接続元へ中継されます (検証では `wdcp.microsoft.com`、`ctldl.windowsupdate.com`、`self.events.data.microsoft.com` などを観測)。中継されるのは名前解決だけで、通信そのものは接続先のネットワークに従います。接続元のネットワークに、接続先の OS が引く名前の問い合わせが流れることを、利用者の承諾を得る際に伝えてください。
+- **OS のサービスの問い合わせ**: NRPT 規則がある間は、Windows Defender、Windows Update、テレメトリなど、OS のサービスの名前解決も接続元へ中継されます (検証では `wdcp.microsoft.com`、`ctldl.windowsupdate.com`、`self.events.data.microsoft.com` などを観測)。中継されるのは名前解決だけで、通信そのものは接続先のネットワークに従います。接続元のネットワークに、接続先の OS が引く名前の問い合わせが流れることを、利用者の承諾を得る際に伝えてください。
 - **`nslookup`**: NRPT 規則を使わず、ネットワーク アダプターの DNS サーバーに直接問い合わせます。DNS サーバーがない場合は既定のアドレス (`fec0:0:0:ffff::1`) に問い合わせて失敗します。確認するときは `nslookup <名前> 127.0.0.1` のように問い合わせ先を指定するか、`Resolve-DnsName` を使います。
 - **切断後に規則が残った場合**: 問い合わせ先がないため、名前解決は待たずにすぐ失敗します。手動設定の手順 3 で削除するか、`--remote-dns-configure` で起動し直すか、再起動してください。
 - **環境変数**: `exec_run` と `job_start` の環境変数は変更しません。OS 全体の設定で中継するため、code-server の拡張ホストのような子孫プロセスにも同じ経路が使われます。
@@ -189,13 +189,13 @@ host-shell bridge --remote-dns --proxy \
   ssh -T target /path/to/host-shell --mcp --remote-dns --client-proxy
 ```
 
-code-server はこのセッションの `job_start` から起動します。既に起動しているプロセスの環境は変わりません。追加の Python サービス、別の MCP セッション、リモートポート転送は不要です。
+code-server はこのセッションの `job_start` から起動します。すでに起動しているプロセスの環境は変わりません。追加の Python サービス、別の MCP セッション、リモート ポート転送は不要です。
 
 DNS 問い合わせ自体には HTTP プロキシの許可・拒否リストを適用しません。`--remote-dns` は接続元から任意の名前を解決することへの許可です。HTTP/HTTPS の通信先は引き続きプロキシの許可・拒否リストで制限されます。名前解決に成功しても、未許可宛先への通信は 403 になります。
 
-## code-server の拡張・エージェントホストへの適用
+## code-server の拡張・エージェント ホストへの適用
 
-VS Code は拡張ホスト・エージェントホストの起動時に `LD_PRELOAD` を除去します。code-server の親プロセスにアダプターを設定しても、画面内の Copilot Chat や同梱の Copilot SDK (`copilot-runtime`) には届きません。Linux 向け code-server スキルの `start.sh` に、明示的に選択する専用コピーモードを用意しています。通常起動では元の配布物を使用します。
+VS Code は拡張ホスト・エージェント ホストの起動時に `LD_PRELOAD` を除去します。code-server の親プロセスにアダプターを設定しても、画面内の Copilot Chat や同梱の Copilot SDK (`copilot-runtime`) には届きません。Linux 向け code-server スキルの `start.sh` に、明示的に選択する専用コピー モードを用意しています。通常起動では元の配布物を使用します。
 
 ### 手順
 
@@ -213,13 +213,13 @@ VS Code は拡張ホスト・エージェントホストの起動時に `LD_PREL
    }
    ```
 
-`start.sh` は通常のユーザーデータを使います。既存インスタンスと並行して確認する場合は、専用コピーの `bin/code-server` を別ポート・別 `--user-data-dir`・別 `--session-socket` で直接起動し、同じ有効化環境変数を渡してください。実行中のユーザーデータディレクトリーを共有しないでください。
+`start.sh` は通常のユーザー データを使います。既存インスタンスと並行して確認する場合は、専用コピーの `bin/code-server` を別ポート・別 `--user-data-dir`・別 `--session-socket` で直接起動し、同じ有効化環境変数を渡してください。実行中のユーザー データ ディレクトリを共有しないでください。
 
 停止は該当するジョブの `job_stop` と転送の `forward_close` で行います。通常版へ戻す場合は、次回 `start.sh` 起動時に `HOST_SHELL_CODE_SERVER_REMOTE_DNS` を指定しないか `0` にします。既存のプロセスの環境は変化しません。専用コピーはセッション終了後も残り、通常の code-server アンインストールで一緒に削除されます。
 
 ### 専用コピーの仕組み
 
-初回は元のインストールと並ぶ `code-server-4.144.0-remote-dns-v1` に独立したコピーを作成します。コピー用に約 750 MiB の空き領域が必要です。パッチ作成前に空き容量を検査し、コピー後に JavaScript の構文検査に通ってから正式なディレクトリー名へ配置します。元の配布物や実行中セッションは書き換えません。再起動時はコピーを再作成せず、マニフェストと変更後ハッシュを検証します。変更を検出した場合は拒否し、上書き修復しません。
+初回は元のインストールと並ぶ `code-server-4.144.0-remote-dns-v1` に独立したコピーを作成します。コピー用に約 750 MiB の空き領域が必要です。パッチ作成前に空き容量を検査し、コピー後に JavaScript の構文検査に通ってから正式なディレクトリ名へ配置します。元の配布物や実行中セッションは書き換えません。再起動時はコピーを再作成せず、マニフェストと変更後ハッシュを検証します。変更を検出した場合は拒否し、上書き修復しません。
 
 対象は code-server 4.144.0 / VS Code 1.144.0 の公式 Linux amd64・arm64 配布物です。パッチ対象の 3 ファイルの SHA-256 と 4 箇所の置換対象文字列が一致する場合だけ適用します。未知の版や変更済みファイル、二重適用は拒否します。
 
@@ -231,7 +231,7 @@ flowchart LR
     Fork --> Load["動的ローダーがアダプターを読み込む"]
 ```
 
-`out/server-main.js`、`out/vs/workbench/api/node/extensionHostProcess.js`、`out/vs/platform/agentHost/node/agentHostMain.js` の子プロセス起動直前に処理を追加します。`NODE_OPTIONS` 等の除去は維持し、元の `LD_PRELOAD` 全体は復元しません。親から継承した `HOST_SHELL_DNS_LIBRARY` と `HOST_SHELL_DNS_SOCKET` を使い、同じセッションのアダプターだけを設定します。別セッションの値、所有者・権限が不適切な配置、シンボリックリンク、切断後のソケットは拒否します。
+`out/server-main.js`、`out/vs/workbench/api/node/extensionHostProcess.js`、`out/vs/platform/agentHost/node/agentHostMain.js` の子プロセス起動直前に処理を追加します。`NODE_OPTIONS` 等の除去は維持し、元の `LD_PRELOAD` 全体は復元しません。親から継承した `HOST_SHELL_DNS_LIBRARY` と `HOST_SHELL_DNS_SOCKET` を使い、同じセッションのアダプターだけを設定します。別セッションの値、所有者・権限が不適切な配置、シンボリック リンク、切断後のソケットは拒否します。
 
 ブラウザー内の Web 拡張、独自 DNS API、拡張側が独自に除去する起動経路まではカバーしません。
 
@@ -245,7 +245,7 @@ flowchart LR
 | HTTP 403、`CONNECT tunnel failed, response 403` | プロキシの宛先拒否であり、DNS 障害ではない。`proxy_status` で拒否理由を確認する |
 | `a transport-level failure (DNS, connection, or TLS handshake)` などの曖昧な表示 | この表示だけで DNS 障害と判断せず、`proxy_status` で実際の拒否理由を確認する |
 | プロセスがアダプターを読み込んでいるか | 対象 PID の環境変数と `/proc/<pid>/maps` に `libhostshell_dns` があるかを確認する |
-| フックを通った問い合わせ | 起動時に `HOST_SHELL_DNS_TRACE=1` を設定すると、ホスト名とアドレスファミリーを標準エラーへ記録する。code-server の専用コピーモードでは、`copilot-runtime` の記録が code-server の出力に `[CLI subprocess] host-shell-dns: getaddrinfo <host> family=<n>` として現れる (エージェントホストの中継分と合わせ、1 件の問い合わせが 2 行になる)。記録に時刻はないため、操作の前後で出力の差分を取って対応付ける |
+| フックを通った問い合わせ | 起動時に `HOST_SHELL_DNS_TRACE=1` を設定すると、ホスト名とアドレス ファミリーを標準エラーへ記録する。code-server の専用コピー モードでは、`copilot-runtime` の記録が code-server の出力に `[CLI subprocess] host-shell-dns: getaddrinfo <host> family=<n>` として現れる (エージェント ホストの中継分と合わせ、1 件の問い合わせが 2 行になる)。記録に時刻はないため、操作の前後で出力の差分を取って対応付ける |
 
 Table: 診断の観点
 
@@ -257,19 +257,19 @@ Table: 診断の観点
 
 | 対象 | 確認内容 | 方法・環境 |
 |---|---|---|
-| 名前解決の中継 | IPv4/IPv6、canonical name、サービス名、数値 IP、localhost、NXDOMAIN、`AI_NUMERICHOST`、中継不能時のエラー、24件の並列問い合わせ、子プロセスへの継承 | 自動テスト、OL10 コンテナー |
+| 名前解決の中継 | IPv4/IPv6、canonical name、サービス名、数値 IP、localhost、NXDOMAIN、`AI_NUMERICHOST`、中継不能時のエラー、24 件の並列問い合わせ、子プロセスへの継承 | 自動テスト、OL10 コンテナー |
 | `exec_run` と `job_start` のプロセス | 名前解決が成功する | OL10 コンテナー |
 | HTTP プロキシとの併用 | 許可済み宛先への HTTPS が成功し、未許可宛先は名前解決後に 403 で拒否される | OL10 コンテナー |
-| 切断時の後片付け | 一時ディレクトリーと実行中のジョブを回収する | 自動テスト、OL10 コンテナー |
+| 切断時の後片付け | 一時ディレクトリと実行中のジョブを回収する | 自動テスト、OL10 コンテナー |
 | 接続先でのビルド | 同梱ソースのコンパイルと読み込み | OL10 コンテナー |
 | ビルド済みアダプター | amd64・arm64 とも glibc 2.28 と新しい glibc で読み込みとフック動作が成功する | CI (AlmaLinux 8 コンテナーと GitHub ランナー) |
 | `deploy.sh` によるアダプターの配置 | 配置、更新時の照合、読み込み確認、musl の除外、読み込めないアダプターの削除 | Podman コンテナー (Oracle Linux 10、Oracle Linux 8、Alpine) |
 | 不正なアダプター | 形式・アーキテクチャー・版が合わないものを拒否する | 自動テスト |
 | Copilot CLI (ターミナル) | 内蔵 Web Fetch が、remote-dns なしでは名前解決に失敗し、ありでは成功する | OL10 コンテナー、Copilot CLI 1.0.83 |
 | Node.js | `dns.lookup()` は成功する。`dns.resolve4()` は対象外 (ECONNREFUSED) | OL10 コンテナー |
-| code-server の専用コピーモード | 元ファイルの保持、変更済みファイルの拒否、構文エラー時の後片付け、無効時の既存動作、2セッションの分離、危険な権限・リンク・期限切れソケットの拒否 | 自動テスト |
-| 専用コピーモードの動作 | 拡張ホスト・エージェントホスト・同梱 `copilot-runtime` へのアダプターの読み込み、Chat が起動した Node 子プロセスの名前解決、ターミナルの Copilot CLI の Web Fetch、画面内 Copilot Chat の応答 | OL10 コンテナー、code-server 4.144.0 |
-| 画面内 Copilot Chat の Copilot ハーネス (Copilot SDK) | 内蔵 `web_fetch` の実行時に、エージェントホストの子プロセス `copilot-runtime` がフックを通して宛先を名前解決し、HTTPS はプロキシ経由で成功する。取得 1 回につきトレースが 1 件増えることを確認 | OL10 コンテナー、code-server 4.144.0、Chrome for Testing 148 からの画面操作 |
+| code-server の専用コピー モード | 元ファイルの保持、変更済みファイルの拒否、構文エラー時の後片付け、無効時の既存動作、2 セッションの分離、危険な権限・リンク・期限切れソケットの拒否 | 自動テスト |
+| 専用コピー モードの動作 | 拡張ホスト・エージェント ホスト・同梱 `copilot-runtime` へのアダプターの読み込み、Chat が起動した Node 子プロセスの名前解決、ターミナルの Copilot CLI の Web Fetch、画面内 Copilot Chat の応答 | OL10 コンテナー、code-server 4.144.0 |
+| 画面内 Copilot Chat の Copilot ハーネス (Copilot SDK) | 内蔵 `web_fetch` の実行時に、エージェント ホストの子プロセス `copilot-runtime` がフックを通して宛先を名前解決し、HTTPS はプロキシ経由で成功する。取得 1 回につきトレースが 1 件増えることを確認 | OL10 コンテナー、code-server 4.144.0、Chrome for Testing 148 からの画面操作 |
 | 画面内 Copilot Chat の Local ハーネス | code-server では Web ページ取得ツールが提供されない (`web` グループは `githubRepo` と `githubTextSearch` のみ)。拡張ホストの通信は HTTP プロキシ経由で、フックを通る問い合わせは観測されない | 同上 |
 
 Table: 検証済みの範囲
@@ -291,7 +291,7 @@ Windows の接続先は、Windows 11 Enterprise (ビルド 26300、amd64) の Hy
 | 管理者でない接続ユーザー (Users、Power Users) | DNS サーバーの待ち受け (127.0.0.1:53、UDP と TCP)、`Resolve-DnsName -Server 127.0.0.1`、Node.js `dns.resolve4` が成功する。`--remote-dns-configure` は起動時に管理者権限が必要というエラーで停止し、手動設定の手順も拒否される。どちらも OS の設定は変わらない | 同上 (tester を Administrators から外した状態) | 検証済 |
 | code-server の統合ターミナルから起動したプロセス | `--remote-dns-configure` と code-server を併用し、統合ターミナルから起動した Node.js (`dns.lookup`、code-server 同梱) と .NET の名前解決が接続元経由で成功する (問い合わせの記録で確認) | 同上 (code-server 4.144.0、ブラウザーから操作) | 検証済 |
 | code-server のサーバー プロセス | 拡張機能 (Hex Editor) の別の版のインストールで、サーバーが `open-vsx.org` を接続元経由で名前解決する (ダウンロードは接続先から外へ出られないため失敗) | 同上 | 検証済 |
-| code-server の拡張ホスト | GitLens 19.5.0 (Open VSX からクライアント経由プロキシで導入) が起動時に `api.gitkraken.dev`、`configs.gitkraken.dev`、`otel.gitkraken.com` を接続元経由で名前解決する。Linux と違い、専用コピーモードは要らない | 同上 | 検証済 |
+| code-server の拡張ホスト | GitLens 19.5.0 (Open VSX からクライアント経由プロキシで導入) が起動時に `api.gitkraken.dev`、`configs.gitkraken.dev`、`otel.gitkraken.com` を接続元経由で名前解決する。Linux と違い、専用コピー モードは要らない | 同上 | 検証済 |
 | Copilot CLI・Copilot Chat | Windows の接続先での動作 | なし | 未検証 |
 | Windows Server、arm64 | 動作 | なし | 未検証 |
 | `nslookup` | 問い合わせ先を指定しないと NRPT 規則を使わずに失敗し、`127.0.0.1` を指定すると成功する | 同上 | 検証済 |
@@ -301,7 +301,7 @@ Table: Windows の接続先での検証状況
 未検証の範囲:
 
 - Copilot SDK の `web_fetch` 以外の内部処理と、拡張ホスト上の拡張機能が直接行う名前解決
-- 専用コピーモードの arm64 での動作 (アーカイブの検査のみ)
+- 専用コピー モードの arm64 での動作 (アーカイブの検査のみ)
 - ブラウザー内の Web 拡張
 
 開発時の検証コマンド (Linux、Node.js が必要):
@@ -314,7 +314,7 @@ go test ./internal/remotedns
 ## 適用範囲と制限
 
 - Windows の接続先の条件と制限は [Windows の接続先](#windows-の接続先) を参照してください。以下は Linux の接続先についての制限です。
-- 接続先は Linux/glibc、接続元は host-shell が対応する各 OS です。musl (Alpine など)、静的バイナリー、特権実行で無視される `LD_PRELOAD`、独自 DNS 実装、Node.js の `dns.resolve*`、逆引き、`gethostbyname` は対象外です。
-- 数値 IP、`localhost`、`AI_NUMERICHOST` は接続先の libc に委ねます。それ以外の接続先固有の hosts エントリーは接続元の名前解決に置き換わります。
+- 接続先は Linux/glibc、接続元は host-shell が対応する各 OS です。musl (Alpine など)、静的バイナリ、特権実行で無視される `LD_PRELOAD`、独自 DNS 実装、Node.js の `dns.resolve*`、逆引き、`gethostbyname` は対象外です。
+- 数値 IP、`localhost`、`AI_NUMERICHOST` は接続先の libc に委ねます。それ以外の接続先固有の hosts エントリは接続元の名前解決に置き換わります。
 - 接続元は Go 標準リゾルバーを使用します。OS ごとの libc/NSS の全挙動を再現するものではありません。IPv4/IPv6、canonical name、サービス名の処理に対応しますが、完全な libc の代替ではありません。
-- 問い合わせの処理時間は約3秒に制限します。中継不能時は接続先 DNS にフォールバックせず失敗します。キャッシュは持ちません。ソケットは同じユーザーからは利用できます。
+- 問い合わせの処理時間は約 3 秒に制限します。中継不能時は接続先 DNS にフォールバックせず失敗します。キャッシュは持ちません。ソケットは同じユーザーからは利用できます。

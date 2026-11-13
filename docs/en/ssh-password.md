@@ -1,7 +1,7 @@
 # Storing SSH passwords (ssh-pass)
 
 > [!NOTE]
-> This is a translation. The Japanese version [../ja/ssh-password.md](../ja/ssh-password.md) is authoritative; if the two differ, the Japanese version prevails.
+> This is an English translation. The Japanese version ([../ja/ssh-password.md](../ja/ssh-password.md)) is the single source of truth (SSOT) and takes precedence if they differ.
 
 This document explains how to connect to password-authenticated SSH servers (jump servers and targets) without typing the password. Store a password per `USER@HOST` with `host-shell ssh-pass`, and it is handed to `ssh` through OpenSSH's standard `SSH_ASKPASS` mechanism. There are three ways in, and they work the same on Linux, macOS, and Windows:
 

@@ -115,7 +115,7 @@ Host host-shell-vscode-NAME
 | `~/.vscode-server/cli/servers/lru.json` | 配置済みの版の一覧。先頭は、最後に配置した版か、agent host が最後に使った版 |
 | `~/.vscode-server/extensions/`、`~/.vscode-server/data/` | 拡張機能と利用者データ (VS Code Server が作成) |
 | `~/.local/share/host-shell-vscode-remote-ssh/kit/` | スクリプト (`scripts/linux/`) と、転送した配布物 |
-| `~/.local/share/host-shell-vscode-remote-ssh/sshd/` | 内側の sshd の設定、ホスト鍵、`authorized_keys` (ディレクトリーの権限は 700、ファイルは 600) |
+| `~/.local/share/host-shell-vscode-remote-ssh/sshd/` | 内側の sshd の設定、ホスト鍵、`authorized_keys` (ディレクトリの権限は 700、ファイルは 600) |
 
 Table: 接続先に配置される内容
 
@@ -148,7 +148,7 @@ Table: プロキシの許可先
 
 - `start.sh` は、セッションのプロキシ (`HTTPS_PROXY` など) と `NO_PROXY=127.0.0.1,localhost,::1` を `SetEnv` で SSH のセッションに渡します。`NO_PROXY` がないと、接続先の内部の通信もプロキシへ送られます。
 - プロキシの URL には、セッションごとのトークンが含まれます。動いている VS Code Server は起動したときの URL を使い続けるため、`start.sh` は最初に前のセッションの VS Code Server を止めます。
-- 次の宛先への接続は拒否されますが、動作には影響しません: テレメトリー (`mobile.events.data.microsoft.com`、`default.exp-tas.com`、`copilot-telemetry.githubusercontent.com`、Application Insights)、クラウドのメタデータ (`169.254.169.254`、`metadata.google.internal`)。
+- 次の宛先への接続は拒否されますが、動作には影響しません: テレメトリ (`mobile.events.data.microsoft.com`、`default.exp-tas.com`、`copilot-telemetry.githubusercontent.com`、Application Insights)、クラウドのメタデータ (`169.254.169.254`、`metadata.google.internal`)。
 - 拡張機能の署名の検証は、CRL・OCSP (`crl3.digicert.com:80`、`ocsp.digicert.com:80`) にも接続しようとします。許可しなくても、署名の検証は成功します。
 - 接続先の名前解決 ([remote-dns](remote-dns.md)) は使いません。VS Code Server は子プロセスの起動時に `LD_PRELOAD` を除くためです。接続先で自分で名前を解決する機能 (Copilot Chat の Web Fetch など) は失敗します。
 
@@ -207,7 +207,7 @@ Table: 拡張機能の導入方法
 - VS Code のターミナルは、接続先のシェルで動作します。プロキシを使う場合、ターミナルにも `HTTPS_PROXY` と `NO_PROXY` が渡ります。
 - ターミナルや Copilot CLI に表示される時刻は、接続先の時刻帯 (`/etc/localtime` または `TZ`) に従います。スキルは `TZ` を渡しません。
 - Copilot Chat は、接続先の agent host の下の `copilot-runtime` で動作し、認証はクライアントのサインインを使います。接続先の `~/.copilot` にトークンのファイルは作られません。
-- Copilot CLI をターミナルで使う場合は、[CLI 型 AI コーディングエージェントの導入](coding-agents.md) の手順で `~/.local/bin/copilot` に配置します。VS Code 1.144 のターミナルの PATH には、npm から Copilot CLI を導入しようとする `copilot` (`server/bin/copilot-shim`) が加わるため、PATH でそれより先に見つかる場所に置きます。Copilot CLI の認証情報 (`~/.copilot/config.json`) は、サーバーの版を更新しても引き継がれます。
+- Copilot CLI をターミナルで使う場合は、[CLI 型 AI コーディング エージェントの導入](coding-agents.md) の手順で `~/.local/bin/copilot` に配置します。VS Code 1.144 のターミナルの PATH には、npm から Copilot CLI を導入しようとする `copilot` (`server/bin/copilot-shim`) が加わるため、PATH でそれより先に見つかる場所に置きます。Copilot CLI の認証情報 (`~/.copilot/config.json`) は、サーバーの版を更新しても引き継がれます。
 
 ## 終了と削除
 
@@ -223,9 +223,9 @@ host-shell のセッションを終えると、host-shell、内側の sshd、SSH
 
 - **セッションの終了時:** セッションを終える前に `cleanup.sh` を実行します。`start.sh` も、起動時に前のセッションの VS Code Server を止めます。
 - **`cleanup.sh` の対象:**
-  - コマンドラインが `$HOME/.vscode-server` で始まるプロセスと、そこから起動したターミナルのシェル。TERM を送り、残ったものに KILL を送ります。同じ利用者の別の VS Code (別の HOME の Remote - WSL など) は対象外です。
-  - 一時ディレクトリー (`TMPDIR`、既定は `/tmp`) の、利用者が所有する `code-*` と `vscode-*`。対象のプロセスが残っていないときだけ削除します。
-  - Copilot Chat の拡張機能が Copilot CLI との連携用に作る `/tmp/mcp-<ランダム>/mcp.sock` は削除しません。名前で、MCP を使うほかのソフトウェアと区別できないためです。接続を繰り返すと増えるので、必要に応じて手で削除します。
+    - コマンド ラインが `$HOME/.vscode-server` で始まるプロセスと、そこから起動したターミナルのシェル。TERM を送り、残ったものに KILL を送ります。同じ利用者の別の VS Code (別の HOME の Remote - WSL など) は対象外です。
+    - 一時ディレクトリ (`TMPDIR`、既定は `/tmp`) の、利用者が所有する `code-*` と `vscode-*`。対象のプロセスが残っていないときだけ削除します。
+    - Copilot Chat の拡張機能が Copilot CLI との連携用に作る `/tmp/mcp-<ランダム>/mcp.sock` は削除しません。名前で、MCP を使うほかのソフトウェアと区別できないためです。接続を繰り返すと増えるので、必要に応じて手で削除します。
 - **削除:** `cleanup.sh --purge` は、`~/.vscode-server` (配置した版、拡張機能、利用者データ) と `~/.local/share/host-shell-vscode-remote-ssh` (キット、sshd の設定と鍵) も削除します。Copilot CLI と共有する `~/.copilot` は残します。VS Code を動かすマシンでは、利用者が Host ブロックと `~/.ssh/host-shell-vscode-NAME_ed25519`、`.pub`、`_known_hosts` を削除します。
 
 ## 検証済みの範囲

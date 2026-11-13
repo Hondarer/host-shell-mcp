@@ -20,8 +20,8 @@ Unlike typical SSH MCP servers that invoke `ssh` per operation on the client sid
 | Where it runs | On the machine that runs the agent | On the target machine |
 | SFTP | Usually used for file transfer | Not used |
 | Port forwarding | Often required for tunnels and some transfers | Not required |
-| `AllowTcpForwarding no` | Routes that depend on forwarding stop there | Nested `ssh -T` still reaches the target |
-| Windows and encodings | Quoting and encodings stay with the caller | Normalized on the target (PowerShell quoting, Shift_JIS, EUC-JP) |
+| `AllowTcpForwarding no` | Routes that depend on forwarding stop there | Nested `ssh -T` reaches the target |
+| Windows and encodings | Quote handling and character encodings remain the caller's responsibility | Handled on the target (PowerShell quoting, Shift_JIS, EUC-JP) |
 | Session | Often opens a new SSH connection per call | Keeps one SSH connection for the whole MCP session |
 
 Table: Comparison with client-side SSH MCP servers
@@ -198,10 +198,10 @@ See the [Operations Guide](docs/en/operations.md) for details.
 
 ## 日本語
 
-`host-shell` は、**接続先マシン (Windows / Linux) に配置し、SSH などの標準入出力経由で中継して使用する** MCP サーバーです。  
+`host-shell` は、**接続先マシン (Windows / Linux) に配置し、SSH などの標準入出力経由で使用する** MCP サーバーです。  
 ポート転送や SFTP が使えない環境でも、Claude Code や GitHub Copilot などのコーディング エージェントから、プレーンな SSH セッションだけで遠隔マシンを調査・操作できます。
 
-本リポジトリは、制限された SSH 環境へのアクセスを容易にするための各種手段 (単一バイナリ、標準入出力の多重化ブリッジ、導入自動化スキル) を提供するとともに、代表的なユースケースに従った評価・検証の結果と、各種構成への適用を考慮した実践的なノウハウをまとめたものです。
+本リポジトリは、制限された SSH 環境へのアクセスを容易にするための各種手段 (単一バイナリ、標準入出力の多重化ブリッジ、導入自動化スキル) を提供するとともに、代表的なユース ケースに従った評価・検証の結果と、各種構成への適用を考慮した実践的なノウハウをまとめたものです。
 
 ```text
 エージェント --stdio(MCP)--> ssh -T hop1 ssh -T target host-shell --mcp
@@ -222,12 +222,12 @@ Table: クライアント側の SSH 系 MCP との違い
 
 ### サポートされる構成
 
-`host-shell` は、接続先との間で 8 ビット透過の標準入出力を確保できる任意のコマンド経路で動作します。手元に `host-shell bridge` を挟むと、単一の標準入出力ストリーム上にファイル転送、TCP / SOCKS5 ポート転送、クライアント経由 HTTP/HTTPS プロキシ、および Linux/glibc の名前解決 (`remote-dns`) を多重化でき、インターネット接続や SFTP、`sshd` のポート転送が使えない閉鎖環境の接続先でもリモート IDE や CLI 型コーディングエージェントを利用できます。
+`host-shell` は、接続先との間で 8 ビット透過の標準入出力を確保できる任意のコマンド経路で動作します。手元に `host-shell bridge` を挟むと、単一の標準入出力ストリーム上にファイル転送、TCP / SOCKS5 ポート転送、クライアント経由 HTTP/HTTPS プロキシ、および Linux/glibc の名前解決 (`remote-dns`) を多重化でき、インターネット接続や SFTP、`sshd` のポート転送が使えない閉鎖環境の接続先でもリモート IDE や CLI 型コーディング エージェントを利用できます。
 
 ```mermaid
 flowchart TB
     subgraph Client["クライアント (Linux / macOS / Windows)"]
-        Agent["コーディング エージェント (Claude Code, Copilot など)"]
+        Agent["コーディングエージェント (Claude Code, Copilot など)"]
         Browser["ブラウザー / 手元の VS Code"]
         LocalRes["ローカル ファイル / 外部ネットワーク・DNS"]
         Bridge["host-shell bridge"]
@@ -238,9 +238,9 @@ flowchart TB
 
     subgraph Route["通信経路 (単一の stdio ストリーム・多段 SSH / コンテナー exec 対応)"]
         RouteProxy["SSH 経路プロキシ (任意):<br/>ProxyCommand host-shell connect による HTTP CONNECT"]
-        Hop1["踏み台サーバー 1: ssh -T<br/>(AllowTcpForwarding no でも通過可能)"]
+        Hop1["中継サーバー 1: ssh -T<br/>(AllowTcpForwarding no でも通過可能)"]
         RouteProxy <-->|"CONNECT トンネル"| Hop1
-        HopN["踏み台サーバー N / コンテナー ホスト:<br/>ssh -T または podman / docker / kubectl exec -i"]
+        HopN["中継サーバー N / コンテナー ホスト:<br/>ssh -T または podman / docker / kubectl exec -i"]
         Hop1 <-->|"SSH stdio (ssh -T の入れ子で 0〜N 段中継)"| HopN
     end
 
@@ -268,7 +268,7 @@ flowchart TB
 | 閉鎖環境からの HTTP/HTTPS 通信・名前解決 | ループバック HTTP プロキシ (`--proxy`、`--client-proxy`、`proxy_rules_update`) と接続元を使う名前解決 (`--remote-dns`。Linux/glibc の `getaddrinfo` 中継、Windows ではループバックの DNS サーバー) | [クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md)、[接続元を使う名前解決](docs/ja/remote-dns.md) |
 | 閉鎖環境でのブラウザー版 VS Code | `code-server` (`127.0.0.1:8000-8079`) をオフライン導入し、ローカル転送経由で手元のブラウザーから利用 (Linux / Windows 接続先) | [code-server の導入](docs/ja/code-server.md) |
 | 閉鎖環境でのデスクトップ版 VS Code | VS Code Server と利用者権限の `sshd` (`127.0.0.1:2222`) をオフライン配置し、ローカル転送経由で手元の VS Code (Remote - SSH) から接続 (Linux glibc 接続先) | [VS Code Remote - SSH での利用](docs/ja/vscode-remote-ssh.md) |
-| 隔離環境での CLI 型 AI コーディングエージェント | 接続先ターミナル内の CLI (Copilot CLI など) からクライアント経由 HTTP プロキシと `remote-dns` を通じて認証・推論 API を利用 | [CLI 型 AI コーディングエージェントの導入](docs/ja/coding-agents.md) |
+| 隔離環境での CLI 型 AI コーディング エージェント | 接続先ターミナル内の CLI (Copilot CLI など) からクライアント経由 HTTP プロキシと `remote-dns` を通じて認証・推論 API を利用 | [CLI 型 AI コーディング エージェントの導入](docs/ja/coding-agents.md) |
 
 Table: サポートされる構成
 
@@ -284,7 +284,7 @@ Table: サポートされる構成
 - **OS 管理の統一インターフェイス**: サービス (systemd / Windows サービス)、システム ログ (journald / イベント ログ)、プロセス停止、ディスク使用量、Windows レジストリを共通の形式で操作できます。
 - **ローカル・接続先間のファイル転送**: ローカル側に `host-shell bridge` を挟むと、エージェントのコンテキストを経由せずにファイルやディレクトリを直接転送できます (`transfer_push`、`transfer_pull`)。事前に空き容量を確認し、SHA-256 で照合して同一内容のファイルは転送を省略します。
 - **SSH 転送に依存しないポート転送・HTTP プロキシ・名前解決**: 両端で明示的に有効化すると、`host-shell bridge` が同じ SSH セッション上で双方向の TCP ポート転送、SOCKS5、クライアント側ネットワーク経由の認証付き HTTP/HTTPS プロキシ (`proxy_rules_update` によるセッション中の規則更新に対応)、および接続元を使う名前解決 (`--remote-dns`。Linux/glibc の `getaddrinfo` 中継、Windows ではループバックの DNS サーバー) を提供します。
-- **閉鎖環境への IDE・コーディングエージェント導入**: 同梱のエージェント スキルにより、インターネットに出られない接続先への `code-server` の導入、`VS Code Remote - SSH` (利用者権限の `sshd` 経由) の接続、CLI 型 AI コーディングエージェントの導入・検証を行えます。
+- **閉鎖環境への IDE・コーディング エージェント導入**: 同梱のエージェント スキルにより、インターネットに出られない接続先への `code-server` の導入、`VS Code Remote - SSH` (利用者権限の `sshd` 経由) の接続、CLI 型 AI コーディング エージェントの導入・検証を行えます。
 - **進捗通知とキャンセル**: 長時間コマンド、ダウンロード、ファイル転送の進捗を MCP 通知で送り、エージェントが要求をキャンセルすると処理を停止します。
 - **起動オプションによるポリシー制限**: 既定では接続ユーザーの全権限で動作し、必要に応じて公開ツール グループ、読み取り専用、許可パス、許可コマンド、接続先ホスト、事前確認、機密情報の伏せ字化を起動オプションで制限できます。
 - **エージェント向けの自己記述案内**: 初期化応答、ツール説明、`help_get` ツールにより、利用者が手順を指示しなくてもエージェント自身が適切なツールを選択できます。
@@ -319,9 +319,9 @@ Table: 提供するツール
 | スキル | 内容 |
 |---|---|
 | [`host-shell-connect`](.agents/skills/host-shell-connect/SKILL.md) | SSH またはコンテナー `exec -i` の経路確認、接続先の OS・アーキテクチャー・libc 判定、`host-shell` バイナリ (および任意の `remote-dns` アダプター) の配置、MCP 登録コマンドの生成を行う |
-| [`host-shell-code-server`](.agents/skills/host-shell-code-server/SKILL.md) | クライアントで `code-server` と既定拡張機能を取得し、接続先へ転送してオフライン導入 (表示言語の設定や `remote-dns` 専用コピーモードを含む)、`127.0.0.1` で起動してローカル転送を開く |
+| [`host-shell-code-server`](.agents/skills/host-shell-code-server/SKILL.md) | クライアントで `code-server` と既定拡張機能を取得し、接続先へ転送してオフライン導入 (表示言語の設定や `remote-dns` 専用コピー モードを含む)、`127.0.0.1` で起動してローカル転送を開く |
 | [`host-shell-vscode-remote-ssh`](.agents/skills/host-shell-vscode-remote-ssh/SKILL.md) | 手元の VS Code の commit に対応する VS Code Server を取得して Linux 接続先へオフライン配置・固定し、利用者権限の `sshd` (`127.0.0.1:2222`) とローカル転送で手元の `VS Code Remote - SSH` を接続する |
-| [`host-shell-coding-agents`](.agents/skills/host-shell-coding-agents/SKILL.md) | 隔離環境の接続先へ CLI 型 AI コーディングエージェント (Copilot CLI、agy、Claude Code、Codex、Grok) を配置し、クライアント経由 HTTP プロキシと `remote-dns` を使った認証・動作を段階的に確認する |
+| [`host-shell-coding-agents`](.agents/skills/host-shell-coding-agents/SKILL.md) | 隔離環境の接続先へ CLI 型 AI コーディング エージェント (Copilot CLI、agy、Claude Code、Codex、Grok) を配置し、クライアント経由 HTTP プロキシと `remote-dns` を使った認証・動作を段階的に確認する |
 
 Table: 同梱スキル
 
@@ -355,7 +355,7 @@ Table: 同梱スキル
 
 4. エージェントに「host-shell の sys_get_info で接続先の OS を確認して」と指示します。
 
-SSH の各段には `-T` を指定し、疑似端末を割り当てないでください。また、SSH 接続経路 (踏み台サーバーやネットワーク構成、認証方法) に加え、接続先のファイルシステム構成、接続先に用意された調査用コマンド、および調査対象のソースコードを接続元 (手元のワークスペース) に整理・用意しておくと、導入から調査までより効果的に活用できます (詳細は [利用ガイド](docs/ja/user-guide.md) の [手元に用意しておくと効果的な情報と資材](docs/ja/user-guide.md#手元に用意しておくと効果的な情報と資材) を参照してください)。
+SSH の各段には `-T` を指定し、疑似端末を割り当てないでください。また、SSH 接続経路 (中継サーバーやネットワーク構成、認証方法) に加え、接続先のファイル システム構成、接続先に用意された調査用コマンド、および調査対象のソース コードを接続元 (手元のワークスペース) に整理・用意しておくと、導入から調査までより効果的に活用できます (詳細は [利用ガイド](docs/ja/user-guide.md) の [手元に用意しておくと効果的な情報と資材](docs/ja/user-guide.md#手元に用意しておくと効果的な情報と資材) を参照してください)。
 
 手順 2〜3 は `.agents/skills/host-shell-connect` スキルでエージェントに任せることもできます。このスキルは経路確認、接続先の OS・アーキテクチャー判定、バイナリ配置、起動確認を行い、登録コマンドを提示します。`make dist` を実行すると、スキルの `bin/` に実行ファイルが複製されます。  
 GitHub Release には、タグ名の先頭の `v` を残したアーカイブ (`host-shell-mcp-<tag>-bin.zip`、`.tar.gz`。例: `host-shell-mcp-v20261031.1.0-bin.zip`) を添付しています。中身はソース ツリーに、実行ファイルと名前解決アダプター (`dist/` とスキルの `bin/`) を同梱したものです。
@@ -363,7 +363,7 @@ GitHub Release には、タグ名の先頭の `v` を残したアーカイブ (`
 ### ドキュメント
 
 文書は [`docs/`](docs/README.md) にあります。**日本語版 (`docs/ja/`) が正本** であり、`docs/en/` に英訳を配置しています。  
-各文書には導入・利用手順だけでなく、代表的なユースケースに基づく評価・検証済みの範囲 (OS・CPU・libc・製品の版) や制約事項、構成ごとの適用ノウハウを記載しています。
+各文書には導入・利用手順だけでなく、代表的なユース ケースに基づく評価・検証済みの範囲 (OS・CPU・libc・製品の版) や制約事項、構成ごとの適用ノウハウを記載しています。
 
 | 文書 | 内容 |
 |---|---|
@@ -376,7 +376,7 @@ GitHub Release には、タグ名の先頭の `v` を残したアーカイブ (`
 | [クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |
 | [ポート転送](docs/ja/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
 | [接続元を使う名前解決](docs/ja/remote-dns.md) | 名前解決を既存の MCP 接続で接続元へ中継する任意機能 (Linux/glibc の `getaddrinfo`、Windows ではループバックの DNS サーバー) |
-| [CLI 型 AI コーディングエージェントの導入](docs/ja/coding-agents.md) | CLI 型 AI コーディングエージェントの配置とクライアント経由プロキシによる認証・API 通信の検証 |
+| [CLI 型 AI コーディング エージェントの導入](docs/ja/coding-agents.md) | CLI 型 AI コーディング エージェントの配置とクライアント経由プロキシによる認証・API 通信の検証 |
 | [code-server の導入](docs/ja/code-server.md) | 閉鎖環境の接続先への code-server・既定設定・拡張機能の導入とローカル転送での利用 |
 | [VS Code Remote - SSH での利用](docs/ja/vscode-remote-ssh.md) | 利用者権限の sshd とローカル転送による手元の VS Code からの接続、VS Code Server のオフライン配置とクライアントの版への固定 |
 | [コンテナーへの接続](docs/ja/container.md) | 稼働中の Podman、Docker、Kubernetes コンテナー内への `exec -i` による `host-shell` の配置と登録 |
@@ -386,6 +386,6 @@ Table: ドキュメント
 ### 安全性
 
 SSH 経由で使用する `host-shell` は、通常の SSH 接続と同じユーザー権限で動作し、追加の OS 権限や外部から接続可能な待ち受けポートを必要としません。既存の SSH 認証、OS のファイル権限、sudoers による制御がそのまま適用されます。  
-さらに、SSH と OS による制御に加え、エージェントに許可する操作を絞り込む機能を備えています。起動オプションで、読み取り専用化 (`--read-only`)、公開ツールの選択 (`--tools`)、ファイルのアクセス範囲の制限 (`--allow-path`)、呼び出しごとのユーザー確認 (`--confirm`) を設定できます。専用ユーザーや専用 SSH 鍵と組み合わせ、用途に応じた操作範囲を設定できます。  
+さらに、SSH と OS による制御に加え、エージェントに許可する操作を絞り込む機能を備えています。起動オプションで、読み取り専用化 (`--read-only`)、公開ツールの選択 (`--tools`)、ファイルのアクセス範囲の制限 (`--allow-path`)、呼び出しごとのユーザー確認 (`--confirm`) を設定できます。専用ユーザーや専用 SSH 鍵と組み合わせることで、用途に応じた操作範囲を柔軟に構成できます。  
 また、[クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md)、[ポート転送](docs/ja/port-forward.md)、[接続元を使う名前解決](docs/ja/remote-dns.md) は `sshd` の転送機能ではなく MCP の通信路を使用するため、`sshd` の `no-port-forwarding` や `AllowTcpForwarding no` では制限されません。いずれも既定では無効であり、接続先で `--client-proxy`、`--allow-forward-local`、`--allow-forward-remote`、`--remote-dns` を指定した場合にのみ有効になります。禁止する場合は、`authorized_keys` の `command=` にこれらのオプションを指定しないでください。  
 詳細は [運用ガイド](docs/ja/operations.md) を参照してください。

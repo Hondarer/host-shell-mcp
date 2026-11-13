@@ -77,7 +77,7 @@ host-shell --version
 | `--remote-dns` | なし | 無効 | Linux/glibc の `getaddrinfo` を接続元へ中継する。両端で指定 ([remote-dns](remote-dns.md)) |
 | `--remote-dns-library` | パス | 自動ビルド | 対象 ABI 用の事前ビルド済みアダプター。`--remote-dns` が必要 |
 | `--remote-dns-listen` | ループバックの `IP:ポート` | 無効 | A と AAAA の問い合わせに接続元経由で答える DNS サーバーをこのアドレスで動かす (例: `127.0.0.1:53`)。`--remote-dns` が必要で、Windows では必須 ([Windows の接続先](remote-dns.md#windows-の接続先)) |
-| `--remote-dns-configure` | なし | 無効 | Windows の接続先で、OS の名前解決を `--remote-dns-listen` (ポート 53) へ向ける設定を、起動時に追加し終了時に削除する。追加するのは揮発性のレジストリー キーの NRPT 規則と、IPv4 のデフォルト ルートがなければ ActiveStore のループバックのデフォルト ルートで、どちらも再起動で消える。接続先の `host-shell` が強制終了された場合は、次回の起動か再起動まで残る。マシン全体に影響するので、指定前に利用者の承諾が必要。昇格済みの管理者セッションが必要 ([手順 (自動設定)](remote-dns.md#手順-自動設定)) |
+| `--remote-dns-configure` | なし | 無効 | Windows の接続先で、OS の名前解決を `--remote-dns-listen` (ポート 53) へ向ける設定を、起動時に追加し終了時に削除する。追加するのは揮発性のレジストリ キーの NRPT 規則と、IPv4 のデフォルト ルートがなければ ActiveStore のループバックのデフォルト ルートで、どちらも再起動で消える。接続先の `host-shell` が強制終了された場合は、次回の起動か再起動まで残る。マシン全体に影響するので、指定前に利用者の承諾が必要。昇格済みの管理者セッションが必要 ([手順 (自動設定)](remote-dns.md#手順-自動設定)) |
 | `--allow-forward-local` | なし | | bridge のローカル転送と SOCKS5 による接続先からの発信を許可する ([ポート転送](port-forward.md)) |
 | `--allow-forward-remote` | なし | | bridge のリモート転送による接続先のループバックでの待ち受けを許可する ([ポート転送](port-forward.md)) |
 | `--allow-forward-remote-port` | `PORT` または `PORT-PORT` (カンマ区切り、複数指定可) | なし (制限しない) | リモート転送で待ち受けるポート番号を限る。`--allow-forward-remote` が必要 ([ポート転送](port-forward.md)) |

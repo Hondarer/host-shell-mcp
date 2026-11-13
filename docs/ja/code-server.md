@@ -7,7 +7,7 @@
 
 一連の手順は `host-shell-code-server` スキル (`.agents/skills/host-shell-code-server/`) にまとめられており、エージェントが MCP ツールを使って自動実行します。この文書では、事前の準備、導入される内容、および運用上の注意点を説明します。
 
-CLI 型 AI コーディングエージェントを接続先へ配置してターミナルから利用する構成と検証状況は、[隔離環境への CLI 型 AI コーディングエージェントの導入](coding-agents.md) を参照してください。
+CLI 型 AI コーディング エージェントを接続先へ配置してターミナルから利用する構成と検証状況は、[隔離環境への CLI 型 AI コーディング エージェントの導入](coding-agents.md) を参照してください。
 
 手元のデスクトップ版 VS Code (Remote - SSH 拡張機能) と手元の GitHub サインインをそのまま使いたい場合 (Linux 接続先で `/usr/sbin/sshd` が利用可能な場合) は、[VS Code Remote - SSH での接続先の利用](vscode-remote-ssh.md) を参照してください。ブラウザーだけで完結させたい場合、Windows 接続先や `sshd` のないコンテナーを使う場合、MCP 切断時の自動停止や [`remote-dns`](remote-dns.md) が必要な場合は、本書の code-server を使用します。
 
@@ -272,4 +272,4 @@ Table: 転送サイズと所要時間 (測定値)
 
 スキルのスクリプト群は [code-server-launcher](https://github.com/Hondarer/code-server-launcher) の `download`、`install`、`start`、`uninstall` をベースに `host-shell` 向けの拡張を加えたものです。既定の設定と拡張機能リストは `code-server-container` の既定値と共通です。バージョンの更新手順は [開発ガイド](development.md#code-server-導入スキルの保守) を参照してください。
 
-拡張ホスト・エージェントホストでも接続元の名前解決を使う場合は、[remote-dns の明示選択モード](remote-dns.md) を参照してください。対応する配布物の専用コピーへ限定パッチを適用し、通常起動には元の配布物を使用します。
+拡張ホスト・エージェント ホストでも接続元の名前解決を使う場合は、[remote-dns の明示選択モード](remote-dns.md) を参照してください。対応する配布物の専用コピーへ限定パッチを適用し、通常起動には元の配布物を使用します。

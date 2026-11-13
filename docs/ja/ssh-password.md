@@ -3,7 +3,7 @@
 > [!NOTE]
 > この文書が正本です。英訳は [../en/ssh-password.md](../en/ssh-password.md) にあります。内容が一致しない場合は日本語版が優先されます。
 
-パスワード認証の SSH サーバー (ジャンプサーバーや接続先) に、パスワードを入力せずに接続する方法を説明します。`host-shell ssh-pass` で `USER@HOST` ごとにパスワードを保存しておくと、OpenSSH 標準の `SSH_ASKPASS` の仕組みで `ssh` に渡します。渡す経路は次の 3 つで、Linux、macOS、Windows で同じ操作です。
+パスワード認証の SSH サーバー (ジャンプ サーバーや接続先) に、パスワードを入力せずに接続する方法を説明します。`host-shell ssh-pass` で `USER@HOST` ごとにパスワードを保存しておくと、OpenSSH 標準の `SSH_ASKPASS` の仕組みで `ssh` に渡します。渡す経路は次の 3 つで、Linux、macOS、Windows で同じ操作です。
 
 - `host-shell bridge` が起動する `ssh` (MCP のエージェント)
 - `host-shell ssh`、`host-shell scp` (`ssh`、`scp` の代わりに使うラッパー。スクリプトや `host-shell-connect` スキル)
@@ -13,7 +13,7 @@
 
 ## 使いどころ
 
-- 公開鍵認証を使えない (使わせてもらえない) ジャンプサーバーや接続先を、MCP のエージェントや VS Code から使う。
+- 公開鍵認証を使えない (使わせてもらえない) ジャンプ サーバーや接続先を、MCP のエージェントや VS Code から使う。
 - 認証付き HTTP プロキシ ([SSH 経路プロキシ](ssh-proxy.md)) の先にあるパスワード認証のサーバーへ接続する。プロキシのパスワードは `--password-file` で、SSH のパスワードは `ssh-pass` で、それぞれ保存します。
 - 1 段目のサーバーにだけパスワードで入り、2 段目へは 1 段目のサーバー上の鍵や hostbased 認証で入る (クライアントは 1 段目と 2 段目の間の認証に関与しない)。
 
@@ -44,7 +44,7 @@ flowchart LR
 
 ## 手順
 
-### 1. 経路の記述
+### 経路の記述
 
 クライアントの `~/.ssh/config` に経路を記述します。次の例は、SSH 経路プロキシの先の hop1 (パスワード認証) から、構成 A の target2 と構成 B の target3 へ進むものです。
 
@@ -67,7 +67,7 @@ Host target2
 - `NumberOfPasswordPrompts` は既定 (3) のままにしてください。保存したパスワードが拒否されたことを、`ssh` の 2 回目の問い合わせで検出します ([動作](#動作) を参照)。1 にすると検出できず、誤ったパスワードを接続のたびに送ります。
 - `PreferredAuthentications` を指定する場合は、サーバーが使う方式 (`password`、`keyboard-interactive`) を含めます。
 
-### 2. ホスト鍵の登録
+### ホスト鍵の登録
 
 端末で一度だけ各段に接続し、ホスト鍵を確かめて登録します。パスワードはこのときだけ手で入力します。
 
@@ -76,7 +76,7 @@ ssh hop1 true
 ssh target2 true
 ```
 
-### 3. パスワードの保存
+### パスワードの保存
 
 段ごとに、`ssh` がパスワードの入力時に表示する `USER@HOST` でパスワードを保存します。`HOST` は `~/.ssh/config` の `HostName` を適用した後のホスト名で、`HostKeyAlias` を指定している場合はその値です。ホスト名の大文字・小文字は区別しません。入力は表示されません。
 
@@ -87,7 +87,7 @@ host-shell ssh-pass set bob@target2.internal
 
 端末がない場合は、標準入力の 1 行目から読み取れます (`--stdin`)。パスワードをコマンド ラインや履歴に残さない方法で渡してください。
 
-### 4. 接続の確認
+### 接続の確認
 
 `host-shell ssh` は、引数をそのまま `ssh` に渡します。
 
@@ -96,7 +96,7 @@ host-shell ssh target2 id -un
 host-shell ssh -T hop1 ssh -T target3 id -un
 ```
 
-### 5. エージェントへの登録
+### エージェントへの登録
 
 `bridge` が起動する `ssh` には、保存したパスワードが渡されます。クライアントで動く `ssh` には `BatchMode=yes` を指定しません (指定するとパスワード認証を行いません)。保存したパスワードを使う `ssh` は端末からの入力を待たないため、認証に失敗した場合はすぐに終了します。
 
@@ -115,7 +115,7 @@ export HOST_SHELL_SSH="/home/alice/.local/bin/host-shell ssh"
 "$SKILL"/scripts/deploy.sh hop1,target3 linux-amd64
 ```
 
-### 6. VS Code Remote - SSH
+### VS Code Remote - SSH
 
 1. 専用のフォルダーを作り、`host-shell` を `ssh` と `scp` という名前で置きます (VS Code は、`remote.SSH.path` と同じフォルダーの `scp` でサーバーを転送するため)。このフォルダーは `PATH` に加えません。`host-shell` を更新したら、ハード リンクとコピーは作り直してください。
 
