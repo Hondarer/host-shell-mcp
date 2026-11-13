@@ -119,7 +119,7 @@ Keeping processes or services running after disconnection (such as building resi
 
 Table: Requirements
 
-Because the `ssh` process started by the agent cannot answer interactive password prompts, every hop must authenticate non-interactively via public keys or `ssh-agent`.
+Because the `ssh` process started by the agent cannot answer interactive password prompts, every hop must authenticate non-interactively via public keys or `ssh-agent`. For password-authenticated servers, store the passwords with `host-shell ssh-pass` and `bridge` passes them to `ssh` (see [Storing SSH passwords (ssh-pass)](ssh-password.md)).
 
 ## Getting the executables
 
@@ -251,7 +251,7 @@ case $- in *i*) ;; *) return;; esac
 
 ### Authentication on jump hosts
 
-In nested SSH connections, each jump host initiates the next `ssh` hop. Either place the next-hop key on each jump host or forward your local `ssh-agent` with `-A` (requires `AllowAgentForwarding yes` in each jump host's `sshd_config`).
+In nested SSH connections, each jump host initiates the next `ssh` hop. Either place the next-hop key on each jump host or forward your local `ssh-agent` with `-A` (requires `AllowAgentForwarding yes` in each jump host's `sshd_config`). A first hop that uses password authentication, with the second hop entered by a key on the first hop, is also supported as layout B of [Storing SSH passwords (ssh-pass)](ssh-password.md).
 
 ### Connection script
 

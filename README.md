@@ -178,6 +178,7 @@ Each guide documents not only setup procedures, but also the verified scope (OS,
 | [Reference](docs/en/reference.md) | Startup options, policy restrictions, MCP specification, tool inputs and outputs, bridge, process management, audit log format, limitations |
 | [Development Guide](docs/en/development.md) | Building, source layout, design rules, adding tools, testing, releases |
 | [SSH route proxy](docs/en/ssh-proxy.md) | Connecting over SSH through an authenticated HTTP proxy (`host-shell connect`), and distinguishing the three kinds of proxy |
+| [Storing SSH passwords](docs/en/ssh-password.md) | Connecting to password-authenticated SSH servers from agents, scripts and VS Code (`host-shell ssh-pass`, `host-shell ssh`, `ProxyJump`) |
 | [HTTP proxy through the client](docs/en/client-proxy.md) | Routing target HTTP/HTTPS traffic through the bridge's network |
 | [Port forwarding](docs/en/port-forward.md) | Local forwards, remote forwards, and SOCKS5 over SSH stdio |
 | [Remote DNS](docs/en/remote-dns.md) | Optional client-side name resolution over the existing MCP connection (Linux/glibc `getaddrinfo` relay, or a loopback DNS server on Windows) |
@@ -371,6 +372,7 @@ GitHub Release には、タグ名の先頭の `v` を残したアーカイブ (`
 | [リファレンス](docs/ja/reference.md) | 起動オプション、制限 (方針)、MCP 仕様、各ツールの入出力、bridge、プロセス管理、操作ログ形式、制限事項 |
 | [開発ガイド](docs/ja/development.md) | ビルド、ソース構成、設計規約、ツールの追加手順、テスト、リリース |
 | [SSH 経路プロキシ](docs/ja/ssh-proxy.md) | 認証付き HTTP プロキシを経由した SSH 接続 (`host-shell connect`) と、3 つのプロキシの区別 |
+| [SSH のパスワードの保存](docs/ja/ssh-password.md) | パスワード認証の SSH サーバーへの、エージェント・スクリプト・VS Code からの接続 (`host-shell ssh-pass`、`host-shell ssh`、`ProxyJump`) |
 | [クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |
 | [ポート転送](docs/ja/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
 | [接続元を使う名前解決](docs/ja/remote-dns.md) | 名前解決を既存の MCP 接続で接続元へ中継する任意機能 (Linux/glibc の `getaddrinfo`、Windows ではループバックの DNS サーバー) |

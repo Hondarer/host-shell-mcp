@@ -242,4 +242,4 @@ Table: Verification status of the SSH route proxy
 
 - Only HTTP `CONNECT` with no authentication or Basic authentication is supported. SOCKS and TELNET proxies, NTLM, Negotiate (Kerberos), and Digest authentication, TLS connections to the proxy (`https://` proxies), and proxy redirects (302) are not supported. For a proxy that requires NTLM or similar authentication, a local proxy that accepts Basic or no authentication (such as cntlm) can be placed in between on the local machine, though this is unverified.
 - Proxies between later hops are not supported.
-- Terminal password input works only when standard error is a terminal. `SSH_ASKPASS` and OS credential stores are not supported.
+- Terminal password input works only when standard error is a terminal. `SSH_ASKPASS` and OS credential stores are not supported (for the SSH login password itself, see [Storing SSH passwords](ssh-password.md)).

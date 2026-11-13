@@ -27,6 +27,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/forward"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/remotedns"
+	"github.com/hondarer/host-shell-mcp/internal/sshpass"
 	"github.com/hondarer/host-shell-mcp/internal/version"
 	"github.com/hondarer/host-shell-mcp/internal/wire"
 )
@@ -115,6 +116,19 @@ func Main(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	cmd := exec.Command(opt.Command[0], opt.Command[1:]...)
+	// Supply stored SSH login passwords (host-shell ssh-pass) to ssh through SSH_ASKPASS. COMMAND
+	// may be a script that runs ssh, so the ssh in PATH decides the mode then.
+	if self, err := os.Executable(); err == nil {
+		ssh := "ssh"
+		if sshpass.IsSSH(opt.Command[0]) {
+			ssh = opt.Command[0]
+		}
+		mode := sshpass.Mode(ssh)
+		cmd.Env = sshpass.Env(os.Environ(), self, mode)
+		if mode == sshpass.ModeLegacy {
+			sshpass.Detach(cmd)
+		}
+	}
 	cmd.Stderr = os.Stderr // forward SSH stderr to the agent's log
 	err := Run(ctx, opt, &mcp.CommandTransport{Command: cmd}, &mcp.StdioTransport{})
 	if ctx.Err() != nil {

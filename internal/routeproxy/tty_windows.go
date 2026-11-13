@@ -18,7 +18,10 @@ import (
 //
 // Ctrl+C is caught while echo is off, so the console mode is restored and pending input is
 // discarded before the process ends; otherwise the shell would receive leftover input.
-func promptPassword(prompt string) (string, bool, error) {
+func promptPassword(prompt string) (string, bool, error) { return promptLine(prompt, false) }
+
+// promptLine is promptPassword with the choice to echo the input (for yes/no questions).
+func promptLine(prompt string, echo bool) (string, bool, error) {
 	var mode uint32
 	if windows.GetConsoleMode(windows.Handle(os.Stderr.Fd()), &mode) != nil {
 		return "", false, nil
@@ -42,6 +45,9 @@ func promptPassword(prompt string) (string, bool, error) {
 	signal.Notify(sigs, os.Interrupt)
 	defer signal.Stop(sigs)
 	newMode := old&^windows.ENABLE_ECHO_INPUT | windows.ENABLE_PROCESSED_INPUT | windows.ENABLE_LINE_INPUT
+	if echo {
+		newMode |= windows.ENABLE_ECHO_INPUT
+	}
 	if err := windows.SetConsoleMode(h, newMode); err != nil {
 		return "", false, nil
 	}
