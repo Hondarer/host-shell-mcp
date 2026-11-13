@@ -39,12 +39,14 @@
 host-shell --mcp [options]                      (接続先)
 host-shell bridge [bridge-options] -- COMMAND...  (ローカル)
 host-shell connect [options] -H PROXY HOST PORT   (ローカル、ssh の ProxyCommand)
+host-shell ssh-pass set|delete|list|dir [USER@HOST]  (ローカル、SSH のパスワードの保存)
 host-shell --version
 ```
 
 `--mcp` 指定時のみ、MCP サーバーとして標準入出力で待ち受けます。  
 `bridge` はローカル側で接続先の `host-shell` を中継するサブコマンドです ([手元との転送 (bridge)](#手元との転送-bridge) を参照)。  
 `connect` は、SSH 接続を SSH 経路プロキシ (HTTP の `CONNECT`) 経由で中継する `ssh` の `ProxyCommand` 用のサブコマンドです ([SSH 経路プロキシ (connect)](#ssh-経路プロキシ-connect) を参照)。  
+`ssh-pass` は、パスワード認証の SSH サーバー向けにパスワードを保存するサブコマンドです。`bridge` が起動する `ssh` へ保存したパスワードを渡します ([SSH のパスワードの保存 (ssh-pass)](ssh-password.md) を参照)。  
 `--mcp`、`bridge`、`--version` のいずれも指定しない場合は、使い方を標準エラーに出力して終了コード 2 で終了します。
 
 ### オプション

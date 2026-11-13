@@ -35,6 +35,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/remotedns"
 	"github.com/hondarer/host-shell-mcp/internal/routeproxy"
 	"github.com/hondarer/host-shell-mcp/internal/server"
+	"github.com/hondarer/host-shell-mcp/internal/sshpass"
 	"github.com/hondarer/host-shell-mcp/internal/version"
 )
 
@@ -46,6 +47,14 @@ func main() {
 	// exec_sudo re-invokes this binary as the sudo -A askpass helper.
 	if ran, code := askpass.Serve(); ran {
 		os.Exit(code)
+	}
+
+	// ssh starts this binary as SSH_ASKPASS (set by bridge) to get a stored login password.
+	if ran, code := sshpass.Serve(os.Args, os.Stdout, os.Stderr); ran {
+		os.Exit(code)
+	}
+	if len(os.Args) > 1 && os.Args[1] == "ssh-pass" {
+		os.Exit(sshpass.Main(os.Args[2:], os.Stdout, os.Stderr))
 	}
 
 	// connect is the OpenSSH ProxyCommand for an SSH route proxy (HTTP CONNECT).
@@ -68,6 +77,7 @@ func main() {
 	case errors.Is(err, errUsage):
 		fmt.Fprintln(os.Stderr, "usage: host-shell --mcp [options]          (on the remote host)")
 		fmt.Fprintln(os.Stderr, "       host-shell bridge [options] -- COMMAND...  (on the local machine; see host-shell bridge -h)")
+		fmt.Fprintln(os.Stderr, "       host-shell ssh-pass set|delete|list|dir [USER@HOST]  (store SSH login passwords for bridge; see host-shell ssh-pass help)")
 		fmt.Fprintln(os.Stderr, "       host-shell connect [options] -H PROXY HOST PORT  (ProxyCommand on the local machine; see host-shell connect --help)")
 		flag.PrintDefaults()
 		os.Exit(2)

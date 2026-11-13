@@ -13,6 +13,7 @@
 | Reference | [en/reference.md](en/reference.md) | [ja/reference.md](ja/reference.md) | Startup options, policy restrictions, MCP specification, tool inputs and outputs, bridge, process management, audit log format, limitations |
 | Development Guide | [en/development.md](en/development.md) | [ja/development.md](ja/development.md) | Building, source layout, design rules, adding tools, testing, releases |
 | SSH route proxy | [en/ssh-proxy.md](en/ssh-proxy.md) | [ja/ssh-proxy.md](ja/ssh-proxy.md) | Connecting over SSH through an authenticated HTTP proxy (`host-shell connect`), and distinguishing the three kinds of proxy |
+| Storing SSH passwords | [en/ssh-password.md](en/ssh-password.md) | [ja/ssh-password.md](ja/ssh-password.md) | Connecting through password-authenticated jump servers (`host-shell ssh-pass`, `ProxyJump`) |
 | HTTP proxy through the client | [en/client-proxy.md](en/client-proxy.md) | [ja/client-proxy.md](ja/client-proxy.md) | Routing target HTTP/HTTPS traffic through the bridge's network |
 | Port forwarding | [en/port-forward.md](en/port-forward.md) | [ja/port-forward.md](ja/port-forward.md) | Local forwards, remote forwards, and SOCKS5 over SSH stdio |
 | Remote DNS | [en/remote-dns.md](en/remote-dns.md) | [ja/remote-dns.md](ja/remote-dns.md) | Optional client-side name resolution over the existing MCP connection (Linux/glibc getaddrinfo, or a loopback DNS server on Windows) |
@@ -36,6 +37,7 @@ When updating documentation, edit the Japanese version first and update the Engl
 | リファレンス | [ja/reference.md](ja/reference.md) | [en/reference.md](en/reference.md) | 起動オプション、制限 (方針)、MCP 仕様、各ツールの入出力、bridge、プロセス管理、操作ログ形式、制限事項 |
 | 開発ガイド | [ja/development.md](ja/development.md) | [en/development.md](en/development.md) | ビルド、ソース構成、設計規約、ツールの追加手順、テスト、リリース |
 | SSH 経路プロキシ | [ja/ssh-proxy.md](ja/ssh-proxy.md) | [en/ssh-proxy.md](en/ssh-proxy.md) | 認証付き HTTP プロキシを経由した SSH 接続 (`host-shell connect`) と、3 つのプロキシの区別 |
+| SSH のパスワードの保存 | [ja/ssh-password.md](ja/ssh-password.md) | [en/ssh-password.md](en/ssh-password.md) | パスワード認証のジャンプサーバーへの接続 (`host-shell ssh-pass`、`ProxyJump`) |
 | クライアント経由 HTTP プロキシ | [ja/client-proxy.md](ja/client-proxy.md) | [en/client-proxy.md](en/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |
 | ポート転送 | [ja/port-forward.md](ja/port-forward.md) | [en/port-forward.md](en/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
 | 接続元を使う名前解決 | [ja/remote-dns.md](ja/remote-dns.md) | [en/remote-dns.md](en/remote-dns.md) | 名前解決を既存の MCP 接続で接続元へ中継する任意機能 (Linux/glibc の getaddrinfo、Windows ではループバックの DNS サーバー) |

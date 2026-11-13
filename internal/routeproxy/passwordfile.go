@@ -55,3 +55,9 @@ type readResult struct {
 
 // errBadPermissions prefixes the message for a password file that fails the permission check.
 var errBadPermissions = errors.New("bad owner or permissions on password file")
+
+// ReadPasswordFile is readPasswordFile for other packages that keep passwords in owner-only files.
+func ReadPasswordFile(path string) (string, error) { return readPasswordFile(path) }
+
+// PromptPassword asks for a password on the terminal with echo off; ok is false without a terminal.
+func PromptPassword(prompt string) (string, bool, error) { return promptPassword(prompt) }

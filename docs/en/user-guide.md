@@ -119,7 +119,7 @@ Keeping processes or services running after disconnection (such as building resi
 
 Table: Requirements
 
-Because the `ssh` process started by the agent cannot answer interactive password prompts, every hop must authenticate non-interactively via public keys or `ssh-agent`.
+Because the `ssh` process started by the agent cannot answer interactive password prompts, every hop must authenticate non-interactively via public keys or `ssh-agent`. For password-authenticated jump servers, see [Storing SSH passwords (ssh-pass)](ssh-password.md).
 
 ## Getting the executables
 
