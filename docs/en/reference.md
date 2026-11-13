@@ -40,13 +40,14 @@ host-shell --mcp [options]                      (target)
 host-shell bridge [bridge-options] -- COMMAND...  (local)
 host-shell connect [options] -H PROXY HOST PORT   (local, ProxyCommand of ssh)
 host-shell ssh-pass set|delete|list|dir [USER@HOST]  (local, stores SSH passwords)
+host-shell ssh|scp [ARGS...]                     (local, ssh and scp with the stored passwords)
 host-shell --version
 ```
 
 `--mcp` starts the process as an MCP server listening on standard input and output.  
 `bridge` is a local relay subcommand that connects to `host-shell` on the target (see [Transfer with the local machine (bridge)](#transfer-with-the-local-machine-bridge)).  
 `connect` is a subcommand for the `ProxyCommand` of `ssh` that relays the SSH connection through an SSH route proxy (HTTP `CONNECT`) (see [SSH route proxy (connect)](#ssh-route-proxy-connect)).  
-`ssh-pass` is a subcommand that stores passwords for password-authenticated SSH servers; `bridge` passes them to the `ssh` it starts (see [Storing SSH passwords (ssh-pass)](ssh-password.md)).  
+`ssh-pass` is a subcommand that stores passwords for password-authenticated SSH servers. `bridge` (for the `ssh` it starts) and `host-shell ssh` pass the stored passwords to `ssh` through `SSH_ASKPASS`. `host-shell ssh` and `host-shell scp` are wrappers used in place of `ssh` and `scp`; the executable placed under the names `ssh` and `scp` behaves the same without the subcommand (for VS Code's `remote.SSH.path`). See [Storing SSH passwords (ssh-pass)](ssh-password.md).  
 If none of `--mcp`, `bridge`, or `--version` is specified, `host-shell` prints usage information to standard error and exits with code 2.
 
 ### Options

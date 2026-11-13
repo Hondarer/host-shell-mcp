@@ -61,3 +61,6 @@ func ReadPasswordFile(path string) (string, error) { return readPasswordFile(pat
 
 // PromptPassword asks for a password on the terminal with echo off; ok is false without a terminal.
 func PromptPassword(prompt string) (string, bool, error) { return promptPassword(prompt) }
+
+// PromptLine asks on the terminal like PromptPassword, echoing the input when echo is set.
+func PromptLine(prompt string, echo bool) (string, bool, error) { return promptLine(prompt, echo) }

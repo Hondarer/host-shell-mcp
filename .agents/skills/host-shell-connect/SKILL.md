@@ -41,6 +41,7 @@ Table: Scripts
 
 Specify `ROUTE` as a comma-separated list of jump hosts and the target from the local side (for example `hop1,target`, or `target` for a direct connection).  
 Host names defined in `~/.ssh/config` are supported. Each hop connects with `-T -o BatchMode=yes` (override with `HOST_SHELL_SSH_OPTS`).  
+With `HOST_SHELL_SSH="/path/to/host-shell ssh"`, the first hop runs through the `host-shell ssh` wrapper with `-o BatchMode=no`, so passwords stored with `host-shell ssh-pass` are used for it (see [SSH password authentication](#ssh-password-authentication)).  
 Jump host shells must be POSIX `sh` compatible.
 
 The last element of `ROUTE` may be a container instead of an SSH host; see [Containers](#containers).
@@ -59,6 +60,7 @@ Determine the following items from the user's request and ask only about unclear
 | `host-shell` options | `--timeout 2m`, `--windows-shell cmd`, restriction options | None (unrestricted) |
 | Whether to use `bridge` | Enables file transfer between the local machine and the target | Use `bridge` |
 | SSH route proxy | Proxy host and port, proxy user name, password file path (never the password) | None. Ask when the user mentions a proxy; see [SSH route proxy](#ssh-route-proxy) |
+| Password-authenticated hops | Which hops use password authentication, and whether the second hop is entered from the first hop with the first hop's key (nested) or by the client (`ProxyJump`) | None. Ask when the user mentions passwords; see [SSH password authentication](#ssh-password-authentication) |
 
 Table: Information needed
 
@@ -129,6 +131,25 @@ When SSH from the local machine to the first hop must pass through an authentica
 
 `host-shell connect` never reads `HTTP_PROXY`; configure the internet proxy and the SSH route proxy separately even when they use the same server.
 
+### SSH password authentication
+
+When a hop uses SSH password authentication (password or keyboard-interactive with a `Password:` prompt), see `docs/en/ssh-password.md`. The client's OpenSSH must be 8.4 or later (`ssh -V`); for earlier versions, point the user to "OpenSSH before 8.4" in that document and do not enable it yourself.
+
+1. Decide the layout with the user:
+    - **Layout A** (every password hop is authenticated by the client): later hops use `ProxyJump` in `~/.ssh/config`, and `ROUTE` is the target alone (for example `target2`). Nested routes cannot use stored passwords after the first hop.
+    - **Layout B** (only the first hop uses a password; the second hop is entered with a key or hostbased authentication on the first hop): `ROUTE` is nested (for example `hop1,target3`). The client takes no part in the second hop's authentication.
+2. Show the user the Host blocks and let the user add them to `~/.ssh/config`; do not edit that file yourself. Keep `NumberOfPasswordPrompts` at its default.
+3. Ask the user to register the host keys by connecting once in a terminal (`ssh target2 true`), and to store each password with `host-shell ssh-pass set USER@HOST` (`USER@HOST` as in the `USER@HOST's password:` prompt, after `HostName`). Never ask for the passwords, and never put them in a command line, a file you write, or the conversation. `host-shell ssh-pass list` shows what is stored.
+4. Run the scripts with `HOST_SHELL_SSH` set to the local `host-shell` and `ssh`:
+
+    ```bash
+    export HOST_SHELL_SSH="/path/to/host-shell ssh"
+    "$SKILL"/scripts/remote.sh target2 true | od -c | head
+    ```
+
+5. In the registration command, do not give `-o BatchMode=yes` to the first `ssh` (it disables password authentication); keep it for `ssh` on jump hosts in layout B: `/path/to/host-shell bridge -- ssh -T hop1 ssh -T -o BatchMode=yes target3 ...`. `bridge` passes the stored passwords to the `ssh` it starts.
+6. If `host-shell askpass: the stored password for USER@HOST was rejected` appears, the password is not sent again until replaced. Do not retry; ask the user to run `host-shell ssh-pass set USER@HOST`.
+
 ### Checking the SSH route
 
 ```bash
@@ -137,7 +158,7 @@ When SSH from the local machine to the first hop must pass through an authentica
 
 - Empty output means the route is clean. On Windows targets `true` is not a `cmd` command; its error goes to standard error and the check still works.
 - Any output means a shell startup file on a jump host or the target writes to standard output during non-interactive sessions, which corrupts MCP communication. Ask the user to silence non-interactive output in their startup file and stop (for bash, add `case $- in *i*) ;; *) return;; esac` at the top of `.bashrc`).
-- On authentication errors (`Permission denied`, `Host key verification failed`), ask the user to configure passwordless SSH for each hop and stop.
+- On authentication errors (`Permission denied`, `Host key verification failed`), ask the user to configure passwordless SSH for each hop, or to store the passwords as in [SSH password authentication](#ssh-password-authentication), and stop.
 
 ### Detecting the target environment
 

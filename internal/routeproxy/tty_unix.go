@@ -19,7 +19,10 @@ import (
 //
 // Ctrl+C and termination signals are caught while echo is off, so the terminal settings are
 // restored before the process ends; otherwise the user's shell would be left without echo.
-func promptPassword(prompt string) (string, bool, error) {
+func promptPassword(prompt string) (string, bool, error) { return promptLine(prompt, false) }
+
+// promptLine is promptPassword with the choice to echo the input (for yes/no questions).
+func promptLine(prompt string, echo bool) (string, bool, error) {
 	if _, err := unix.IoctlGetTermios(int(os.Stderr.Fd()), ioctlGetTermios); err != nil {
 		return "", false, nil
 	}
@@ -37,7 +40,9 @@ func promptPassword(prompt string) (string, bool, error) {
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer signal.Stop(sigs)
 	noEcho := *old
-	noEcho.Lflag &^= unix.ECHO
+	if !echo {
+		noEcho.Lflag &^= unix.ECHO
+	}
 	noEcho.Lflag |= unix.ICANON | unix.ISIG
 	noEcho.Iflag |= unix.ICRNL
 	if err := unix.IoctlSetTermios(fd, ioctlSetTermios, &noEcho); err != nil {
@@ -52,8 +57,10 @@ func promptPassword(prompt string) (string, bool, error) {
 	}()
 	select {
 	case r := <-done:
-		// Echo is off, so the newline typed by the user is not shown.
-		fmt.Fprint(tty, "\n")
+		// With echo off, the newline typed by the user is not shown.
+		if !echo {
+			fmt.Fprint(tty, "\n")
+		}
 		if r.err != nil && r.line == "" {
 			return "", false, fmt.Errorf("cannot read the password: %v", r.err)
 		}

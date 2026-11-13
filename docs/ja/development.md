@@ -67,6 +67,7 @@ internal/channel/      SSH stdio 上の多重化チャネル (機能ネゴシエ
 internal/clientproxy/  クライアント経由 HTTP プロキシ (bridge 側の宛先検査と bridge からの接続、接続先側の認証付きプロキシ)
 internal/forward/      ポート転送 (常設転送の書式解析、bridge 側の待ち受け・SOCKS5・forward_*、接続先側の発信と待ち受け)
 internal/routeproxy/   host-shell connect (SSH 経路プロキシ用の ProxyCommand。CONNECT と Basic 認証、パスワード ファイルの権限確認)
+internal/sshpass/      host-shell ssh-pass、host-shell ssh・scp (ssh・scp の名前のリンク) と SSH_ASKPASS の応答 (保存、問い合わせの照合、拒否の検出)
 internal/remotedns/    接続元を使う名前解決 (bridge 側のリゾルバー、接続先側の UNIX ソケット待ち受けとアダプター配置、ループバックの DNS サーバー)
   assets/preload.c     LD_PRELOAD 用名前解決アダプター (libhostshell_dns-linux-<arch>.so のソース)
 internal/proc/         子プロセス起動、OS 別シェル実行、プロセス ツリー終了、シグナル送信、生存確認
@@ -253,6 +254,7 @@ flowchart TB
 - **`internal/clientproxy/`**: `internal/channel/` の上に、接続先中継プロキシ、`bridge` からの接続、および診断・ルール更新機能 (`proxy_status`、`proxy_rules_update`) を実装します。
 - **`internal/forward/`**: `internal/channel/` の上に、ローカル転送、リモート転送、SOCKS5、および転送管理ツール (`forward_*`) を実装します。
 - **`internal/routeproxy/`**: `host-shell connect` を実装します。SSH 経路プロキシへ `CONNECT` を送信し (ユーザー名がある場合は最初の要求から Basic 認証を付与)、標準入出力との間でバイト列をそのまま中継します。パスワード ファイルは、OpenSSH が `~/.ssh/config` に求める所有者・権限の条件で検査します (`perm_unix.go`、`perm_windows.go`)。`internal/channel/` は使用しません。
+- **`internal/sshpass/`**: `host-shell ssh-pass` (保存先の管理。Windows は DPAPI と本人だけの DACL)、`host-shell ssh`・`host-shell scp` と、`ssh`・`scp` の名前で置いた場合のラッパー (`ssh -V` で版を判定し、`SSH_ASKPASS` を設定して、`PATH` 上の自身以外の `ssh`・`scp` を実行する。Linux・macOS は exec、Windows は Job Object に入れた子プロセス)、および `ssh` から呼ばれたときの応答 (`Serve`) を実装します。`Serve` は `main` の最初に判定します (`SSH_ASKPASS` が `ssh` の名前のリンクを指す場合があるため)。答えるのは `ssh` が作る形式の問い合わせ (`USER@HOST's password:`、8.4 以降の `(USER@HOST) Password:`) だけで、拒否の検出は ssh のプロセスを PID と起動時刻で識別します (Git for Windows の ssh は問い合わせごとに fork を模した ssh.exe を挟むため、Windows では連続する ssh.exe の最上位を使います)。`bridge` は `ssh` を起動する前に `Env` で環境を組み立てます。
 - **`internal/remotedns/`**: `internal/channel/` の上に、接続先側の UNIX ドメイン ソケット待ち受け、名前解決アダプター (`preload.c`) の配置、ループバックの DNS サーバー (`stub.go`、Windows 接続先で使用)、Windows の名前解決設定の追加と削除 (`osconfig_windows.go`、`--remote-dns-configure`)、および `bridge` 側での名前解決を実装します。
 
 ## code-server 導入スキルの保守

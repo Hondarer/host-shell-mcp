@@ -11,6 +11,9 @@
 #
 # Environment:
 #   HOST_SHELL_SSH_OPTS      SSH options applied at each hop (default: -o BatchMode=yes)
+#   HOST_SHELL_SSH           command for the first hop's ssh instead of `ssh`; set it to
+#                            "/path/to/host-shell ssh" to use passwords stored with host-shell ssh-pass
+#                            (the first hop then also gets -o BatchMode=no, which takes precedence)
 #   HOST_SHELL_PODMAN_OPTS   extra options for `podman exec` (e.g. --user dev)
 #   HOST_SHELL_DOCKER_OPTS   extra options for `docker exec` (e.g. --user dev)
 #   HOST_SHELL_KUBECTL_OPTS  extra options for `kubectl exec` (e.g. -n app -c web)
@@ -80,5 +83,14 @@ while [ "$i" -gt 1 ]; do
 	s="ssh -T $opts $h $(q "$s")"
 	i=$((i - 1))
 done
+# The first hop runs on this machine: with HOST_SHELL_SSH (the host-shell ssh wrapper) it may answer
+# password prompts from passwords stored with host-shell ssh-pass, and never waits for a terminal.
+# ssh uses the first value given for an option, so BatchMode=no wins over BatchMode=yes in $opts.
+first=ssh
+first_opts=
+if [ -n "${HOST_SHELL_SSH:-}" ]; then
+	first=$HOST_SHELL_SSH
+	first_opts="-o BatchMode=no"
+fi
 # shellcheck disable=SC2086
-exec ssh -T $opts "$1" "$s"
+exec $first -T $first_opts $opts "$1" "$s"
