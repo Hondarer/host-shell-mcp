@@ -58,6 +58,7 @@ Determine the following items from the user's request and ask only about unclear
 | Registration name | `host-shell-target` | `host-shell-<target host name>` |
 | `host-shell` options | `--timeout 2m`, `--windows-shell cmd`, restriction options | None (unrestricted) |
 | Whether to use `bridge` | Enables file transfer between the local machine and the target | Use `bridge` |
+| SSH route proxy | Proxy host and port, proxy user name, password file path (never the password) | None. Ask when the user mentions a proxy; see [SSH route proxy](#ssh-route-proxy) |
 
 Table: Information needed
 
@@ -93,6 +94,40 @@ Table: Default locations
 - On Linux, if `/tmp/host-shell-<uid>` is deleted, another local user could recreate it with a fake binary. On multi-user systems with untrusted users, specify `.local/bin/host-shell` explicitly (`deploy.sh ROUTE TYPE .local/bin/host-shell`).
 - Use a path without spaces or quotes. On Windows, candidates containing spaces in `%TEMP%` or `%LOCALAPPDATA%` are skipped.
 - `.local/bin/host-shell` can be registered as a relative path because `sshd` starts commands in the user's home directory (avoid `~`, which the local shell would expand).
+
+### Which proxy the user means
+
+The documentation and skills distinguish three proxies (`docs/en/ssh-proxy.md` defines them):
+
+| Term | What it is | Where it is configured |
+|---|---|---|
+| SSH route proxy | HTTP proxy that the SSH connection itself passes through (equivalent to the proxy settings of Tera Term) | `ProxyCommand` with `host-shell connect` in the client's `~/.ssh/config` |
+| Internet proxy | Client-side proxy that `bridge` uses to reach the internet | `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` in the environment of `bridge` |
+| Target relay proxy | Proxy on `127.0.0.1` of the target that relays to `bridge` | `--proxy` on `bridge`, `--client-proxy` on the target ([Optional client HTTP proxy](#optional-client-http-proxy)) |
+
+Table: Three proxies
+
+If the user mentions a proxy without making clear which of these is meant, ask before changing anything. Show the three terms and where each is configured, and ask whether SSH itself passes through the proxy, whether the local machine needs it to reach the internet, and whether applications on the target need to reach the internet.
+
+### SSH route proxy
+
+When SSH from the local machine to the first hop must pass through an authenticated HTTP proxy (HTTP `CONNECT` with Basic or no authentication), see `docs/en/ssh-proxy.md`:
+
+1. Ask for the proxy host and port, the proxy user name, and the password file path (default `~/.ssh/<name>.pass`; on Windows `%USERPROFILE%\.ssh\<name>.pass`). Never ask for the password itself, and never put it in a command line, a file you write, or the conversation.
+2. Show the user a Host block for the first hop and let the user add it to `~/.ssh/config`; do not edit that file yourself. Use the absolute path of the local `host-shell` binary (the same executable used for `bridge`), with `/` as the path separator on Windows:
+
+    ```text
+    Host target
+        HostName 10.0.0.5
+        ProxyCommand /home/alice/.local/bin/host-shell connect -H alice@proxy.example.com:8080 --password-file /home/alice/.ssh/proxy.pass %h %p
+        ServerAliveInterval 30
+    ```
+
+3. Ask the user to create the password file using the commands in "Creating a password file" of `docs/en/ssh-proxy.md`. `host-shell connect` rejects files writable by other users.
+4. Use the Host name in `ROUTE` and in the registration command; the scripts and registration command need no other changes. Only the section from the local machine to the first hop is supported (nested hops and `ProxyJump` after it work); proxies between later hops are not supported.
+5. If the route check fails, inspect the `host-shell connect:` line on standard error and follow the troubleshooting table in `docs/en/ssh-proxy.md`. A 407 response is final: do not retry with the same credentials, because repeated failures can lock the proxy account. Ask the user to check the password file instead.
+
+`host-shell connect` never reads `HTTP_PROXY`; configure the internet proxy and the SSH route proxy separately even when they use the same server.
 
 ### Checking the SSH route
 
@@ -239,7 +274,7 @@ When finished, report the following items together:
 
 ## Optional client HTTP proxy
 
-When proxy-aware programs on the target need outbound HTTP/HTTPS access through the local client network, see `docs/en/client-proxy.md`. Pass `--client-proxy` to the target `host-shell` and `--proxy` with explicit `--proxy-allow-host HOST[:PORT]` rules to `bridge`. Traffic is multiplexed over the existing SSH stdio stream without SSH port forwarding. Use `proxy_status` to diagnose denied requests, and never broaden user-approved host rules autonomously. `sys_get_info` reports the path to the user-only credential URL file (`proxy_url_file`); never print or paste its contents. Leave this feature disabled unless requested by the user.
+When proxy-aware programs on the target need outbound HTTP/HTTPS access through the local client network (the target relay proxy), see `docs/en/client-proxy.md`. If the local machine itself reaches the internet through a proxy, also set `HTTPS_PROXY` (the internet proxy) in the environment of `bridge`, for example with `claude mcp add -e HTTPS_PROXY=...` (or the `env` field of a JSON configuration); warn the user that credentials in that URL remain in plain text in the agent's MCP configuration. Pass `--client-proxy` to the target `host-shell` and `--proxy` with explicit `--proxy-allow-host HOST[:PORT]` rules to `bridge`. Traffic is multiplexed over the existing SSH stdio stream without SSH port forwarding. Use `proxy_status` to diagnose denied requests, and never broaden user-approved host rules autonomously. `sys_get_info` reports the path to the user-only credential URL file (`proxy_url_file`); never print or paste its contents. Leave this feature disabled unless requested by the user.
 
 ## Optional remote DNS
 

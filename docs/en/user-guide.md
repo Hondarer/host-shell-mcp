@@ -47,6 +47,8 @@ flowchart TB
 
 Even across jump hosts, SSH port forwarding (`-L`, `-R`, `-D`, `ProxyJump`, `-W`) and SFTP are not used. Each hop runs a nested `ssh` command, so connections work even when `sshd` sets `AllowTcpForwarding no`.
 
+When the SSH connection itself from the local machine to the first host must pass through an authenticated HTTP proxy (for example, in environments where users connect using the proxy settings of Tera Term), set `host-shell connect` as `ProxyCommand` in the Host block of `~/.ssh/config`. See [SSH route proxy](ssh-proxy.md) for the procedure.
+
 - A single SSH connection stays open for the entire MCP session, avoiding per-call reconnection overhead even over multi-hop routes.
 - `host-shell` normalizes differences between Windows and Linux (shells, quoting, path separators), allowing the agent to invoke the same tools with identical arguments.
 - Output limits, timeouts, and audit logs are managed centrally on the target.

@@ -1,7 +1,7 @@
 // Package forward implements TCP port forwarding over the client channel.
 //
 // Local forwards and SOCKS5 listen on the bridge and connect from the target; remote forwards
-// listen on the target and connect from the bridge directly, without upstream proxies. Both
+// listen on the target and connect from the bridge directly, without internet proxies. Both
 // sides listen on loopback only. The bridge requests directions with its forward options and
 // the target permits them with --allow-forward-local and --allow-forward-remote; the channel
 // negotiation rejects a request the target does not permit. The target applies --allow-host

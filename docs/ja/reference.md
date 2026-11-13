@@ -26,6 +26,7 @@
 - [管理](#管理)
 - [Windows のレジストリ](#windows-のレジストリ)
 - [手元との転送 (bridge)](#手元との転送-bridge)
+- [SSH 経路プロキシ (connect)](#ssh-経路プロキシ-connect)
 - [プロセスの起動と終了](#プロセスの起動と終了)
 - [操作ログ](#操作ログ)
 - [制限事項](#制限事項)
@@ -37,11 +38,13 @@
 ```text
 host-shell --mcp [options]                      (接続先)
 host-shell bridge [bridge-options] -- COMMAND...  (ローカル)
+host-shell connect [options] -H PROXY HOST PORT   (ローカル、ssh の ProxyCommand)
 host-shell --version
 ```
 
 `--mcp` 指定時のみ、MCP サーバーとして標準入出力で待ち受けます。  
 `bridge` はローカル側で接続先の `host-shell` を中継するサブコマンドです ([手元との転送 (bridge)](#手元との転送-bridge) を参照)。  
+`connect` は、SSH 接続を SSH 経路プロキシ (HTTP の `CONNECT`) 経由で中継する `ssh` の `ProxyCommand` 用のサブコマンドです ([SSH 経路プロキシ (connect)](#ssh-経路プロキシ-connect) を参照)。  
 `--mcp`、`bridge`、`--version` のいずれも指定しない場合は、使い方を標準エラーに出力して終了コード 2 で終了します。
 
 ### オプション
@@ -1586,6 +1589,25 @@ Table: transfer_push と transfer_pull の出力
 - **クライアント経由 HTTP プロキシ**: 起動オプション (`--proxy`、`--proxy-allow-host`、`--proxy-allow-rule-updates`、`--client-proxy`)、`proxy_status`・`proxy_rules_update` ツール、環境変数の優先順位、および上限については [クライアント経由 HTTP プロキシ](client-proxy.md) を参照してください。
 - **ポート転送**: ローカル転送、リモート転送、SOCKS5 の起動オプション、要求と許可の照合、`forward_open`・`forward_close`・`forward_status` ツール、および上限については [SSH stdio 経由のポート転送](port-forward.md) を参照してください。
 - **接続元を使う名前解決 (`remote-dns`)**: Linux/glibc 接続先での `getaddrinfo` 中継、Windows 接続先でのループバック DNS サーバー、両端の `--remote-dns` と接続先の `--remote-dns-library`・`--remote-dns-listen`・`--remote-dns-configure`、および制約については [接続元を使う名前解決 (remote-dns)](remote-dns.md) を参照してください。
+
+## SSH 経路プロキシ (connect)
+
+`host-shell connect` は、SSH 接続そのものを認証付きの HTTP プロキシ (SSH 経路プロキシ) 経由で中継する、`ssh` の `ProxyCommand` 用のサブコマンドです。ローカル側で `bridge` と同じ実行ファイルを使用します。Git for Windows の `connect` と、HTTP プロキシの範囲で引数・環境変数に互換性があります。
+
+```text
+host-shell connect [-d] [-w SECONDS] [--password-file PATH] -H [http://][USER@]PROXY[:PORT] HOST PORT
+```
+
+| 項目 | 内容 |
+| --- | --- |
+| 引数 | `-H` (SSH 経路プロキシ。必須、既定のポートは 80)、`-w` (接続から `CONNECT` の応答までの上限。既定 30 秒、`0` で上限なし)、`--password-file`、`-d` (診断)、`-V` (バージョン) |
+| 環境変数 | ユーザー名: `HTTP_PROXY_USER`、`CONNECT_USER`。パスワード: `HTTP_PROXY_PASSWORD`、`CONNECT_PASSWORD`。`HTTP_PROXY` は参照しない |
+| 認証 | ユーザー名がある場合は最初の要求から Basic 認証を付与する。407 は再送せずに失敗とする |
+| 終了コード | 中継終了時は 0、失敗時は 1 (理由を標準エラーに 1 行で出力する) |
+
+Table: host-shell connect の概要
+
+Host ブロックの書き方、資格情報とパスワード ファイルの権限、Tera Term の設定との対応、検証済みの範囲は [SSH 経路プロキシ](ssh-proxy.md) を参照してください。
 
 ## プロセスの起動と終了
 

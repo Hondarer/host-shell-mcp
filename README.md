@@ -43,7 +43,9 @@ flowchart TB
     end
 
     subgraph Route["Transport (single stdio stream; multi-hop SSH & container exec)"]
+        RouteProxy["SSH Route Proxy (optional):<br/>HTTP CONNECT via ProxyCommand host-shell connect"]
         Hop1["Jump Host 1: ssh -T<br/>(works with AllowTcpForwarding no)"]
+        RouteProxy <-->|"CONNECT tunnel"| Hop1
         HopN["Jump Host N / Container Host:<br/>ssh -T or podman / docker / kubectl exec -i"]
         Hop1 <-->|"SSH stdio (nested ssh -T, 0..N hops)"| HopN
     end
@@ -59,13 +61,14 @@ flowchart TB
         IDEs -->|"HTTPS_PROXY / getaddrinfo"| ProxyDNS
     end
 
-    Bridge <-->|"MCP + Multiplexed Channel (stdio)"| Hop1
+    Bridge <-->|"MCP + Multiplexed Channel (stdio)"| RouteProxy
     HopN <-->|"stdio"| HS
 ```
 
 | Configuration | Route / Mechanism | Documentation |
 |---|---|---|
 | Direct or multi-hop SSH | `ssh -T [hop1 ssh -T ...] target host-shell --mcp` (works even with `AllowTcpForwarding no` and no SFTP) | [User Guide](docs/en/user-guide.md) |
+| SSH through an authenticated HTTP proxy (equivalent to Tera Term proxy settings) | `ProxyCommand host-shell connect -H user@proxy:port --password-file FILE %h %p` in the Host block of `~/.ssh/config` (HTTP `CONNECT` with Basic authentication) | [SSH route proxy](docs/en/ssh-proxy.md) |
 | Running containers | `[ssh -T host] podman\|docker\|kubectl exec -i <container> host-shell --mcp` | [Connecting into containers](docs/en/container.md) |
 | Direct file transfer & TCP forwarding | `host-shell bridge` (`transfer_push`, `transfer_pull`, `--forward-local`, `--forward-remote`, `--forward-socks`, `forward_open`) | [Reference](docs/en/reference.md#transfer-with-the-local-machine-bridge), [Port forwarding](docs/en/port-forward.md) |
 | Outbound HTTP/HTTPS & DNS from isolated targets | Loopback HTTP proxy (`--proxy`, `--client-proxy`, `proxy_rules_update`) and client-side name resolution (`--remote-dns`: Linux/glibc `getaddrinfo` relay, or a loopback DNS server on Windows) | [HTTP proxy through the client](docs/en/client-proxy.md), [Remote DNS](docs/en/remote-dns.md) |
@@ -174,6 +177,7 @@ Each guide documents not only setup procedures, but also the verified scope (OS,
 | [Operations Guide](docs/en/operations.md) | Security model, restriction options, dedicated user and key, pinning the startup command, sudo configuration, audit log management |
 | [Reference](docs/en/reference.md) | Startup options, policy restrictions, MCP specification, tool inputs and outputs, bridge, process management, audit log format, limitations |
 | [Development Guide](docs/en/development.md) | Building, source layout, design rules, adding tools, testing, releases |
+| [SSH route proxy](docs/en/ssh-proxy.md) | Connecting over SSH through an authenticated HTTP proxy (`host-shell connect`), and distinguishing the three kinds of proxy |
 | [HTTP proxy through the client](docs/en/client-proxy.md) | Routing target HTTP/HTTPS traffic through the bridge's network |
 | [Port forwarding](docs/en/port-forward.md) | Local forwards, remote forwards, and SOCKS5 over SSH stdio |
 | [Remote DNS](docs/en/remote-dns.md) | Optional client-side name resolution over the existing MCP connection (Linux/glibc `getaddrinfo` relay, or a loopback DNS server on Windows) |
@@ -232,7 +236,9 @@ flowchart TB
     end
 
     subgraph Route["通信経路 (単一の stdio ストリーム・多段 SSH / コンテナー exec 対応)"]
+        RouteProxy["SSH 経路プロキシ (任意):<br/>ProxyCommand host-shell connect による HTTP CONNECT"]
         Hop1["踏み台サーバー 1: ssh -T<br/>(AllowTcpForwarding no でも通過可能)"]
+        RouteProxy <-->|"CONNECT トンネル"| Hop1
         HopN["踏み台サーバー N / コンテナー ホスト:<br/>ssh -T または podman / docker / kubectl exec -i"]
         Hop1 <-->|"SSH stdio (ssh -T の入れ子で 0〜N 段中継)"| HopN
     end
@@ -248,13 +254,14 @@ flowchart TB
         IDEs -->|"HTTPS_PROXY / getaddrinfo"| ProxyDNS
     end
 
-    Bridge <-->|"MCP + 多重化チャネル (stdio)"| Hop1
+    Bridge <-->|"MCP + 多重化チャネル (stdio)"| RouteProxy
     HopN <-->|"stdio"| HS
 ```
 
 | 構成 | 経路・仕組み | 参照文書 |
 |---|---|---|
 | 直接または多段の SSH 接続 | `ssh -T [hop1 ssh -T ...] target host-shell --mcp` (`AllowTcpForwarding no` や SFTP 無効環境でも動作) | [利用ガイド](docs/ja/user-guide.md) |
+| 認証付き HTTP プロキシ経由の SSH 接続 (Tera Term のプロキシ設定に相当) | `~/.ssh/config` の Host ブロックに `ProxyCommand host-shell connect -H user@proxy:port --password-file FILE %h %p` を指定 (HTTP の `CONNECT` と Basic 認証) | [SSH 経路プロキシ](docs/ja/ssh-proxy.md) |
 | 稼働中のコンテナーへの接続 | `[ssh -T host] podman\|docker\|kubectl exec -i <container> host-shell --mcp` | [コンテナーへの接続](docs/ja/container.md) |
 | ファイル直接転送・TCP ポート転送 | `host-shell bridge` (`transfer_push`、`transfer_pull`、`--forward-local`、`--forward-remote`、`--forward-socks`、`forward_open`) | [リファレンス](docs/ja/reference.md#手元との転送-bridge)、[ポート転送](docs/ja/port-forward.md) |
 | 閉鎖環境からの HTTP/HTTPS 通信・名前解決 | ループバック HTTP プロキシ (`--proxy`、`--client-proxy`、`proxy_rules_update`) と接続元を使う名前解決 (`--remote-dns`。Linux/glibc の `getaddrinfo` 中継、Windows ではループバックの DNS サーバー) | [クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md)、[接続元を使う名前解決](docs/ja/remote-dns.md) |
@@ -363,6 +370,7 @@ GitHub Release には、タグ名の先頭の `v` を残したアーカイブ (`
 | [運用ガイド](docs/ja/operations.md) | セキュリティ設計、制限オプション、専用ユーザーと鍵、起動コマンドの固定、sudo 設定、操作ログ管理 |
 | [リファレンス](docs/ja/reference.md) | 起動オプション、制限 (方針)、MCP 仕様、各ツールの入出力、bridge、プロセス管理、操作ログ形式、制限事項 |
 | [開発ガイド](docs/ja/development.md) | ビルド、ソース構成、設計規約、ツールの追加手順、テスト、リリース |
+| [SSH 経路プロキシ](docs/ja/ssh-proxy.md) | 認証付き HTTP プロキシを経由した SSH 接続 (`host-shell connect`) と、3 つのプロキシの区別 |
 | [クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |
 | [ポート転送](docs/ja/port-forward.md) | SSH stdio 経由のローカル転送・リモート転送・SOCKS5 |
 | [接続元を使う名前解決](docs/ja/remote-dns.md) | 名前解決を既存の MCP 接続で接続元へ中継する任意機能 (Linux/glibc の `getaddrinfo`、Windows ではループバックの DNS サーバー) |

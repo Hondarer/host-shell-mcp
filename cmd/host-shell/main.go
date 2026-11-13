@@ -33,6 +33,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 	"github.com/hondarer/host-shell-mcp/internal/proc"
 	"github.com/hondarer/host-shell-mcp/internal/remotedns"
+	"github.com/hondarer/host-shell-mcp/internal/routeproxy"
 	"github.com/hondarer/host-shell-mcp/internal/server"
 	"github.com/hondarer/host-shell-mcp/internal/version"
 )
@@ -45,6 +46,11 @@ func main() {
 	// exec_sudo re-invokes this binary as the sudo -A askpass helper.
 	if ran, code := askpass.Serve(); ran {
 		os.Exit(code)
+	}
+
+	// connect is the OpenSSH ProxyCommand for an SSH route proxy (HTTP CONNECT).
+	if len(os.Args) > 1 && os.Args[1] == "connect" {
+		os.Exit(routeproxy.Main(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
 
 	if len(os.Args) > 1 && os.Args[1] == "bridge" {
@@ -62,6 +68,7 @@ func main() {
 	case errors.Is(err, errUsage):
 		fmt.Fprintln(os.Stderr, "usage: host-shell --mcp [options]          (on the remote host)")
 		fmt.Fprintln(os.Stderr, "       host-shell bridge [options] -- COMMAND...  (on the local machine; see host-shell bridge -h)")
+		fmt.Fprintln(os.Stderr, "       host-shell connect [options] -H PROXY HOST PORT  (ProxyCommand on the local machine; see host-shell connect --help)")
 		flag.PrintDefaults()
 		os.Exit(2)
 	case err != nil:

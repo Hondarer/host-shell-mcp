@@ -38,8 +38,9 @@ Table: Folder layout
 
 - Do not edit the user's `~/.ssh/config`, VS Code settings, or `host-shell` registration command. Show the required lines and let the user apply them.
 - Keep the inner `sshd` on `127.0.0.1`; only `start.sh` writes its configuration.
-- Never print or paste the relay proxy URL (`HTTPS_PROXY`); it carries a session token. Never print private keys.
+- Never print or paste the target relay proxy URL (`HTTPS_PROXY`); it carries a session token. Never print private keys.
 - Do not reconnect VS Code on the user's behalf; ask the user to connect, reload, or close windows.
+- If the user mentions a proxy and it is unclear whether the SSH connection itself passes through it (SSH route proxy, `docs/en/ssh-proxy.md`) or applications on the target need it to reach the internet (target relay proxy and internet proxy, `docs/en/client-proxy.md`), ask before changing anything. Show the three terms and where each is configured.
 
 ## Procedure
 
@@ -89,16 +90,16 @@ The result is `$SKILL/packages/COMMIT-ARCH/` (about 226 MiB for x64). A folder t
 
 ### 5. Start in every host-shell session
 
-1. `job_start`: `argv: ["sh", "<kit>/scripts/linux/start.sh"]`. It stops the VS Code Server left by an earlier session (a running server keeps the relay proxy URL of the session it started in), regenerates the `sshd` configuration, and runs `sshd` in the foreground.
+1. `job_start`: `argv: ["sh", "<kit>/scripts/linux/start.sh"]`. It stops the VS Code Server left by an earlier session (a running server keeps the target relay proxy URL of the session it started in), regenerates the `sshd` configuration, and runs `sshd` in the foreground.
 2. `job_read` with `wait_sec: 30` and `until: "Server listening on 127.0.0.1 port"`. If the job exits, show its output (for example, `Address already in use` when another `sshd` holds port 2222).
 3. `forward_open` with `direction: "local"`, `listen_port: LISTEN_PORT`, `host: "127.0.0.1"`, `port: 2222`. If `LISTEN_PORT` is in use on the client, pick another, rerun step 4.3, and ask the user to update the block.
 4. Ask the user to connect to `host-shell-vscode-NAME` in VS Code ("Remote-SSH: Connect to Host..."). If a window was connected before, VS Code shows "Cannot reconnect. Please reload the window."; the user chooses "Reload Window".
 5. After the user connects, run `exec_run` `argv: ["sh", "<kit>/scripts/linux/status.sh"]`. Exit status 0 with `running server: Stable-COMMIT` means the client's version runs pinned. Report any `WARNING:` lines; they mean a server was downloaded or runs a commit other than its client's.
 6. On the first connection after placing a fresh `~/.vscode-server` through the proxy, the server installs the client's language pack after the extension host started, so extension strings stay in English. If the user's VS Code is not in English, restart the `start.sh` job (`job_stop`, `job_start`) and ask the user to reload the window once.
 
-### 6. Client access through the relay proxy (optional)
+### 6. Client access through the target relay proxy (optional)
 
-The VS Code Server, Copilot Chat in VS Code, and terminals reach the network only through the client relay proxy. Start the target with `--client-proxy` and the bridge with `--proxy` and `--proxy-allow-host` rules before step 5; `start.sh` passes the proxy to SSH sessions with `SetEnv` and sets `NO_PROXY=127.0.0.1,localhost,::1`. Rules used with this skill:
+The VS Code Server, Copilot Chat in VS Code, and terminals reach the network only through the target relay proxy. Start the target with `--client-proxy` and the bridge with `--proxy` and `--proxy-allow-host` rules before step 5; `start.sh` passes the proxy to SSH sessions with `SetEnv` and sets `NO_PROXY=127.0.0.1,localhost,::1`. Rules used with this skill:
 
 - Copilot: `github.com:443`, `api.github.com:443`, `*.githubcopilot.com:443`, `copilot-proxy.githubusercontent.com:443`
 - Extensions from the Marketplace on the target: `marketplace.visualstudio.com:443`, `*.gallerycdn.vsassets.io:443`, `*.gallery.vsassets.io:443`, `main.vscode-cdn.net:443`
@@ -116,7 +117,7 @@ Extensions and the language pack registration are kept across versions. When the
 
 ### 8. Remote - SSH downloads the server itself (fallback)
 
-When the client cannot fetch distributions but the target may use the relay proxy, Remote - SSH can download the server through it. Add `update.code.visualstudio.com:443` and `vscode.download.prss.microsoft.com:443` to the bridge rules, and start with `argv: ["sh", "<kit>/scripts/linux/start.sh", "--commit", "COMMIT"]` so that the agent host does not run the latest stable server instead of the client's commit. Restart with the new commit after every client update. `status.sh` reports the pin from the `sshd` configuration.
+When the client cannot fetch distributions but the target may use the target relay proxy, Remote - SSH can download the server through it. Add `update.code.visualstudio.com:443` and `vscode.download.prss.microsoft.com:443` to the bridge rules, and start with `argv: ["sh", "<kit>/scripts/linux/start.sh", "--commit", "COMMIT"]` so that the agent host does not run the latest stable server instead of the client's commit. Restart with the new commit after every client update. `status.sh` reports the pin from the `sshd` configuration.
 
 ### 9. End and remove
 

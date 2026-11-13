@@ -47,6 +47,8 @@ flowchart TB
 
 中継サーバーを経由する場合も、SSH のポート転送 (`-L`、`-R`、`-D`、`ProxyJump`、`-W`) や SFTP は使用しません。中継サーバー上で次の `ssh` を入れ子で起動するため、sshd の `AllowTcpForwarding no` の影響を受けずに接続できます。
 
+手元から最初の接続先までの SSH 接続そのものが認証付きの HTTP プロキシを通る環境 (Tera Term のプロキシ設定で接続している環境など) では、`~/.ssh/config` の Host ブロックの `ProxyCommand` に `host-shell connect` を指定します。手順は [SSH 経路プロキシ](ssh-proxy.md) を参照してください。
+
 - MCP セッション中は 1 本の SSH 接続を維持するため、多段接続でもツール呼び出しごとの再接続遅延が発生しません。
 - Windows と Linux の差異 (シェル、引用符、パス表記) を `host-shell` が吸収するため、エージェントは同一のツールを同じ引数形式で呼び出せます。
 - 出力上限、タイムアウト、操作ログを接続先で一元管理できます。

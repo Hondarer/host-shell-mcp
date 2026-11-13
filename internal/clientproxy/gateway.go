@@ -26,8 +26,8 @@ const (
 	idleTimeout = 5 * time.Minute  // a connection without traffic in either direction is closed
 )
 
-// reasonUpstream records a proxy connection that failed beyond the bridge's checks.
-const reasonUpstream = "upstream connection failed"
+// reasonBridgeConnect records a proxy connection that failed beyond the bridge's checks.
+const reasonBridgeConnect = "connection from bridge failed"
 
 // Event is a connection result in proxy_status.
 type Event struct {
@@ -142,7 +142,7 @@ func (g *Gateway) open(ctx context.Context, in *channel.Incoming) {
 			return g.connect(ctx, in.Host, in.Port)
 		},
 		Failed: func(error) string {
-			g.record(in.ID, in.Host, in.Port, channel.Failed, reasonUpstream)
+			g.record(in.ID, in.Host, in.Port, channel.Failed, reasonBridgeConnect)
 			return channel.CodeFailed
 		},
 		Hold: func(external net.Conn) (func(), string) {
@@ -175,7 +175,7 @@ func (g *Gateway) serveHTTP(ctx context.Context, c net.Conn, f *channel.Incoming
 		stripHop(req.Header)
 		resp, err := tr.RoundTrip(req)
 		if err != nil {
-			g.record(f.ID, f.Host, f.Port, channel.Failed, "HTTP upstream failed")
+			g.record(f.ID, f.Host, f.Port, channel.Failed, "HTTP request from bridge failed")
 			io.WriteString(c, "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 			return
 		}
@@ -199,7 +199,7 @@ func (g *Gateway) connect(ctx context.Context, host string, port int) (net.Conn,
 		return d.DialContext(ctx, "tcp", target)
 	}
 	if pu.Scheme != "http" && pu.Scheme != "https" {
-		return nil, errors.New("unsupported upstream proxy")
+		return nil, errors.New("unsupported internet proxy")
 	}
 	addr := pu.Host
 	if pu.Port() == "" {
@@ -243,7 +243,7 @@ func (g *Gateway) connect(ctx context.Context, host string, port int) (net.Conn,
 		return nil, err
 	}
 	if resp.StatusCode != 200 {
-		return nil, errors.New("upstream CONNECT rejected")
+		return nil, errors.New("internet proxy rejected CONNECT")
 	}
 	c.SetDeadline(time.Time{})
 	ok = true
@@ -304,7 +304,7 @@ func snapshotProxy() func(*http.Request) (*url.URL, error) {
 		}
 		u, err := url.Parse(raw)
 		if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") {
-			return nil, errors.New("invalid upstream proxy configuration")
+			return nil, errors.New("invalid internet proxy configuration")
 		}
 		return u, nil
 	}

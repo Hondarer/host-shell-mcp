@@ -196,7 +196,7 @@ Table: 表示言語の検証状況
 | 操作 | 通信元 | 必要な接続経路 |
 | --- | --- | --- |
 | 検索、詳細の表示 | クライアントのブラウザー | ブラウザーから `open-vsx.org` および `openvsx.eclipsecontent.org` へ直接接続できること (`bridge` のプロキシは経由しません) |
-| インストール | 接続先の code-server | 上記 2 件の `--proxy-allow-host` による中継プロキシ |
+| インストール | 接続先の code-server | 上記 2 件の `--proxy-allow-host` による接続先中継プロキシ |
 
 Table: 拡張機能ビューの通信経路
 

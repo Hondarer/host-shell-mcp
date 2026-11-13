@@ -26,6 +26,7 @@ For setup and usage examples, see the [User Guide](user-guide.md); for security 
 - [Administration](#administration)
 - [Windows registry](#windows-registry)
 - [Transfer with the local machine (bridge)](#transfer-with-the-local-machine-bridge)
+- [SSH route proxy (connect)](#ssh-route-proxy-connect)
 - [Starting and ending processes](#starting-and-ending-processes)
 - [Audit log](#audit-log)
 - [Limitations](#limitations)
@@ -37,11 +38,13 @@ For setup and usage examples, see the [User Guide](user-guide.md); for security 
 ```text
 host-shell --mcp [options]                      (target)
 host-shell bridge [bridge-options] -- COMMAND...  (local)
+host-shell connect [options] -H PROXY HOST PORT   (local, ProxyCommand of ssh)
 host-shell --version
 ```
 
 `--mcp` starts the process as an MCP server listening on standard input and output.  
 `bridge` is a local relay subcommand that connects to `host-shell` on the target (see [Transfer with the local machine (bridge)](#transfer-with-the-local-machine-bridge)).  
+`connect` is a subcommand for the `ProxyCommand` of `ssh` that relays the SSH connection through an SSH route proxy (HTTP `CONNECT`) (see [SSH route proxy (connect)](#ssh-route-proxy-connect)).  
 If none of `--mcp`, `bridge`, or `--version` is specified, `host-shell` prints usage information to standard error and exits with code 2.
 
 ### Options
@@ -1585,6 +1588,25 @@ When the corresponding options are enabled on both `bridge` and the target, `bri
 - **Client HTTP proxy**: For startup options (`--proxy`, `--proxy-allow-host`, `--proxy-allow-rule-updates`, `--client-proxy`), `proxy_status` and `proxy_rules_update` tools, environment variable precedence, and limits, see [HTTP proxy through the client](client-proxy.md).
 - **Port forwarding**: For local forwards, remote forwards, SOCKS5, permission matching, `forward_open`, `forward_close`, and `forward_status` tools, and limits, see [Port forwarding over SSH stdio](port-forward.md).
 - **Client-side name resolution (`remote-dns`)**: For `getaddrinfo` relaying on Linux/glibc targets, the loopback DNS server on Windows targets, `--remote-dns` on both ends, `--remote-dns-library`, `--remote-dns-listen`, and `--remote-dns-configure` on the target, and limitations, see [Client-side name resolution (remote-dns)](remote-dns.md).
+
+## SSH route proxy (connect)
+
+`host-shell connect` is a subcommand for `ssh` `ProxyCommand` that relays the SSH connection itself through an authenticated HTTP proxy (the SSH route proxy). It uses the same executable on the local machine as `bridge`, and within HTTP proxy features it is compatible with the arguments and environment variables of the Git for Windows `connect` command.
+
+```text
+host-shell connect [-d] [-w SECONDS] [--password-file PATH] -H [http://][USER@]PROXY[:PORT] HOST PORT
+```
+
+| Item | Description |
+| --- | --- |
+| Arguments | `-H` (SSH route proxy; required, default port 80), `-w` (limit until the `CONNECT` response; default 30 seconds, `0` for no limit), `--password-file`, `-d` (diagnostics), `-V` (version) |
+| Environment variables | User name: `HTTP_PROXY_USER`, `CONNECT_USER`. Password: `HTTP_PROXY_PASSWORD`, `CONNECT_PASSWORD`. `HTTP_PROXY` is not read |
+| Authentication | When a user name is given, Basic authentication is included from the first request. A 407 response fails without retrying |
+| Exit code | 0 when relaying ends, 1 on failure (prints the reason on a single line to standard error) |
+
+Table: Summary of host-shell connect
+
+See [SSH route proxy](ssh-proxy.md) for Host blocks, credentials and password file permissions, the mapping from Tera Term settings, and the verified scope.
 
 ## Starting and ending processes
 

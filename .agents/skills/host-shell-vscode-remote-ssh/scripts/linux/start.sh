@@ -2,14 +2,14 @@
 # Start the inner sshd that VS Code Remote - SSH connects to through host-shell forward_open.
 # Run it with job_start in every host-shell session. It
 #   1. stops the VS Code Server left by an earlier session (cleanup.sh): a running server keeps
-#      the relay proxy URL it started with, and that URL carries a per-session token;
-#   2. regenerates the sshd configuration, passing the relay proxy of this session (HTTPS_PROXY,
+#      the target relay proxy URL it started with, and that URL carries a per-session token;
+#   2. regenerates the sshd configuration, passing the target relay proxy of this session (HTTPS_PROXY,
 #      set by host-shell --client-proxy) to SSH sessions with SetEnv;
 #   3. runs sshd in the foreground on 127.0.0.1:$HSVR_SSHD_PORT until job_stop or the session ends.
 # Usage: start.sh [--commit COMMIT]
 #   place.sh pins the agent host per client commit through the code-<C> wrapper, so no option is
 #   needed for placed versions. --commit pins it for every SSH session instead; use it only when
-#   Remote - SSH downloads the server itself through the relay proxy, where no wrapper exists.
+#   Remote - SSH downloads the server itself through the target relay proxy, where no wrapper exists.
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 . "$here/common.sh"
@@ -25,7 +25,7 @@ fi
 
 sh "$here/cleanup.sh"
 
-# sshd clears the environment of a session; SetEnv passes the relay proxy and the pin to it.
+# sshd clears the environment of a session; SetEnv passes the target relay proxy and the pin to it.
 env_line=""
 if [ -n "${HTTPS_PROXY:-}" ]; then
   np=127.0.0.1,localhost,::1
@@ -60,7 +60,7 @@ CFG
 "$HSVR_SSHD" -t -f "$HSVR_SSHD_CONFIG.tmp" || { rm -f "$HSVR_SSHD_CONFIG.tmp"; die "sshd rejected the configuration"; }
 mv "$HSVR_SSHD_CONFIG.tmp" "$HSVR_SSHD_CONFIG"
 
-if [ -n "${HTTPS_PROXY:-}" ]; then echo "relay proxy: passed to SSH sessions"; else echo "relay proxy: none"; fi
+if [ -n "${HTTPS_PROXY:-}" ]; then echo "target relay proxy: passed to SSH sessions"; else echo "target relay proxy: none"; fi
 if [ -n "$PIN" ]; then
   echo "agent host pinned for every SSH session: $PIN"
 else

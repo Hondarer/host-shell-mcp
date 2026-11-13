@@ -213,7 +213,7 @@ func TestSettingsAndStatus(t *testing.T) {
 	}
 }
 
-func TestUpstreamHTTPAndCONNECT(t *testing.T) {
+func TestInternetProxyHTTPAndCONNECT(t *testing.T) {
 	echo, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -227,9 +227,9 @@ func TestUpstreamHTTPAndCONNECT(t *testing.T) {
 		defer c.Close()
 		io.Copy(c, c)
 	}()
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	internetProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Proxy-Authorization") != "Basic dXNlcjpwYXNz" {
-			t.Error("missing upstream credentials")
+			t.Error("missing internet proxy credentials")
 		}
 		if r.Method == "CONNECT" {
 			external, err := net.Dial("tcp", r.Host)
@@ -252,10 +252,10 @@ func TestUpstreamHTTPAndCONNECT(t *testing.T) {
 		if r.URL.Host != "allowed.example:80" {
 			t.Errorf("unexpected destination %s", r.URL)
 		}
-		w.Write([]byte("upstream HTTP"))
+		w.Write([]byte("internet proxy HTTP"))
 	}))
-	defer upstream.Close()
-	u, _ := url.Parse(upstream.URL)
+	defer internetProxy.Close()
+	u, _ := url.Parse(internetProxy.URL)
 	u.User = url.UserPassword("user", "pass")
 	target, g, remote, _ := pair(t, []string{"allowed.example:*", "127.0.0.1:*"})
 	g.proxy = func(*http.Request) (*url.URL, error) { return u, nil }
@@ -265,7 +265,7 @@ func TestUpstreamHTTPAndCONNECT(t *testing.T) {
 	}
 	b, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if err != nil || string(b) != "upstream HTTP" {
+	if err != nil || string(b) != "internet proxy HTTP" {
 		t.Fatalf("%q %v", b, err)
 	}
 	addr := echo.Addr().(*net.TCPAddr)
@@ -311,7 +311,7 @@ func TestProxyEnvironment(t *testing.T) {
 		t.Fatal("not a startup snapshot")
 	}
 }
-func TestHTTPSUpstream(t *testing.T) {
+func TestHTTPSInternetProxy(t *testing.T) {
 	echo, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -325,7 +325,7 @@ func TestHTTPSUpstream(t *testing.T) {
 		defer c.Close()
 		io.Copy(c, c)
 	}()
-	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	internetProxy := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "CONNECT" {
 			external, err := net.Dial("tcp", echo.Addr().String())
 			if err != nil {
@@ -344,20 +344,20 @@ func TestHTTPSUpstream(t *testing.T) {
 			tunnel(c, external)
 			return
 		}
-		w.Write([]byte("HTTPS upstream"))
+		w.Write([]byte("HTTPS internet proxy"))
 	}))
-	defer upstream.Close()
-	u, _ := url.Parse(upstream.URL)
+	defer internetProxy.Close()
+	u, _ := url.Parse(internetProxy.URL)
 	target, g, remote, _ := pair(t, []string{"allowed.example:*"})
 	g.proxy = func(*http.Request) (*url.URL, error) { return u, nil }
-	g.tlsConfig = upstream.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
+	g.tlsConfig = internetProxy.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
 	r, err := proxyClient(t, target).Get("http://allowed.example/")
 	if err != nil {
 		t.Fatal(err)
 	}
 	b, err := io.ReadAll(r.Body)
 	r.Body.Close()
-	if err != nil || string(b) != "HTTPS upstream" {
+	if err != nil || string(b) != "HTTPS internet proxy" {
 		t.Fatalf("%q %v", b, err)
 	}
 	c, err := remote.Dial(context.Background(), channel.KindConnect, "allowed.example", 443, 0)

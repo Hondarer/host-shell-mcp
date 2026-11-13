@@ -40,6 +40,7 @@ Table: Folder layout
 - Never read, print, or paste the code-server password. `install` does not print it; copy the configuration file to the client with `transfer_pull` and tell the user its local path.
 - Do not modify the user's registration command or reconnect on your own; show the user the required changes.
 - Keep code-server bound to `127.0.0.1` so it is reachable only through the port forward.
+- If the user mentions a proxy and it is unclear whether the SSH connection itself passes through it (SSH route proxy, `docs/en/ssh-proxy.md`) or applications on the target need it to reach the internet (target relay proxy and internet proxy, `docs/en/client-proxy.md`), ask before changing anything. Show the three terms and where each is configured.
 
 ## Procedure
 

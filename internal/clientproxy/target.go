@@ -209,7 +209,7 @@ func serveRequest(w http.ResponseWriter, r *http.Request, c net.Conn, host strin
 	defer tr.CloseIdleConnections()
 	resp, err := tr.RoundTrip(r)
 	if err != nil {
-		http.Error(w, "proxy upstream failed", http.StatusBadGateway)
+		http.Error(w, "connection from bridge failed", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
@@ -223,20 +223,20 @@ func serveRequest(w http.ResponseWriter, r *http.Request, c net.Conn, host strin
 
 // auditConnect records the stream opened for one proxy request (one HTTP request or CONNECT, as the
 // proxy does not reuse streams). Only the destination and the result are recorded, never paths,
-// queries, headers, bodies or credentials. A 502 from the bridge's upstream after the stream is
-// established looks like any response here, so the record shows only the stream's result.
+// queries, headers, bodies or credentials. A 502 when the bridge fails to connect after the stream
+// is established looks like any response here, so the record shows only the stream's result.
 func (t *Target) auditConnect(kind, host string, port int, err error) {
 	if t.audit == nil {
 		return
 	}
 	result, reason := channel.Allowed, channel.ReasonEstablished
 	if err != nil {
-		// Only denials and timeouts are told apart; every other failure happened upstream of the bridge.
+		// Only denials and timeouts are told apart; every other failure happened when connecting from the bridge.
 		switch code := channel.Code(err); code {
 		case channel.CodeNotAllowed, channel.CodeLimit, channel.CodeTimeout:
 			result, reason = channel.Describe(code)
 		default:
-			result, reason = channel.Failed, reasonUpstream
+			result, reason = channel.Failed, reasonBridgeConnect
 		}
 	}
 	t.audit.Event("proxy_connect", "kind", kind, "host", host, "port", port, "result", result, "reason", reason)

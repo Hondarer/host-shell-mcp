@@ -13,6 +13,8 @@ The target needs an SSH stdio route (or container exec), and the client needs ac
 
 Read [the deployment guide](../../../docs/en/coding-agents.md) for routing, authentication, and validation stages. The [Japanese version](../../../docs/ja/coding-agents.md) is authoritative. Use `host-shell-connect` if the connection itself needs preparation and `host-shell-code-server` if the browser editor needs installation or startup. code-server is optional: coding agents can also run in a regular SSH terminal.
 
+Proxies: the CLI reaches its APIs through the target relay proxy. If the user mentions a proxy and it is unclear whether the SSH connection itself passes through it (SSH route proxy, `docs/en/ssh-proxy.md`) or the target or local machine needs it to reach the internet (target relay proxy and internet proxy, `docs/en/client-proxy.md`), ask before changing anything.
+
 Read the chosen CLI's official documentation for the actual distribution and version. Names such as `agy` and `grok` do not establish a vendor; confirm the source when unknown.
 
 ## Prepare deployment

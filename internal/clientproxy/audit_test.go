@@ -77,9 +77,9 @@ func TestAuditProxyConnect(t *testing.T) {
 		"http 127.0.0.1 " + plainURL.Port() + " allowed connection established",
 		"connect 127.0.0.1 " + secureURL.Port() + " allowed connection established",
 		"http denied.example 80 denied destination not allowed",
-		// The bridge accepts an HTTP stream before it connects upstream, so its later 502 is not seen here.
+		// The bridge accepts an HTTP stream before it connects to the destination, so its later 502 is not seen here.
 		"http 127.0.0.1 " + strconv.Itoa(closedPort) + " allowed connection established",
-		"connect 127.0.0.1 " + strconv.Itoa(closedPort) + " failed upstream connection failed",
+		"connect 127.0.0.1 " + strconv.Itoa(closedPort) + " failed connection from bridge failed",
 	}
 	var got []string
 	for _, r := range auditRecords(t, log, "proxy_connect") {
@@ -100,8 +100,8 @@ func TestAuditProxyConnect(t *testing.T) {
 		&channel.Error{Code: "limit"}:     "denied connection limit reached",
 		context.DeadlineExceeded:          "failed connection timeout",
 		&channel.Error{Code: "timeout"}:   "failed connection timeout",
-		&channel.Error{Code: "refused"}:   "failed upstream connection failed",
-		errors.New("stream setup failed"): "failed upstream connection failed",
+		&channel.Error{Code: "refused"}:   "failed connection from bridge failed",
+		errors.New("stream setup failed"): "failed connection from bridge failed",
 	} {
 		target.auditConnect(channel.KindHTTP, "limit.example", 80, err)
 		records := auditRecords(t, log, "proxy_connect")

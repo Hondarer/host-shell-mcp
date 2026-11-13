@@ -64,8 +64,9 @@ internal/tools/        各ツールの実装
   registry*.go         reg_read、reg_write、reg_delete (Windows)
 internal/bridge/       host-shell bridge (ローカル中継、transfer_push、transfer_pull、転送・プロキシ ツールの公開)
 internal/channel/      SSH stdio 上の多重化チャネル (機能ネゴシエーション、双方向ストリーム、フロー制御) と、その上の機能が共有する部品 (接続の応答と中継、失敗コードと理由の対応、状態ツールの履歴と出力型)
-internal/clientproxy/  クライアント経由 HTTP プロキシ (bridge 側の宛先検査と上流接続、接続先側の認証付きプロキシ)
+internal/clientproxy/  クライアント経由 HTTP プロキシ (bridge 側の宛先検査と bridge からの接続、接続先側の認証付きプロキシ)
 internal/forward/      ポート転送 (常設転送の書式解析、bridge 側の待ち受け・SOCKS5・forward_*、接続先側の発信と待ち受け)
+internal/routeproxy/   host-shell connect (SSH 経路プロキシ用の ProxyCommand。CONNECT と Basic 認証、パスワード ファイルの権限確認)
 internal/remotedns/    接続元を使う名前解決 (bridge 側のリゾルバー、接続先側の UNIX ソケット待ち受けとアダプター配置、ループバックの DNS サーバー)
   assets/preload.c     LD_PRELOAD 用名前解決アダプター (libhostshell_dns-linux-<arch>.so のソース)
 internal/proc/         子プロセス起動、OS 別シェル実行、プロセス ツリー終了、シグナル送信、生存確認
@@ -249,8 +250,9 @@ flowchart TB
 
 - **`internal/channel/`**: `bridge` と接続先の `mcp.Connection` ラッパーとして `host-shell/channel/*` 通知を処理し、通常の MCP 層へは渡しません。接続開始時のネゴシエーションでは、`bridge` が要求する機能 (`http_proxy`、`forward_local`、`forward_remote`、`remote_dns`) と接続先が許可する機能を `hello` フレームで交換し、常設リモート転送の待ち受け (`listen`) を完了させてから `ready` フレームで MCP の初期化へ進みます。接続先は許可オプションが指定されていない場合でも最初のメッセージを確認し、通常の MCP メッセージであればそのまま処理します。データ ストリームは両端のどちらからでも開始でき、接続 ID は `bridge` 起点が奇数、接続先起点が偶数を使用します。接続先側から開けるストリームはネゴシエーション済みの機能に限定され、ポート転送 (`forward`) は `bridge` が `listen` で登録したリモート転送への着信のみ、プロキシ (`http`、`connect`) は `bridge` 側の `--proxy-allow-host`・`--proxy-deny-host` で許可された宛先のみ、名前解決 (`dns`) は `bridge` 側リゾルバーによる名前解決のみを受け付けます。
 - **共有部品**: `internal/channel/` は、その上の機能が共通に使う部品も提供します。着信ストリームへの応答 (発信、失敗時の拒否、受け付け) は `Incoming.Answer`、双方向の中継 (半クローズの伝達、アイドル タイムアウト、残存時間) は `Relay`、失敗コードから結果 (`allowed`、`denied`、`failed`) と固定の理由文字列への対応は `Describe` が担います。状態ツールの出力は `EventHead`、`Outcome`、`Recent` を埋め込んで構成し、`Snapshot` で履歴とセッション状態から生成します。理由は固定文字列とし、認証情報を含みうるネットワーク エラーの文字列は記録しません。
-- **`internal/clientproxy/`**: `internal/channel/` の上に、認証付きローカル HTTP プロキシ、上流接続、および診断・ルール更新機能 (`proxy_status`、`proxy_rules_update`) を実装します。
+- **`internal/clientproxy/`**: `internal/channel/` の上に、接続先中継プロキシ、`bridge` からの接続、および診断・ルール更新機能 (`proxy_status`、`proxy_rules_update`) を実装します。
 - **`internal/forward/`**: `internal/channel/` の上に、ローカル転送、リモート転送、SOCKS5、および転送管理ツール (`forward_*`) を実装します。
+- **`internal/routeproxy/`**: `host-shell connect` を実装します。SSH 経路プロキシへ `CONNECT` を送信し (ユーザー名がある場合は最初の要求から Basic 認証を付与)、標準入出力との間でバイト列をそのまま中継します。パスワード ファイルは、OpenSSH が `~/.ssh/config` に求める所有者・権限の条件で検査します (`perm_unix.go`、`perm_windows.go`)。`internal/channel/` は使用しません。
 - **`internal/remotedns/`**: `internal/channel/` の上に、接続先側の UNIX ドメイン ソケット待ち受け、名前解決アダプター (`preload.c`) の配置、ループバックの DNS サーバー (`stub.go`、Windows 接続先で使用)、Windows の名前解決設定の追加と削除 (`osconfig_windows.go`、`--remote-dns-configure`)、および `bridge` 側での名前解決を実装します。
 
 ## code-server 導入スキルの保守
