@@ -37,6 +37,12 @@ func setDACL(t *testing.T, path, sddl string) {
 	}
 }
 
+// ownerOnly replaces the DACL of path with full access for the current user only.
+func ownerOnly(t *testing.T, path string) {
+	t.Helper()
+	setDACL(t, path, "D:P(A;;FA;;;"+currentUser(t)+")")
+}
+
 // TestPasswordFilePermissions checks the rule of Windows OpenSSH for ~/.ssh/config: trustees
 // other than the user, SYSTEM, Administrators and TrustedInstaller may read but not write.
 func TestPasswordFilePermissions(t *testing.T) {
@@ -50,7 +56,9 @@ func TestPasswordFilePermissions(t *testing.T) {
 		{"user, SYSTEM and Administrators", "D:P(A;;FA;;;%s)(A;;FA;;;SY)(A;;FA;;;BA)", ""},
 		{"Users may read", "D:P(A;;FA;;;%s)(A;;FR;;;BU)", ""},
 		{"Everyone may read and execute", "D:P(A;;FA;;;%s)(A;;0x1200a9;;;WD)", ""},
-		{"deny entries are not examined", "D:P(D;;FA;;;BU)(A;;FA;;;%s)", ""},
+		// Guests (BG): the user running the tests may belong to Users, and a deny ACE for a group
+		// the user belongs to would keep the test itself from opening the file.
+		{"deny entries are not examined", "D:P(D;;FA;;;BG)(A;;FA;;;%s)", ""},
 		{"Users may write", "D:P(A;;FA;;;%s)(A;;FW;;;BU)", "Users"},
 		{"Everyone may delete", "D:P(A;;FA;;;%s)(A;;0x10000;;;WD)", "Everyone"},
 		{"Authenticated Users may change the DACL", "D:P(A;;FA;;;%s)(A;;0x40000;;;AU)", "Authenticated Users"},

@@ -227,7 +227,7 @@ Windows の接続元では、実行ファイルとパスワード ファイル�
 | --- | --- |
 | 自動テスト (全 OS の CI) | 試験用の CONNECT プロキシで次を確認する: 最初からの Basic 認証、誤ったパスワードの 407 で再送せずに失敗すること、ユーザー名なしの 407、パスワードが得られない場合に接続しないこと、403、200 以外の状態、ヘッダーの直後に届くバイト列、全 256 値を含む大きなバイト列の往復、half-close、時間超過、パスワード ファイルの権限の確認 (Unix: 所有者と `mode & 022`。Windows: 所有者、ほかの利用者の書き込み系の権限、読み取りだけの許可を通すこと、継承されたエントリ)、IPv6 の宛先、対応しない引数、資格情報が標準エラーに出ないこと。置き換え後の既存テストがすべて成功する |
 | Linux のコンテナー | Podman で、外への経路が Squid (Basic 認証) だけのネットワークを作り、Squid 経由でしか届かない sshd に対して次を確認する: `host-shell-connect` のスクリプト (`detect.sh`、`deploy.sh`、`probe.sh`)、bridge 経由の MCP の操作、入れ子の多段と `ProxyJump` の 1 段目、bridge の `--proxy` (インターネット向けプロキシも同じ Squid) との併用、Squid の無通信切断と `ServerAliveInterval` の効果、誤った資格情報と 403 の診断 |
-| Windows の実機 | Windows 11 の仮想マシンで、Git for Windows の OpenSSH と Windows の OpenSSH の両方から `host-shell.exe connect` を使った接続と MCP の操作、パスワード ファイルの権限の確認 (プロファイル配下の既定の ACL と `Users` の読み取りを継承したファイルが通ること、`Users` に書き込みを許したファイルが拒否されること)、同じ Squid への Tera Term (種別 HTTP) での接続を確認する |
+| Windows の実機 | Windows 11 の実機で、Git for Windows の OpenSSH と Windows の OpenSSH の両方から `host-shell.exe connect` を使った接続と MCP の操作、パスワード ファイルの権限の確認 (プロファイル配下の既定の ACL と `Users` の読み取りを継承したファイルが通ること、`Users` に書き込みを許したファイルが拒否されること)を確認する。Tera Term は例として示したもので、Tera Term での接続は検証の対象外とする |
 | 文書 | 新規文書と既存文書の日英が一致し、旧称が `docs/prompts/` 以外に残っていない (検索で確認する) |
 
 検証の経緯は `docs/prompts/current/261113-ssh-proxy-validation.md` に記録し、文書には結果 (検証済 / 未検証、方法、環境) だけを書く。

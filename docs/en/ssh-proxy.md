@@ -77,7 +77,7 @@ Other `connect` options such as `-h` (read the proxy from the `HTTP_PROXY` envir
 2. It sends `CONNECT HOST:PORT HTTP/1.1` to the proxy. When a user name is given, `Proxy-Authorization: Basic` is included from the first request.
 3. On a 2xx response, it relays bytes unchanged between standard input/output and the proxy. On 407 (authentication failed or required) or any other response, it exits without retrying.
 
-The exit code is 0 on success (when relaying ends) and 1 on failure, printing the reason on a single line to standard error. `ssh` then prints messages such as `kex_exchange_identification: Connection closed by remote host`, whose cause is the preceding `host-shell connect:` line.
+The exit code is 0 on success (when relaying ends) and 1 on failure, printing the reason on a single line to standard error. `ssh` then prints messages such as `kex_exchange_identification: Connection closed by remote host` or `Connection closed by UNKNOWN port 65535`, whose cause is the preceding `host-shell connect:` line.
 
 ## Per-target configuration
 
@@ -167,6 +167,8 @@ On Windows, a file created outside the user profile (for example, under `C:\tool
 icacls C:\tools\proxy-a.pass /inheritance:r /grant:r "%USERNAME%:F"
 ```
 
+This removes only inherited permissions. Permissions set explicitly on the file (for example `Users:(W)`) remain, so if `icacls C:\tools\proxy-a.pass` shows anyone other than you, remove them with `/remove:g` (for example `icacls C:\tools\proxy-a.pass /remove:g Users`). The rejection message names the user or group that is allowed to write.
+
 ## MCP registration
 
 With `ProxyCommand` in the Host block, the registration command is unchanged: the `ssh` process started by `bridge` reads the Host block.
@@ -181,7 +183,7 @@ When using the `host-shell-connect` skill, tell the agent that the SSH route goe
 
 ## Mapping from Tera Term settings
 
-The items of the Tera Term "Proxy Setup" dialog map as follows.
+The items of the Tera Term "Proxy Setup" dialog map as follows. This mapping is based on the Tera Term source code; connecting with Tera Term has not been tested.
 
 | Tera Term item | host-shell setting |
 | --- | --- |
@@ -221,13 +223,15 @@ Adding `-d` to `ProxyCommand` prints the connection, request transmission, respo
 | Item | Method and environment | Status |
 | --- | --- | --- |
 | Handshake of `host-shell connect`, order of credential sources, errors, 8-bit transparency, half-close, timeout, password file permissions (Linux) | Automated tests with a test `CONNECT` proxy, run on Linux | Verified |
-| The same automated tests on Windows and macOS (on Windows including the permission check) | None | Unverified |
+| The same automated tests on Windows (including the permission check) | Windows 11 Pro for Workstations (build 26300, amd64), go1.27.4 | Verified |
+| The same automated tests on macOS | None | Unverified |
 | Connection through Squid and error messages (407, 403, 503, unreachable proxy, password file permissions) | Podman containers: Squid 6.10 (Basic authentication), sshd with OpenSSH 9.9p1 on Oracle Linux 10.2, client with OpenSSH 8.0p1 on Oracle Linux 8.10 (WSL2). Squid is the only route from the client to sshd | Verified |
 | Scripts of the `host-shell-connect` skill (`remote.sh`, `detect.sh`, `deploy.sh`, `probe.sh`), nested multi-hop routes and `ProxyJump` | Same as above | Verified |
 | MCP operations through `bridge` (`exec_run`, 20 MB `transfer_push` and `transfer_pull`) | Same as above | Verified |
 | Combination with the internet proxy (the same Squid as `HTTPS_PROXY` of `bridge`, HTTPS fetched through the target relay proxy) | Same as above | Verified |
 | Idle disconnection and `ServerAliveInterval` | Same as above (Squid `read_timeout` set to 30 seconds) | Verified |
-| Windows clients (OpenSSH of Git for Windows, Windows OpenSSH) and coexistence with Tera Term | None | Unverified |
+| Windows clients: connecting with `ssh`, MCP operations through `bridge` (`exec_run`, 10 MiB `transfer_push` and `transfer_pull`), the 407 message, the permission check of the password file, and not prompting without a terminal | Windows OpenSSH 9.5p2 and the OpenSSH 10.6p1 of Git for Windows on Windows 11 Pro for Workstations (build 26300, amd64); Squid and sshd are the Linux containers above | Verified |
+| Typing the password on a terminal with a Windows client (the input is not echoed) | Same as above, typed one character at a time through a pseudo console (ConPTY) | Verified (typing by hand in a console window is unverified) |
 
 Table: Verification status of the SSH route proxy
 

@@ -9,6 +9,9 @@ import (
 	"testing"
 )
 
+// ownerOnly is a no-op on Unix: the tests create password files with mode 0600.
+func ownerOnly(*testing.T, string) {}
+
 // TestPasswordFilePermissions checks the ~/.ssh/config rule: others may read, nobody but the
 // owner may write.
 func TestPasswordFilePermissions(t *testing.T) {

@@ -54,7 +54,7 @@ Host *
 
 `go test -race ./internal/routeproxy` が Linux で成功した (32 件)。用語の置き換えの後、`go test -race ./...` 全体が Linux で成功し、`go vet ./...` が Linux・Windows・macOS で成功した。Windows と macOS でのテストの実行は CI で確認する。
 
-## Windows の実機 (手順。未実施)
+## Windows の実機 (手順)
 
 Windows のクライアント (`host-shell.exe connect`) と Tera Term を確かめる手順である。Windows 側のセッションで実施する。Squid と sshd は、上の Linux の検証環境 (WSL の Podman) をそのまま使う。
 
@@ -83,3 +83,28 @@ Windows のクライアント (`host-shell.exe connect`) と Tera Term を確か
     - 標準エラーが端末のとき (PowerShell から `ssh` を直接実行し、`--password-file` と環境変数を外したとき) にパスワードを尋ね、入力が表示されない。
 6. **Tera Term**: 「設定 > プロキシ」で種別 HTTP、ホスト `localhost`、ポート `13128`、ユーザー `alice`、パスワードを設定し、`target1:22` に SSH で接続できる (同じ Squid、同じ sshd)。`ssh-proxy.md` の対応表どおりの設定で、`host-shell connect` と同じ経路になることを確かめる。
 7. **自動テスト**: Windows で `go test ./internal/routeproxy/` を実行する (アクセス許可の判定のテストを含む)。CI で実行される場合は、その結果で代える。
+
+## Windows の実機 (結果)
+
+Windows 側の Claude のセッションが上の手順で実施した結果である。
+
+- 環境: Windows 11 Pro for Workstations 26H2 (10.0.26300.9974)。Windows の OpenSSH は OpenSSH_for_Windows_9.5p2 (LibreSSL 3.8.2)、Git for Windows の ssh は OpenSSH_10.6p1 (OpenSSL 3.5.9)。host-shell.exe は v20261105.0.1-4-g9005c53。go1.27.4 windows/amd64 (`GOTOOLCHAIN=local`)。
+- Squid には `localhost:13128` で届いた (127.0.0.1 は成功、::1 は失敗)。
+- パスワード ファイルは、非対話のシェルでは `Read-Host` を使えないため、`[IO.File]::WriteAllText` で値を直接書いた。ACL は継承のまま (SYSTEM、Administrators、本人)。
+
+| 項目 | 結果 |
+| --- | --- |
+| 5a `ssh -F config-lab target1 "id -un"` | 2 つの ssh とも `root`、終了コード 0 |
+| 5b bridge 経由の MCP | 2 つの ssh とも initialize、tools/list (34 件)、`exec_run`、10 MiB の `transfer_push`・`transfer_pull` が成功。ローカル、リモート、取り戻したファイルの SHA-256 が一致 |
+| 5c 誤ったパスワード | 2 つの ssh とも `host-shell connect: SSH route proxy localhost:13128 rejected the credentials of alice (407)` の後に `Connection closed by UNKNOWN port 65535`、終了コード 255 |
+| 5d パスワード ファイルの権限 | 既定の ACL と `Users:(R)` を加えた状態は成功。`Users:(W)` を加えると `bad owner or permissions on password file ...: BUILTIN\Users has write access; ...` で拒否。手順の `/inheritance:r /grant:r "%USERNAME%:F"` では、明示的に付けた `Users:(W)` が残って拒否されたまま。`/remove:g Users` で本人だけにすると成功 |
+| 5e 端末での入力 | 標準入出力がパイプの場合は尋ねずに `no password for alice@localhost:13128; ...` で終了。疑似コンソール (ConPTY) で端末を作って 1 文字ずつ入力すると、プロンプトが表示され、入力は画面に現れず、接続が成功 (対照として cmd の `set /p` では入力が画面に現れることを同じ方法で検出)。コンソール ウィンドウでの手入力は確かめていない |
+| 6 Tera Term | 対象外 (ユーザーの判断。Tera Term は例として示したもの) |
+| 7 `go test ./internal/routeproxy/` | 2 件が失敗 (下記)。ほかのパッケージはすべて成功 |
+
+自動テストの失敗は、どちらもテスト側の前提が環境で成り立たなかったものである。
+
+- `TestPasswordFilePermissions/deny_entries_are_not_examined`: 拒否エントリの対象を `BU` (Users) にしていたため、Users に属する実行ユーザー自身がファイルを開けなかった。対象を `BG` (Guests) に変えた。
+- `TestCredentialSources/password_file_wins`: `%TEMP%` に、名前を解決できない SID への書き込みを含む継承可能な許可があり、テストのパスワード ファイルが権限の確認で拒否された (製品の判定は正しい)。要求が届かずに `requests()[0]` で panic した。テストで書くパスワード ファイルは DACL を本人だけにし、要求が届かない場合は panic ではなく失敗として報告するようにした。
+
+文書には、`icacls /inheritance:r` が明示的なアクセス許可を外さないことと、`/remove:g` の手順を加えた。

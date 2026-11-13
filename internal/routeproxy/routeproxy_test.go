@@ -78,6 +78,26 @@ func startProxy(t *testing.T, handle func(req proxyRequest, br *bufio.Reader, c 
 	return p
 }
 
+// writePasswordFile writes a password file that passes the permission check on every OS: the
+// test's temporary directory may inherit ACEs that let other trustees write (seen on Windows).
+func writePasswordFile(t *testing.T, path string, content []byte) {
+	t.Helper()
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ownerOnly(t, path)
+}
+
+// firstRequest returns the first request the proxy received, failing with runErr when none arrived.
+func (p *testProxy) firstRequest(t *testing.T, runErr error) proxyRequest {
+	t.Helper()
+	reqs := p.requests()
+	if len(reqs) == 0 {
+		t.Fatalf("the proxy received no request (run: %v)", runErr)
+	}
+	return reqs[0]
+}
+
 func (p *testProxy) requests() []proxyRequest {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -152,13 +172,14 @@ func TestNoAuthWithoutUser(t *testing.T) {
 		io.Copy(c, br)
 	})
 	var stdout bytes.Buffer
-	if err := run(testConfig(p, ""), testEnv(nil), strings.NewReader("ping"), &stdout, io.Discard); err != nil {
+	err := run(testConfig(p, ""), testEnv(nil), strings.NewReader("ping"), &stdout, io.Discard)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if stdout.String() != "ping" {
 		t.Fatalf("stdout %q", stdout.String())
 	}
-	if h, ok := p.requests()[0].headers["proxy-authorization"]; ok {
+	if h, ok := p.firstRequest(t, err).headers["proxy-authorization"]; ok {
 		t.Fatalf("sent Proxy-Authorization %q without a user", h)
 	}
 }
@@ -239,8 +260,8 @@ func TestIPv6Destination(t *testing.T) {
 	p := startProxy(t, reply("403 Forbidden"))
 	cfg := testConfig(p, "")
 	cfg.destHost = "2001:db8::1"
-	run(cfg, testEnv(nil), strings.NewReader(""), io.Discard, io.Discard)
-	if r := p.requests()[0]; r.line != "CONNECT [2001:db8::1]:22 HTTP/1.1" || r.headers["host"] != "[2001:db8::1]:22" {
+	err := run(cfg, testEnv(nil), strings.NewReader(""), io.Discard, io.Discard)
+	if r := p.firstRequest(t, err); r.line != "CONNECT [2001:db8::1]:22 HTTP/1.1" || r.headers["host"] != "[2001:db8::1]:22" {
 		t.Fatalf("request %+v", r)
 	}
 }
@@ -248,9 +269,7 @@ func TestIPv6Destination(t *testing.T) {
 // TestCredentialSources checks the order of the user name and password sources.
 func TestCredentialSources(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "proxy.pass")
-	if err := os.WriteFile(file, []byte("from-file\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writePasswordFile(t, file, []byte("from-file\n"))
 	tests := []struct {
 		name     string
 		specUser string
@@ -274,8 +293,8 @@ func TestCredentialSources(t *testing.T) {
 			cfg.passwordFile = tt.file
 			env := testEnv(tt.vars)
 			env.prompt = func(string) (string, bool, error) { return tt.prompt, true, nil }
-			run(cfg, env, strings.NewReader(""), io.Discard, io.Discard)
-			if got := p.requests()[0].headers["proxy-authorization"]; got != tt.want {
+			err := run(cfg, env, strings.NewReader(""), io.Discard, io.Discard)
+			if got := p.firstRequest(t, err).headers["proxy-authorization"]; got != tt.want {
 				t.Fatalf("Proxy-Authorization %q, want %q", got, tt.want)
 			}
 		})
@@ -305,9 +324,7 @@ func TestReadPasswordFile(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "p")
-			if err := os.WriteFile(path, tt.content, 0o600); err != nil {
-				t.Fatal(err)
-			}
+			writePasswordFile(t, path, tt.content)
 			got, err := readPasswordFile(path)
 			if err != nil || got != tt.want {
 				t.Fatalf("got %q, %v; want %q", got, err, tt.want)
@@ -315,9 +332,7 @@ func TestReadPasswordFile(t *testing.T) {
 		})
 	}
 	path := filepath.Join(t.TempDir(), "empty")
-	if err := os.WriteFile(path, nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writePasswordFile(t, path, nil)
 	if _, err := readPasswordFile(path); err == nil || !strings.Contains(err.Error(), "is empty") {
 		t.Fatalf("empty file: %v", err)
 	}
