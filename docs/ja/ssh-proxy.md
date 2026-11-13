@@ -207,6 +207,7 @@ Table: Tera Term の Proxy Setup との対応
 | `rejected the credentials of USER (407)` | ユーザー名またはパスワードの誤り | パスワード ファイルの内容 (改行・余分な空白) とユーザー名を確認する |
 | `requires authentication (407)` | ユーザー名を指定していない | `-H` に `USER@` を付ける |
 | `no password for USER@PROXY` | パスワードを取得できない | `--password-file` を指定する |
+| `password input was interrupted` | 端末からのパスワード入力を Ctrl+C などで中断した (端末の設定は元に戻る) | もう一度実行する |
 | `bad owner or permissions on password file` | ファイルの所有者または権限が条件を満たしていない | [パスワード ファイルの権限の確認](#パスワード-ファイルの権限の確認) を参照 |
 | `refused CONNECT HOST:PORT (403 Forbidden)` | プロキシが宛先またはポートを許可していない | プロキシの管理者に確認する |
 | `refused CONNECT HOST:PORT (503 Service Unavailable)` など | プロキシが宛先に接続できない (名前解決の失敗を含む) | `HostName` をプロキシから解決・到達できる名前にする |

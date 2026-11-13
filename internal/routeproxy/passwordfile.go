@@ -44,5 +44,14 @@ func readPasswordFile(path string) (string, error) {
 	return string(bytes.TrimRight(b, "\r")), nil
 }
 
+// errInterrupted reports that the user interrupted the password prompt (for example with Ctrl+C).
+var errInterrupted = errors.New("password input was interrupted")
+
+// readResult is a line read from the terminal by promptPassword.
+type readResult struct {
+	line string
+	err  error
+}
+
 // errBadPermissions prefixes the message for a password file that fails the permission check.
 var errBadPermissions = errors.New("bad owner or permissions on password file")

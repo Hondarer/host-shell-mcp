@@ -119,3 +119,23 @@ Windows 側の Claude のセッションが上の手順で実施した結果で�
 - test (ubuntu-latest) は、`internal/server` の `TestSudoPassword` だけが失敗した。ubuntu-latest が ubuntu-26.04 のイメージになり、`sudo -n` のメッセージが `interactive authentication is required` (sudo-rs) に変わったため、メッセージに `password` を含むことを確かめる部分が成り立たなくなった。今回の変更とは関係しない。テストは `password` または `authentication` を含めばよいように直した。
 
 修正後のコミット 93a458b で CI を再実行し、test (ubuntu-latest・windows-latest・macos-latest)、dns-lib、build のすべてが成功した ([run 43387111019](https://github.com/Hondarer/host-shell-mcp/actions/runs/43387111019))。
+
+## 端末からのパスワード入力の手動確認 (BL-002)
+
+Windows 側のセッションの案内で、ユーザーが手で操作した (コミット 4d18619 の exe)。
+
+| 手順 | 環境 | 結果 |
+| --- | --- | --- |
+| B-1 正しいパスワード | Windows Terminal、PowerShell 7.7.0、Windows の OpenSSH 9.5p2 | 入力は表示されず (伏せ字もなし)、`root` が返った。プロンプトの後に空行が 1 行入った |
+| B-2 同上 | Git for Windows の OpenSSH 10.6p1 | B-1 と同じ (空行あり) |
+| B-3 誤ったパスワード | Windows の OpenSSH | `rejected the credentials of alice (407)` と `Connection closed by UNKNOWN port 65535` |
+| B-4 入力中の Ctrl+C | Windows の OpenSSH | `cannot read the password: EOF` で終了し、その後の入力は表示された。ただし、次に打った行に、打っていない空白 4 つと ☺ (0x01 と推定) が入った |
+| B-5 正しいパスワード | conhost、Windows PowerShell 5.1、Windows の OpenSSH | B-2 と同じ (空行あり) |
+
+Linux でも、疑似端末で入力中に Ctrl+C を送ると、`host-shell connect` がシグナルで即座に終了し、端末のエコーが止まったまま残ることを確認した (Python の pty で再現)。
+
+修正:
+- 入力中は Ctrl+C と終了のシグナルを受け取り、端末 (Linux・macOS は termios、Windows はコンソールの入力モード) を元に戻してから `password input was interrupted` で終了する。Windows では、終了時にコンソールの入力バッファーに残った入力を捨てる (`FlushConsoleInputBuffer`)。
+- Windows では、エコーを止めていても Enter でコンソールが改行するため、プログラム側の改行を出さない (空行の解消)。
+
+修正後、Linux の疑似端末で Ctrl+C を送ると、`password input was interrupted` で終了し、エコーが元に戻っていた。誤ったパスワードの場合の表示は変わらない。

@@ -207,6 +207,7 @@ Write the SSH settings such as the target host name, user name, and key in `Host
 | `rejected the credentials of USER (407)` | Wrong user name or password | Check the password file (newlines, extra spaces) and the user name |
 | `requires authentication (407)` | No user name was specified | Add `USER@` to `-H` |
 | `no password for USER@PROXY` | No password could be obtained | Specify `--password-file` |
+| `password input was interrupted` | Typing the password on the terminal was interrupted, for example with Ctrl+C (the terminal settings are restored) | Run it again |
 | `bad owner or permissions on password file` | The owner or permissions of the file do not meet the conditions | See [Permission check of the password file](#permission-check-of-the-password-file) |
 | `refused CONNECT HOST:PORT (403 Forbidden)` | The proxy does not allow the destination or port | Ask the proxy administrator |
 | `refused CONNECT HOST:PORT (503 Service Unavailable)` and similar | The proxy cannot reach the destination (including name resolution failures) | Use a `HostName` that the proxy can resolve and reach |
