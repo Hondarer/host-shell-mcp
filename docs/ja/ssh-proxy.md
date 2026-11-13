@@ -183,7 +183,7 @@ claude mcp add host-shell-a -- /home/alice/.local/bin/host-shell bridge -- ssh -
 
 ## Tera Term の設定との対応
 
-Tera Term の「Proxy Setup」ダイアログの項目は、次のように対応します。この対応は Tera Term のソースとの照合に基づくもので、Tera Term での接続は確認していません。
+Tera Term の「Proxy Setup」ダイアログの項目は、host-shell の次の設定に相当します。
 
 | Tera Term の項目 | host-shell での設定 |
 | --- | --- |
@@ -196,9 +196,9 @@ Tera Term の「Proxy Setup」ダイアログの項目は、次のように対�
 | Other setup の Proxy connection log | `-d` (標準エラーに出力。ファイルへの記録はなし) |
 | Other setup の SOCKS・TELNET 用の項目 (名前解決、各プロンプト、メッセージ) | 対象外 |
 
-Table: Tera Term の Proxy Setup との対応
+Table: Tera Term の Proxy Setup に相当する設定
 
-接続先のホスト名、ユーザー名、鍵などの SSH 設定は、Host ブロックの `HostName`、`User`、`IdentityFile` に記述します。Tera Term の設定ファイルは読み取りません。
+接続先のホスト名、ユーザー名、鍵などの SSH 設定は、Host ブロックの `HostName`、`User`、`IdentityFile` に記述します。
 
 ## トラブルシューティング
 
@@ -243,4 +243,3 @@ Table: SSH 経路プロキシの検証状況
 - 対応するのは HTTP の `CONNECT` と、認証なしまたは Basic 認証のみです。SOCKS、TELNET 形式のプロキシ、NTLM・Negotiate (Kerberos)・Digest 認証、プロキシとの TLS 接続 (`https://` のプロキシ)、プロキシのリダイレクト (302) には対応していません。NTLM などを要求するプロキシでは、Basic 認証または認証なしで受け付けるローカルのプロキシ (cntlm など) を手元に挟む方法がありますが、未検証です。
 - 2 段目以降の区間にあるプロキシには対応していません。
 - 端末からのパスワード入力は、標準エラーが端末の場合のみ有効です。`SSH_ASKPASS` や OS の資格情報ストアには対応していません (SSH 自体のパスワードは [SSH のパスワードの保存](ssh-password.md) を参照)。
-- Tera Term の設定ファイルからの移行 (読み込み) には対応していません。
