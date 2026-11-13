@@ -230,4 +230,4 @@ Windows の接続元では、実行ファイルとパスワード ファイル�
 | Windows の実機 | Windows 11 の実機で、Git for Windows の OpenSSH と Windows の OpenSSH の両方から `host-shell.exe connect` を使った接続と MCP の操作、パスワード ファイルの権限の確認 (プロファイル配下の既定の ACL と `Users` の読み取りを継承したファイルが通ること、`Users` に書き込みを許したファイルが拒否されること)を確認する。Tera Term は例として示したもので、Tera Term での接続は検証の対象外とする |
 | 文書 | 新規文書と既存文書の日英が一致し、旧称が `docs/prompts/` 以外に残っていない (検索で確認する) |
 
-検証の経緯は `docs/prompts/current/261113-ssh-proxy-validation.md` に記録し、文書には結果 (検証済 / 未検証、方法、環境) だけを書く。
+検証の経緯は `docs/prompts/past/261113-ssh-proxy-validation.md` に記録し、文書には結果 (検証済 / 未検証、方法、環境) だけを書く。
