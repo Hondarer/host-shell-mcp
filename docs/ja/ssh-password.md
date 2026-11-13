@@ -197,13 +197,13 @@ OpenSSH 8.4 より前の `ssh` は、`SSH_ASKPASS_REQUIRE` を解釈せず、キ
 
 | 項目 | 方法・環境 | 状態 |
 | --- | --- | --- |
-| 保存・取得・削除・一覧、キーの正規化、問い合わせの照合 (偽装した問い合わせの拒否を含む)、拒否の検出と記録、次の問い合わせ先への受け渡し、版の判定、環境の組み立て | 自動テストを Linux (go1.26.0) と Windows 11 Pro for Workstations (ビルド 26300、amd64) で実行 | 検証済 |
+| 保存・取得・削除・一覧、キーの正規化、問い合わせの照合 (偽装した問い合わせの拒否を含む)、拒否の検出と記録、次の問い合わせ先への受け渡し、版の判定、環境の組み立て | 自動テストを Linux (go1.26.0) と Windows 11 Pro for Workstations (ビルド 26300、amd64) で実行。CI (GitHub Actions の ubuntu-latest、windows-latest、macos-latest) | 検証済 |
 | 構成 A・B、SSH 経路プロキシとの併用、`host-shell-connect` スキルのスクリプト (`remote.sh`、`detect.sh`、`deploy.sh`、`probe.sh`)、`bridge` 経由の MCP の操作 (`exec_run`)、拒否の検出 (サーバー側の失敗が 1 回であること、再接続で送らないこと、`set` の後に成功すること)、`ssh`・`scp` のシンボリック リンク (専用のフォルダーを `PATH` の先頭に置いた場合を含む) | クライアントは Oracle Linux 10.2 のコンテナー (OpenSSH 9.9p1)。Squid 6.10 (Basic 認証)、hop1 (パスワード認証)、target2 (キーボード インタラクティブ認証、PAM)、target3 (hop1 の鍵のみ) は Oracle Linux 10.2 の OpenSSH 9.9p1 のコンテナー (Podman 4.9.4、WSL2) | 検証済 |
 | 同上 (VS Code 以外)。DPAPI での保存、次の問い合わせ先 (`.cmd`) への受け渡し、`ssh.exe`・`scp.exe` のハード リンク (`scp` は Windows の OpenSSH と Git for Windows の両方)、ラッパーを強制終了したときに本物の `ssh.exe` が残らないこと | Windows 11 Pro for Workstations (ビルド 26300) の Windows の OpenSSH 9.5p2 と Git for Windows の OpenSSH 10.6p1。サーバー側は上記のコンテナー | 検証済 |
 | 偽装した問い合わせ (`alice@hop1's password:`、`(alice@hop1) Password:` をキーボード インタラクティブ認証で送る試験用サーバー) に保存したパスワードを渡さないこと | OpenSSH 9.9p1 (Linux)、Windows の OpenSSH 9.5p2、Git for Windows の OpenSSH 10.6p1 | 検証済 |
 | OpenSSH 8.4 より前: 既定で無効であること、`HOST_SHELL_SSH_ASKPASS_LEGACY=1` でのパスワード認証と構成 B、`PreferredAuthentications publickey,password` で偽装した問い合わせに渡さないこと | Oracle Linux 8.10 (WSL2) の OpenSSH 8.0p1 | 検証済 |
 | VS Code Remote - SSH: 専用のフォルダーの `ssh.exe`・`scp.exe` での接続 (オフラインの接続先への `scp` によるサーバーの転送を含む)、保存していない・拒否されたパスワードの入力欄での入力、ウィンドウを閉じた後にプロセスが残らないこと。ターミナル方式 (既定) と `remote.SSH.useLocalServer: true` の両方 | VS Code 1.145.3 (ZIP 版)、Remote-SSH 0.128.0、Windows 11 Pro for Workstations (ビルド 26300)。`ssh` は Git for Windows の OpenSSH 10.6p1。Windows の OpenSSH 9.5p2 では接続と入力欄での入力 (サーバーの転送は除く) | 検証済 |
-| macOS のクライアント | なし | 未検証 |
+| macOS のクライアントでの接続 (自動テスト以外) | なし | 未検証 |
 
 Table: 検証状況
 

@@ -91,6 +91,10 @@
 - Git for Windows の ssh (PATH): b は「(bob@target2) Password:」→「Showing password prompt」で入力欄が出て接続 (askpass は git ssh.exe の子として `vscode-ssh\ssh.exe "(bob@target2) Password: "` で起動)。3 は拒否のメッセージの後に入力欄が出て接続。a は入力欄なしで接続し `id -un` が bob。c は閉じた 15 秒後に ssh・scp・host-shell・Code.exe が 0。
 - `HOST_SHELL_SSH_PATH`・`HOST_SHELL_SCP_PATH` に System32 の OpenSSH: a は入力欄なしで接続 (ProxyJump の子は System32 ssh.exe、sh.exe は使われない)。b は入力欄が出て接続 (askpass は System32 ssh.exe の子)。サーバーは転送済みのため、System32 の scp.exe は VS Code からは使われていない (WSL からの scp の試験では成功している)。
 
+## CI
+
+PR #8 (マージ前の最終コミット 0c3be50) の CI ([run 43472040363](https://github.com/Hondarer/host-shell-mcp/actions/runs/43472040363)) で、test (ubuntu-latest・windows-latest・macos-latest)、dns-lib (amd64・arm64)、build のすべてが成功した。`internal/sshpass` のテストは macOS でも成功した。PR #8 は main にマージした (bf4c5e1)。
+
 ## 未実施
 
-- macOS のクライアント。
+- macOS のクライアントでの接続 (自動テストは CI で成功)。
