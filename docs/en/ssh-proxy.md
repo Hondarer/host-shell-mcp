@@ -183,7 +183,7 @@ When using the `host-shell-connect` skill, tell the agent that the SSH route goe
 
 ## Mapping from Tera Term settings
 
-The items of the Tera Term "Proxy Setup" dialog map as follows. This mapping is based on the Tera Term source code; connecting with Tera Term has not been tested.
+The items of the Tera Term "Proxy Setup" dialog correspond to the following host-shell settings.
 
 | Tera Term item | host-shell setting |
 | --- | --- |
@@ -196,9 +196,9 @@ The items of the Tera Term "Proxy Setup" dialog map as follows. This mapping is 
 | Proxy connection log in Other setup | `-d` (output to standard error; no log file is written) |
 | SOCKS and TELNET items in Other setup (name resolution, prompts, messages) | Not applicable |
 
-Table: Mapping from the Tera Term Proxy Setup dialog
+Table: host-shell settings equivalent to the Tera Term Proxy Setup dialog
 
-Write the SSH settings such as the target host name, user name, and key in `HostName`, `User`, and `IdentityFile` of the Host block. Tera Term configuration files are not read.
+Write the SSH settings such as the target host name, user name, and key in `HostName`, `User`, and `IdentityFile` of the Host block.
 
 ## Troubleshooting
 
@@ -243,4 +243,3 @@ Table: Verification status of the SSH route proxy
 - Only HTTP `CONNECT` with no authentication or Basic authentication is supported. SOCKS and TELNET proxies, NTLM, Negotiate (Kerberos), and Digest authentication, TLS connections to the proxy (`https://` proxies), and proxy redirects (302) are not supported. For a proxy that requires NTLM or similar authentication, a local proxy that accepts Basic or no authentication (such as cntlm) can be placed in between on the local machine, though this is unverified.
 - Proxies between later hops are not supported.
 - Terminal password input works only when standard error is a terminal. `SSH_ASKPASS` and OS credential stores are not supported.
-- Migrating (reading) Tera Term configuration files is not supported.
