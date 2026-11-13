@@ -232,7 +232,9 @@ Table: SSH 経路プロキシのトラブルシューティング
 | インターネット向けプロキシとの併用 (同じ Squid を `bridge` の `HTTPS_PROXY` に指定し、接続先中継プロキシ経由で HTTPS を取得) | 同上 | 検証済 |
 | 無通信時の切断と `ServerAliveInterval` | 同上 (Squid の `read_timeout` を 30 秒にして確認) | 検証済 |
 | Windows のクライアント: `ssh` による接続、`bridge` 経由の MCP の操作 (`exec_run`、10 MiB の `transfer_push`・`transfer_pull`)、407 の表示、パスワード ファイルのアクセス許可の判定、端末がない場合に入力を求めないこと | Windows 11 Pro for Workstations (ビルド 26300、amd64) の Windows の OpenSSH 9.5p2 と Git for Windows の OpenSSH 10.6p1。Squid と sshd は上記の Linux のコンテナー | 検証済 |
-| Windows のクライアントでの端末からのパスワード入力 (入力が表示されないこと) | 同上。疑似コンソール (ConPTY) から 1 文字ずつ入力して確認 | 検証済 (コンソール ウィンドウでの手入力は未検証) |
+| Windows のクライアントでの端末からのパスワード入力 (入力が表示されないこと、Ctrl+C で中断した後に入力モードが戻り余計な入力が残らないこと) | 同上。Windows Terminal (PowerShell 7.7.0) と conhost (Windows PowerShell 5.1) での手入力。Windows の OpenSSH と Git for Windows の OpenSSH | 検証済 |
+| Linux の端末からのパスワード入力 (Ctrl+C で中断した後にエコーが戻ること) | 疑似端末から入力を送って確認 (上記の Linux のクライアント) | 検証済 |
+| macOS の端末からのパスワード入力 | なし | 未検証 |
 
 Table: SSH 経路プロキシの検証状況
 

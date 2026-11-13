@@ -139,3 +139,10 @@ Linux でも、疑似端末で入力中に Ctrl+C を送ると、`host-shell con
 - Windows では、エコーを止めていても Enter でコンソールが改行するため、プログラム側の改行を出さない (空行の解消)。
 
 修正後、Linux の疑似端末で Ctrl+C を送ると、`password input was interrupted` で終了し、エコーが元に戻っていた。誤ったパスワードの場合の表示は変わらない。
+
+修正後 (コミット b7b7516) に、Windows 側で再確認した。
+- R-1 Windows Terminal、PowerShell 7.7.0、Windows の OpenSSH: 入力は表示されず、プロンプトの次の行に `root` (空行なし)。
+- R-2 同じ環境で Ctrl+C (1 文字と 8 文字を打ってから、計 2 回): `password input was interrupted` で終了し、続けて打った `echo test` に余計な文字は入らなかった。
+- R-3 conhost、Windows PowerShell 5.1: R-1 と R-2 の操作の両方が成功 (Ctrl+C は 1 回)。
+- R-4 Git for Windows の OpenSSH: R-1 と同じく成功 (空行なし)。
+- Windows で `go test -count=1 ./internal/routeproxy/` が成功した (go1.27.4)。

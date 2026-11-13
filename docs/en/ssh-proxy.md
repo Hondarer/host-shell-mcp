@@ -232,7 +232,9 @@ Adding `-d` to `ProxyCommand` prints the connection, request transmission, respo
 | Combination with the internet proxy (the same Squid as `HTTPS_PROXY` of `bridge`, HTTPS fetched through the target relay proxy) | Same as above | Verified |
 | Idle disconnection and `ServerAliveInterval` | Same as above (Squid `read_timeout` set to 30 seconds) | Verified |
 | Windows clients: connecting with `ssh`, MCP operations through `bridge` (`exec_run`, 10 MiB `transfer_push` and `transfer_pull`), the 407 message, the permission check of the password file, and not prompting without a terminal | Windows OpenSSH 9.5p2 and the OpenSSH 10.6p1 of Git for Windows on Windows 11 Pro for Workstations (build 26300, amd64); Squid and sshd are the Linux containers above | Verified |
-| Typing the password on a terminal with a Windows client (the input is not echoed) | Same as above, typed one character at a time through a pseudo console (ConPTY) | Verified (typing by hand in a console window is unverified) |
+| Typing the password on a terminal with a Windows client (the input is not echoed; after Ctrl+C the input mode is restored and no input is left behind) | Same as above, typed by hand in Windows Terminal (PowerShell 7.7.0) and conhost (Windows PowerShell 5.1), with Windows OpenSSH and the OpenSSH of Git for Windows | Verified |
+| Typing the password on a Linux terminal (echo is restored after Ctrl+C) | Input sent through a pseudo terminal (the Linux client above) | Verified |
+| Typing the password on a macOS terminal | None | Unverified |
 
 Table: Verification status of the SSH route proxy
 
