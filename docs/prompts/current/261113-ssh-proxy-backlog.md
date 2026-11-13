@@ -12,63 +12,63 @@
 
 案件名: SSH 経路プロキシ (261113-ssh-proxy)  
 作成日: 2026-11-13  
-整理状態: 随時追記中
+整理状態: 整理済み
 
 ## 残課題一覧
 
 | 課題 ID | 題名 | 区分 | 優先度 / 影響度 | 状態 |
 | --- | --- | --- | --- | --- |
-| BL-001 | Windows のクライアントと Tera Term での実機検証が未実施 | 作業中摘出 | 高 | 未着手 |
-| BL-002 | Windows・macOS での `internal/routeproxy` の自動テストが未実行 | 作業中摘出 | 中 | 未着手 |
+| BL-001 | macOS での `internal/routeproxy` の自動テストが未実行 | 作業中摘出 | 中 | 未着手 |
+| BL-002 | Windows のコンソール ウィンドウでのパスワードの手入力を確かめていない | 作業中摘出 | 低 | 未着手 |
 | BL-003 | SOCKS・TELNET 形式のプロキシに対応していない | 検討時見送り | 低 | 未着手 |
 | BL-004 | Basic 以外のプロキシ認証 (NTLM、Negotiate、Digest) に対応していない | 検討時見送り | 中 | 未着手 |
 | BL-005 | 2 段目以降の区間にある SSH 経路プロキシを扱えない | 検討時見送り | 低 | 未着手 |
 | BL-006 | パスワードの入力手段が端末とファイル・環境変数に限られる | 検討時見送り | 低 | 未着手 |
 | BL-007 | 文書から検証記録へのリンクが `docs/prompts/current/` を指している | 作業中摘出 | 低 | 未着手 |
 
-## BL-001 Windows のクライアントと Tera Term での実機検証が未実施
+## BL-001 macOS での internal/routeproxy の自動テストが未実行
 
 ### 概要と問題点
 
-- **現状の事象**: `host-shell.exe connect` を Windows の OpenSSH と Git for Windows の OpenSSH の `ProxyCommand` として使う構成、Windows のパスワード ファイルのアクセス許可の判定、端末での入力 (コンソールのエコー停止)、Tera Term (種別 HTTP) との併用を実機で確かめていない。`docs/ja/ssh-proxy.md` の検証済みの範囲では「未検証」としている。
-- **本来あるべき姿**: 最終仕様の受入条件 (Windows の実機) を満たし、文書の該当行が「検証済」になる。
-
-### 経緯と見送り理由
-
-- **摘出契機**: 実施時。Windows の検証環境 (Hyper-V の仮想マシン) は Windows のホストから操作する構成で、WSL のセッションからは届かない。
-- **今回の見送り理由**: Windows 側のセッションでの作業が必要。手順は [検証記録の「Windows の実機」](261113-ssh-proxy-validation.md#windows-の実機-手順未実施) に用意した。
-
-### 影響範囲とリスク
-
-- **影響対象**: Windows のクライアントの利用者 (Tera Term を使っている主な利用者層)。
-- **放置した場合のリスク**: Win32-OpenSSH が `ProxyCommand` に渡すパイプ (非同期 I/O 用) の読み書き、パス区切り、ACL 判定の誤りが、利用者の環境で初めて見つかる。
-
-### 推奨される対応策
-
-- **恒久対応案**: 検証記録の手順で確認し、結果を検証記録と `docs/ja/ssh-proxy.md`・英訳の検証済みの範囲に反映する。
-- **参考情報**: [最終仕様の受入条件](261113-ssh-proxy-design.md#受入条件)、`internal/routeproxy/perm_windows.go`、`internal/routeproxy/tty_windows.go`
-
-## BL-002 Windows・macOS での internal/routeproxy の自動テストが未実行
-
-### 概要と問題点
-
-- **現状の事象**: `go vet` は 3 つの OS で成功しているが、テストの実行は Linux だけである。`perm_windows_test.go` (アクセス許可の判定) は Windows でしか動かない。
+- **現状の事象**: `internal/routeproxy` のテストは Linux と Windows で成功しているが、macOS では `go vet` だけで、テストを実行していない。macOS では端末の制御 (`tty_darwin.go` の `TIOCGETA`・`TIOCSETA`) と、Unix のパスワード ファイルの権限の確認を使う。
 - **本来あるべき姿**: CI (ubuntu、windows、macos) でテストが成功する。
 
 ### 経緯と見送り理由
 
 - **摘出契機**: 実施時。
-- **今回の見送り理由**: CI はプッシュで動くため、コミットとプッシュの承認後に確認する。
+- **今回の見送り理由**: CI は `main` へのプッシュと PR でしか動かない。ブランチ `feat/ssh-route-proxy` には PR を作っていない。
 
 ### 影響範囲とリスク
 
-- **影響対象**: `internal/routeproxy`
-- **放置した場合のリスク**: Windows の SDDL・ACL の扱いの誤りが見逃される。
+- **影響対象**: macOS のクライアントで使う `host-shell connect`。
+- **放置した場合のリスク**: macOS 固有の誤りが、利用者の環境で初めて見つかる。
 
 ### 推奨される対応策
 
-- **恒久対応案**: ブランチをプッシュして CI の結果を確認し、失敗があれば修正する。
+- **恒久対応案**: PR を作るか `workflow_dispatch` で CI を起動し、macOS のジョブの結果を確かめる。成功したら `docs/ja/ssh-proxy.md` と英訳の検証済みの範囲を「検証済」にする。
 - **参考情報**: `.github/workflows/ci.yml`
+
+## BL-002 Windows のコンソール ウィンドウでのパスワードの手入力を確かめていない
+
+### 概要と問題点
+
+- **現状の事象**: Windows で端末からパスワードを入力したときに入力が表示されないことは、疑似コンソール (ConPTY) から 1 文字ずつ送って確かめた。人がコンソール ウィンドウ (Windows Terminal、conhost) で手入力する方法では確かめていない。
+- **本来あるべき姿**: 手入力でも入力が表示されず、接続できる。
+
+### 経緯と見送り理由
+
+- **摘出契機**: Windows の実機での検証時。
+- **今回の見送り理由**: 検証はエージェントが行ったため、手入力の操作ができなかった。
+
+### 影響範囲とリスク
+
+- **影響対象**: `internal/routeproxy/tty_windows.go`。MCP の構成 (端末なし) には影響しない。
+- **放置した場合のリスク**: 低い。ConPTY でも同じコンソールの入力モードの切り替えを通っている。
+
+### 推奨される対応策
+
+- **恒久対応案**: 利用者が Windows Terminal で `ssh` を直接実行し、パスワードの入力欄で入力が表示されないことを確かめる。
+- **参考情報**: 検証記録の「Windows の実機 (結果)」の 5e
 
 ## BL-003 SOCKS・TELNET 形式のプロキシに対応していない
 

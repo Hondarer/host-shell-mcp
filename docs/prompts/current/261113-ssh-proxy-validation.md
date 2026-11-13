@@ -108,3 +108,5 @@ Windows 側の Claude のセッションが上の手順で実施した結果で�
 - `TestCredentialSources/password_file_wins`: `%TEMP%` に、名前を解決できない SID への書き込みを含む継承可能な許可があり、テストのパスワード ファイルが権限の確認で拒否された (製品の判定は正しい)。要求が届かずに `requests()[0]` で panic した。テストで書くパスワード ファイルは DACL を本人だけにし、要求が届かない場合は panic ではなく失敗として報告するようにした。
 
 文書には、`icacls /inheritance:r` が明示的なアクセス許可を外さないことと、`/remove:g` の手順を加えた。
+
+修正後 (コミット 6be8891) に Windows で `go test -count=1 -v ./internal/routeproxy/` を再実行し、全件が成功した (go1.27.4 windows/amd64、`%TEMP%` の ACL は前回と同じ)。
