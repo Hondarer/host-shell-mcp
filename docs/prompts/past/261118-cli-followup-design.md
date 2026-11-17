@@ -57,7 +57,7 @@ Table: 課題と対策
 
 - agy 1.5.10 を `--dangerously-skip-permissions` で非対話 (`-p`) に実行し、他のエージェントと同じ指示 (`host-shell-cli` スキルを読み、MCP なしで 7 段階: `--detach` での開始、`tools`、`exec_run`、`fs_write`・`fs_read`、`job_start`・`job_read`、`transfer_push`、`session stop`) を与えます。接続先は前回と同じ検証用コンテナーです。
 - 作業環境がこの実行を拒否した場合は、`--settings '{"agentMode": "", "permissions": {"allow": ["command(host-shell)"]}}'` で `host-shell` だけを許可して実行します。
-- 結果を `docs/prompts/current/261118-cli-session-validation.md` の「エージェントからの操作」に追記します (記録の追記であり、対策元の検証記録を継続案件の結果で補います)。
+- 結果を `docs/prompts/past/261118-cli-session-validation.md` の「エージェントからの操作」に追記します (記録の追記であり、対策元の検証記録を継続案件の結果で補います)。
 - `docs/ja/cli-without-mcp.md` と英訳の「検証済みの範囲」を更新します。
     - 成功した場合: 「agy からの操作」の行を削除し、エージェントからの操作の行に agy 1.5.10 を加えます。許可の条件が他のエージェントと異なる場合は、その条件 (承認の省略) を併記します。
     - agy 固有の制約 (シェルの実行時間、子孫のプロセスの扱いなど) が見つかった場合は、制限の節と `host-shell-cli` スキルに記載します。
@@ -74,8 +74,8 @@ Table: 課題と対策
 | `docs/ja/code-server.md`、`docs/en/code-server.md` | 承認が必要な制限、`<接続先名>` の定義 |
 | `docs/ja/cli-without-mcp.md`、`docs/en/cli-without-mcp.md` | 検証済みの範囲 (agy) |
 | `.agents/skills/host-shell-cli/SKILL.md` | agy 固有の制約が見つかった場合のみ |
-| `docs/prompts/current/261118-cli-session-validation.md` | agy での検証の結果 |
-| `docs/prompts/current/261118-cli-session-backlog.md` | 各課題の状態と対処 |
+| `docs/prompts/past/261118-cli-session-validation.md` | agy での検証の結果 |
+| `docs/prompts/past/261118-cli-session-backlog.md` | 各課題の状態と対処 |
 
 Table: 更新する成果物
 

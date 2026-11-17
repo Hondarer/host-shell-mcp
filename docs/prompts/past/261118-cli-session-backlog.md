@@ -1,7 +1,7 @@
 <!--
 生成元: agree-before-implement スキル
 文書種別: 残課題一覧 (backlog)
-最終更新日時: 2026-11-18 05:50:00 JST
+最終更新日時: 2026-11-18 06:30:00 JST
 最終更新エージェント: claude code / セッション ID: session_01KJc53SwZ5UXzt7kJWHJ48p
 稼働 OS: Linux (WSL)
 上流文書: 261118-cli-session-design.md (最終仕様)、261118-cli-session-discussion.md (検討用 Markdown)。いずれも削除されている場合があります。
@@ -15,7 +15,7 @@
 
 案件名: MCP を登録できないエージェントからの CLI による利用 (261118-cli-session)  
 作成日: 2026-11-18  
-整理状態: 整理済み
+整理状態: 整理済み (全項目の対策完了。継続案件 261118-cli-followup で 2026-11-18 に成果物の承認を受けた)
 
 ## 残課題一覧
 
@@ -46,7 +46,7 @@
 ### 推奨される対応策
 
 - **恒久対応案**: agy の許可規則の設定方法 (設定ファイル、`--mode` の各値の意味) を公式の説明で確認し、`host-shell` だけを許可する設定で、他のエージェントと同じ 7 段階を実行する。利用者が対話的に承認しながら実行する方法でもよい。結果を検証記録と文書の「検証済みの範囲」に反映する。
-- **参考情報**: `docs/prompts/current/261118-cli-session-validation.md` の「エージェントからの操作」。
+- **参考情報**: `docs/prompts/past/261118-cli-session-validation.md` の「エージェントからの操作」。
 
 ## BL-002 VS Code Remote - SSH スキルのクライアント側スクリプトに実行権限がない
 
@@ -69,7 +69,7 @@
 ### 推奨される対応策
 
 - **恒久対応案**: `git update-index --chmod=+x` で `scripts/client/*.sh` に実行権限を付ける。あわせて、接続先で `sh` を付けて実行する `scripts/linux/*.sh` との違いが分かるよう、スキルの記述を確認する。CI に、スキルの `scripts/**/*.sh` のうち直接実行するものの実行権限を確かめる検査を加えることも検討する。
-- **参考情報**: `docs/prompts/current/261118-cli-session-validation.md` の「CLI 経由での 3 つのスキルの実行」。
+- **参考情報**: `docs/prompts/past/261118-cli-session-validation.md` の「CLI 経由での 3 つのスキルの実行」。
 
 ## BL-003 code-server スキルの手順に不明確な記述がある
 
@@ -94,5 +94,5 @@
 ### 推奨される対応策
 
 - **恒久対応案**: 手順 1.4 で承認が必要な制限の種類 (`--read-only`、`--tools`、`--allow-path` など、導入の手順に影響するもの) を列挙する。手順 5 で `<target name>` の決め方 (利用者と決める短い名前、または登録名) を定義する。
-- **参考情報**: `docs/prompts/current/261118-cli-session-validation.md` の「CLI 経由での 3 つのスキルの実行」。
+- **参考情報**: `docs/prompts/past/261118-cli-session-validation.md` の「CLI 経由での 3 つのスキルの実行」。
 

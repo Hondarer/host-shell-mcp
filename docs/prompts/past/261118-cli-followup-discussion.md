@@ -1,7 +1,7 @@
 <!--
 生成元: agree-before-implement スキル
 文書種別: 検討用 Markdown (discussion)
-最終更新日時: 2026-11-18 06:10:00 JST
+最終更新日時: 2026-11-18 06:30:00 JST
 最終更新エージェント: claude code / セッション ID: session_01KJc53SwZ5UXzt7kJWHJ48p
 稼働 OS: Linux (WSL)
 上流文書: 261118-cli-session-backlog.md (対策元の残課題一覧。BL-001〜BL-003)
@@ -17,7 +17,7 @@
 
 版: 2
 
-状態: 合意済み (第 1 ゲート通過)
+状態: 完了
 
 ## 作業 WBS と進捗管理
 
@@ -41,10 +41,10 @@
     - ✅ 4.3. BL-001: agy での検証 (`--dangerously-skip-permissions` での非対話実行。[Q-001](#q-001-agy-での検証の方法))、検証記録への追記、`docs/ja/cli-without-mcp.md` と英訳の検証済みの範囲の更新。完了時に対策元 `backlog.md` を更新
     - ✅ 4.4. CI での確認 (作業ブランチ `feature/cli-followup` のプル リクエスト #10。全ジョブ成功)
     - ✅ 4.5. 受入条件への適合確認
-    - ✅ 4.6. 残課題一覧の整理 (対策元 `backlog.md` の全項目の最終状態を確認。残件なし、この案件の `backlog.md` は作成しない。両案件の記録は第 3 ゲートの承認後に `docs/prompts/past/` へ移す)
-- 🔄 5. 成果物の承認の受付 (第 3 ゲート)
+    - ✅ 4.6. 残課題一覧の整理 (対策元 `backlog.md` の全項目の最終状態を確認。残件なし、この案件の `backlog.md` は作成しない。両案件の記録は第 3 ゲートの承認後に `docs/prompts/past/` へ移した)
+- ✅ 5. 成果物の承認の受付 (第 3 ゲート)
     - ✅ 5.1. 成果物・検証結果・残課題の提示
-    - 🚫 5.2. 成果物の承認の受付。ユーザーの承認待ち ← **CURRENT**
+    - ✅ 5.2. 成果物の承認の受付 (2026-11-18 承認、Tetsuo Honda。PR #10 をマージ、記録を `docs/prompts/past/` へ移動)
 
 ## 対象と参照資料
 
@@ -56,7 +56,7 @@
 
 参照資料と版 (`main`、4cde5d5):
 
-- `docs/prompts/current/261118-cli-session-backlog.md` (BL-001〜BL-003)
+- `docs/prompts/past/261118-cli-session-backlog.md` (BL-001〜BL-003)
 - `.agents/skills/host-shell-vscode-remote-ssh/SKILL.md`、`scripts/client/*.sh`
 - `.agents/skills/host-shell-code-server/SKILL.md` (手順 1.4、手順 5)、`docs/ja/code-server.md`
 - `.github/workflows/ci.yml`
