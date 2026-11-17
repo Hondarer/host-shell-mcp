@@ -1,7 +1,7 @@
 <!--
 生成元: agree-before-implement スキル
 文書種別: 検討用 Markdown (discussion)
-最終更新日時: 2026-11-18 03:05:00 JST
+最終更新日時: 2026-11-18 03:30:00 JST
 最終更新エージェント: claude code / セッション ID: session_01KJc53SwZ5UXzt7kJWHJ48p
 稼働 OS: Linux (WSL)
 下流文書: 261118-cli-session-design.md (最終仕様)、261118-cli-session-backlog.md (残課題一覧)。未作成の場合や、削除されている場合があります。
@@ -16,7 +16,7 @@
 
 版: 3
 
-状態: 検討中
+状態: 合意済み
 
 改版: 版 2 では、Q-001〜Q-019 の回答を記録し、追加の確認項目 Q-020〜Q-025 を設けた。版 3 では、Q-020〜Q-025 の回答を記録し、第 1 ゲートを通過した (合意版: 版 3)。
 
@@ -37,21 +37,21 @@
     - ✅ 3.1. `261118-cli-session-design.md` の作成
     - ✅ 3.2. 受入条件と整合性の確認
     - ✅ 3.3. 最終仕様の承認の受付 (第 2 ゲート。最終仕様の版 1 を 2026-11-18 に対話「承認」で承認)
-- 🔄 4. 承認された最終仕様に従った作業の実施
+- ✅ 4. 承認された最終仕様に従った作業の実施
     - ✅ 4.1. Go のツールチェーンの再導入 (`/tmp/go` に go1.27.4。既存のテストがすべて成功)
     - ✅ 4.2. `host-shell session` (`start`、`status`、`stop`、`list`)、`host-shell call`、`host-shell tools` の実装 (`cmd/host-shell/main.go`、`internal/bridge/` ほか)
     - ✅ 4.3. 標準入力の終端後の応答の扱いの修正 (`--finish-on-eof`。`internal/channel/`、`cmd/host-shell/main.go`、`probe.sh`)
     - ✅ 4.4. 自動テスト (CI の Linux、Windows、macOS。921e74d で 3 OS とも成功)
-    - 🔄 4.5. Linux (WSL) の実機での検証 (`claude`、`copilot`、`codex`、`agy`、`grok` からの操作、および CLI 経由での 3 つのスキルの実行) と `261118-cli-session-validation.md` への記録 ← **CURRENT**
+    - ✅ 4.5. Linux (WSL) の実機での検証 (`claude`、`copilot`、`codex`、`agy`、`grok` からの操作、および CLI 経由での 3 つのスキルの実行) と `261118-cli-session-validation.md` への記録
     - ✅ 4.6. Windows の実機での検証 (`host-shell-mcp-5b` へ依頼。作業ブランチを origin へ push して渡す) と検証記録への追記
-    - 🔄 4.7. 新規文書 `docs/ja/cli-without-mcp.md` と英訳 `docs/en/cli-without-mcp.md` の作成、`README.md`、`docs/README.md`、`docs/ja/reference.md`、`docs/ja/development.md`、`docs/ja/user-guide.md` と各英訳への反映
-    - 🔄 4.8. スキルの作成・更新 (`host-shell-cli` の新規作成、`host-shell-connect` の最後の段階の分岐、`host-shell-code-server`・`host-shell-vscode-remote-ssh`・`host-shell-coding-agents` の冒頭へのツール名の読み替えの追加)
-    - ⏸️ 4.9. `--help` の更新
-    - ⏸️ 4.10. 受入条件への適合確認
-    - ⏸️ 4.11. 残課題一覧 (`261118-cli-session-backlog.md`) の整理
-- ⏸️ 5. 成果物の承認の受付 (第 3 ゲート)
-    - ⏸️ 5.1. 成果物・検証結果・残課題の提示
-    - ⏸️ 5.2. 成果物の承認の受付
+    - ✅ 4.7. 新規文書 `docs/ja/cli-without-mcp.md` と英訳 `docs/en/cli-without-mcp.md` の作成、`README.md`、`docs/README.md`、`docs/ja/reference.md`、`docs/ja/development.md`、`docs/ja/user-guide.md` と各英訳への反映
+    - ✅ 4.8. スキルの作成・更新 (`host-shell-cli` の新規作成、`host-shell-connect` の最後の段階の分岐、`host-shell-code-server`・`host-shell-vscode-remote-ssh`・`host-shell-coding-agents` の冒頭へのツール名の読み替えの追加)
+    - ✅ 4.9. `--help` の更新 (`host-shell` の使い方、`session help`、`call --help`、`tools --help`)
+    - ✅ 4.10. 受入条件への適合確認
+    - ✅ 4.11. 残課題一覧 (`261118-cli-session-backlog.md`) の整理 (BL-001〜BL-003)
+- 🚫 5. 成果物の承認の受付 (第 3 ゲート)
+    - ✅ 5.1. 成果物・検証結果・残課題の提示
+    - 🚫 5.2. 成果物の承認の受付。ユーザーの承認待ち ← **CURRENT**
 
 ## 対象と参照資料
 
@@ -1328,4 +1328,9 @@ Table: 入力の終端後の扱いの比較
 
 ## 反映と検証の記録
 
-未着手。
+- コミット (feature/cli-session、PR #9): f866bc8 (実装)、921e74d (終了時のファイル削除の順序)、7411557 (文書・スキル・記録)、00471cb 以降 (検証結果の反映)。
+- 自動テスト: CI (ubuntu-latest、windows-latest、macos-latest) で成功。Windows の実機でもテスト バイナリが成功 (Go を必要とする既存の 3 件を除く)。
+- 実機の検証: `261118-cli-session-validation.md` に記録。Linux (WSL) で Claude Code、Copilot CLI、Codex CLI、Grok からの操作と 3 つのスキルの実行、Windows の実機で切り離し・確認・ACL・`--finish-on-eof` を確認した。
+- 最終仕様からの補足: `host-shell call` の割り込み時の終了コードを 130 とした (仕様の終了コードの表になかったため。文書に記載)。検証で分かった Codex の sandbox での `--detach` の制限と、許可設定の照合の注意 (1 回の呼び出しで 1 コマンド) を、文書とスキルに記載した。
+- 知見の反映: 確認の答えを中継しない理由 (`internal/bridge` の `Local`、文書、運用ガイド)、`TOOL` を先頭に置く理由 (`call` の使い方、文書)、標準入力の終端での取り消し (`internal/channel/eof.go`、リファレンス)、ディレクトリの所有者の確認 (`internal/ownerdir`)、標準出力の使い分け (開発ガイド)。
+- 未完了・未検証: 残課題一覧の BL-001〜BL-003、文書の「検証済みの範囲」の未検証の行 (macOS の実機、agy、Windows からの ssh 経由の接続先、ブラウザー・VS Code・認証を伴う確認)。
