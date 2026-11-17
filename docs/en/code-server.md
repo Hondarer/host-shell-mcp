@@ -112,6 +112,7 @@ code-server runs with password authentication enabled. A random 48-digit hexadec
 
 - Because the password is never printed in tool output, it does not enter the agent conversation history.
 - The agent copies `config.yaml` via `transfer_pull` to `~/.config/host-shell-code-server/<target name>/config.yaml` on the client (`%USERPROFILE%\.config\host-shell-code-server\<target name>\config.yaml` on Windows clients) and reports only that file path. Use the value on the `password:` line to log in.
+- `<target name>` is the name the user calls the target by: the name of the MCP server registered with the agent (for example `host-shell-target`), or the session name (for example `default`) when the target is used through `host-shell session` ([Using host-shell from agents without MCP](cli-without-mcp.md)). If that name does not tell targets apart (for example, the same name is used for several targets), the agent agrees on a short name with the user.
 - On the target, `config.yaml` is created with permissions readable only by its owner.
 - Browser login cookies are scoped to the client port. If reopening a forward assigns a different client port, log in again.
 
@@ -264,7 +265,7 @@ On subsequent runs, unchanged files with matching SHA-256 hashes are skipped.
 
 ## Security considerations
 
-- Operations performed inside code-server's built-in terminal and file explorer bypass `host-shell` policy restrictions (`--allow-command`, `--allow-path`, `--deny-command`, etc.) and are not logged in `host-shell`'s audit log (only the port-forward connection `forward_connect` is logged on the target). When policy restrictions are active on the target, the agent explains this and asks for explicit user approval before proceeding. Target administrators control whether this path is available via `--allow-forward-local`.
+- Operations performed inside code-server's built-in terminal and file explorer do not go through `host-shell`, so none of its policy restrictions (`--allow-command`, `--allow-path`, `--deny-command`, etc.), redaction (`--redact`) or confirmation (`--confirm`) applies, and they are not logged in `host-shell`'s audit log (only the port-forward connection `forward_connect` is logged on the target). When the target has any restriction (`restrictions` in `sys_get_info`, including redaction and confirmation), the agent explains this whatever the entries are and asks for explicit user approval before proceeding. Target administrators control whether this path is available via `--allow-forward-local`.
 - Because the local listening port on the client does not authenticate callers, other local users on the client machine can connect to it. Do not disable code-server's password authentication.
 - code-server binds exclusively to `127.0.0.1` on the target and is not reachable from the target's external network interfaces.
 

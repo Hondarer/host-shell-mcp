@@ -56,7 +56,7 @@ Table: Folder layout
    ```
 
 3. The installation kit is transferred with `transfer_push`. If `bridge` does not publish `transfer_push` (for example, when started with `--no-transfer`; note that `bridge` refuses to start against a `--read-only` target unless `--no-transfer` is set), stop and inform the user.
-4. If `restrictions` in `sys_get_info` is non-empty, explain that code-server's built-in terminal and file access bypass `host-shell` restrictions (`--read-only`, `--allow-command`, `--allow-path`, etc.) and are not recorded in the `host-shell` audit log. Proceed only after receiving the user's explicit approval.
+4. If `restrictions` in `sys_get_info` is non-empty, whatever its entries are (including only `--redact` or `--confirm`), explain that code-server's built-in terminal and file access do not go through `host-shell`: none of its restrictions (`--read-only`, `--allow-command`, `--allow-path`, etc.), redaction or confirmation applies there, and those operations are not recorded in the `host-shell` audit log. Proceed only after receiving the user's explicit approval.
 5. On Linux targets, code-server requires glibc and a writable home directory; `install.sh` checks both before extracting. Musl-based distributions such as Alpine containers are not supported.
 6. Check free disk space before sending anything. Call `fs_stat` on the target user's home directory (Linux) or `LOCALAPPDATA` (Windows; retrieve it with `exec_run` `echo $env:LOCALAPPDATA`) and read `available_bytes`. Installation needs about 1 GiB there (measured: kit about 225 MiB plus about 690 MiB for code-server, extensions, and user data; see "Required disk space" in `docs/en/code-server.md`). If less is available, stop and tell the user how much is free and how much is needed. `transfer_push` and `install` also refuse when space runs short, but checking first avoids a partial kit.
 7. Ask the user which directory code-server should open (default: the target user's home directory, `home` in `sys_get_info`).
@@ -106,6 +106,8 @@ The script verifies and extracts the archive, creates the configuration file wit
 ### 5. Copy the configuration to the client
 
 Use `transfer_pull` to copy `<home>/.config/host-shell-code-server/config.yaml` (Windows: `<USERPROFILE>\.config\host-shell-code-server\config.yaml`) to `~/.config/host-shell-code-server/<target name>/config.yaml` on the client, and run `chmod 600` on it on Linux and macOS clients. Do not read the file contents.
+
+`<target name>` is the name the user calls the target by: the name of the MCP server registered with the agent (for example `host-shell-target`), or, when the target is used through `host-shell session` (the `host-shell-cli` skill), the session name (for example `default`). If that name does not tell targets apart (for example, the same name is used for several targets), agree on a short name with the user.
 
 ### 6. Start and forward
 

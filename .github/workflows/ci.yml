@@ -23,6 +23,16 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      # Skills tell agents to run their scripts directly, so every script must be executable.
+      - name: Check skill script modes
+        if: runner.os == 'Linux'
+        run: |
+          bad=$(git ls-files -s -- '.agents/skills/*.sh' | awk '$1 != "100755" {print $4}')
+          if [ -n "$bad" ]; then
+            echo "::error::these scripts are not executable (fix with: git update-index --chmod=+x FILE):"
+            echo "$bad"
+            exit 1
+          fi
       - name: Vet
         run: go vet ./...
       - name: Vet for other OSes
