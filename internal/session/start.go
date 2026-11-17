@@ -73,10 +73,19 @@ func serve(ctx context.Context, opt serveOptions) error {
 	if opt.Idle > 0 {
 		s.state.IdleTimeout = opt.Idle.String()
 	}
+	// Remove the files before closing, so that they are gone once the socket stops accepting
+	// connections (session stop waits for that). The listener does not unlink on close: by then
+	// a new session with the same name may own the path.
+	if ul, ok := ln.(*net.UnixListener); ok {
+		ul.SetUnlinkOnClose(false)
+	}
 	defer func() {
-		ln.Close()
-		_ = os.Remove(sock)
 		_ = os.Remove(statePath)
+		removed := os.Remove(sock) == nil
+		ln.Close()
+		if !removed {
+			_ = os.Remove(sock)
+		}
 	}()
 	s.writeState(statePath)
 
