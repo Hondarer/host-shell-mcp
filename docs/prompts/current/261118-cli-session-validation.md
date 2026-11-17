@@ -60,7 +60,17 @@ Table: エージェントからの操作
 
 ### CLI 経由での 3 つのスキルの実行
 
-(実行中)
+MCP を使わない Claude Code 2.1.326 (`--strict-mcp-config`) に、`host-shell-cli` スキルと 3 つのスキルを読ませ、各スキルの MCP ツールの手順を `host-shell call` で実行させた。許可は `host-shell`、スキルのクライアント側スクリプト、ループバックへの確認コマンドだけに限った。許可の範囲外で止まった確認は、このセッション (Claude Code、MCP なし) が `host-shell call` で同じ手順を実行して補った。セッションは `--forward-allow-local '127.0.0.1:80[0-7]?' --forward-allow-local '127.0.0.1:2222' --proxy --proxy-allow-host 'api.x.ai:443' --remote-dns` と、接続先の `--allow-forward-local --client-proxy --remote-dns --remote-dns-library` で開始した。
+
+| スキル | 確認した内容 | 結果 |
+| --- | --- | --- |
+| `host-shell-code-server` | `sys_get_info` での前提の確認、`fs_stat` での空き容量、`transfer_push` (code-server 4.144.0 の 231 MB のアーカイブを含む 6 回)、`exec_run` での `install.sh` (既定の拡張機能 3 件と日本語の言語パック)、`transfer_pull` での設定の写し、`job_start` での `start.sh` と `job_read` の `until` での待ち、`forward_open`、手元の転送ポートへの HTTP 要求 (302 で `/login`、続けて 200)、`forward_close`、`job_stop`、`uninstall.sh` | 検証済。手元のポートへの HTTP 要求はエージェントの許可の範囲外で止まったため、このセッションが同じ手順で確認した |
+| `host-shell-vscode-remote-ssh` | 前提の確認 (`sshd`、`ssh-keygen`、glibc 2.39)、`fetch.sh` での取得 (VS Code 1.146.0、commit 69047191fc42、x64)、`transfer_push` (252 MB)、`place.sh`、`fs_remove`、`ssh-key.sh key` と `authorize.sh` と `ssh-key.sh trust`、`job_start` での `start.sh`、`forward_open` (42222 → 2222)、出力された Host ブロックでの `ssh` 接続 (厳密なホスト鍵の確認、配置した `code-69047191fc42 --version` が 1.146.0 を返す)、`status.sh`、`cleanup.sh`、`job_stop`、`forward_close` | 検証済 (VS Code からの接続は `ssh` での接続に置き換え)。クライアント側スクリプト (`fetch.sh`、`ssh-key.sh`) はリポジトリで実行権限がなく、スキルに書かれた `"$SKILL"/scripts/client/fetch.sh` の形では実行できなかった (MCP で使う場合も同じ。残課題 BL-002)。エージェントは `sh` を付けた実行が許可の範囲外で止まったため、このセッションが `sh` を付けて実行した。`ssh-key.sh` は検証用の `HOME` で実行し、`ssh` の確認では Host ブロックの `~/.ssh` を絶対パスに置き換えた (OpenSSH は `~` を `HOME` ではなくアカウントのホーム ディレクトリから展開するため) |
+| `host-shell-coding-agents` (grok 1.0.77) | `transfer_push` で専用のディレクトリへ配置 (202 MB)、接続先の SHA-256 が手元と一致 (b702950a…)、`exec_run` での `--version`、接続先の `curl https://api.x.ai/` がクライアント経由 HTTP プロキシを通ること (`proxy_status` に `api.x.ai:443` の `allowed`)、`getent hosts api.x.ai` と `sys_get_info` の `remote_dns: true`、`fs_remove` での削除 | 検証済。認証と推論は対象外。接続先のコンテナーは直接の外部通信と自前の DNS を持つため、プロキシと名前解決の中継だけで到達できることは示していない |
+
+Table: CLI 経由での 3 つのスキルの実行
+
+エージェントが挙げたスキルの不明点 (code-server の手順 1.4 の「制限があれば利用者の承認」に伏せ字だけの制限が含まれるか、手順 5 の `<target name>` の定義) は、CLI での利用とは関係のない既存の記述の問題として残課題 BL-003 に記録した。
 
 ## Windows の実機
 
