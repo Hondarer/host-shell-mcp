@@ -163,13 +163,15 @@ GitHub Actions (`.github/workflows/ci.yml`) は、`main` ブランチへの push
 
 | ジョブ | 内容 |
 |---|---|
-| `test (ubuntu-latest)` | `go vet` (Linux、Windows、macOS 向け)、`go test`、`sudo` パスワード認証テスト |
+| `test (ubuntu-latest)` | スキルのスクリプトの実行権限の検査、`go vet` (Linux、Windows、macOS 向け)、`go test`、`sudo` パスワード認証テスト |
 | `test (windows-latest)` | `go vet`、`go test` (ConPTY、サービス、イベント ログ、レジストリを含む Windows 実機テスト) |
 | `test (macos-latest)` | `go vet`、`go test` (ローカル側の `bridge` 動作の検証) |
 | `dns-lib (amd64)`、`dns-lib (arm64)` | AlmaLinux 8 (glibc 2.28) のコンテナーで `make dns-lib` を実行し、そのコンテナーとランナー (新しい glibc) の両方で動作をテストする (`.github/workflows/dns-lib.yml`) |
 | `build` | `dns-lib` の生成物を `dist/` に置いて `make release` を実行し、`dist/release/` をアーティファクトとして 14 日間保持する |
 
 Table: CI のジョブ
+
+スキルの `.sh` (`.agents/skills` 配下) は、直接実行するか `sh` を付けて実行するかによらず、すべて実行権限付き (Git のモード 100755) で登録します。新しいスクリプトは `git update-index --chmod=+x` で登録してください。CI は 100755 でない `.sh` があると失敗します。
 
 テスト実行時は `-v` の出力から、結果行と字下げされた `ファイル名.go:行:` の行のみを抽出して表示します。後者には失敗・スキップの理由やテスト ログが含まれます (`testing.go` が出力する後片付け失敗の行なども保持します)。
 

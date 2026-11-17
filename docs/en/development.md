@@ -163,13 +163,15 @@ GitHub Actions (`.github/workflows/ci.yml`) runs the following jobs on every pus
 
 | Job | Description |
 |---|---|
-| `test (ubuntu-latest)` | `go vet` (Linux, Windows, macOS), `go test`, and `sudo` password authentication tests |
+| `test (ubuntu-latest)` | Checks that skill scripts are executable, then `go vet` (Linux, Windows, macOS), `go test`, and `sudo` password authentication tests |
 | `test (windows-latest)` | `go vet` and `go test` on Windows (including ConPTY, services, Event Log, and registry) |
 | `test (macos-latest)` | `go vet` and `go test` (verifying local `bridge` operation) |
 | `dns-lib (amd64)`, `dns-lib (arm64)` | Runs `make dns-lib` in an AlmaLinux 8 (glibc 2.28) container and tests the result both there and on the runner's newer glibc (`.github/workflows/dns-lib.yml`) |
 | `build` | Places the `dns-lib` outputs in `dist/`, runs `make release`, and retains `dist/release/` as an artifact for 14 days |
 
 Table: CI jobs
+
+Register every `.sh` under `.agents/skills` as executable (Git mode 100755), whether it is run directly or with `sh`. Add new scripts with `git update-index --chmod=+x`. CI fails when a `.sh` is not 100755.
 
 Test output filters `go test -v` to show only result lines and indented `file.go:line:` lines, which contain failure and skip reasons as well as test log messages (including lines from non-test files such as `testing.go` for cleanup errors).
 
