@@ -20,6 +20,7 @@ import (
 
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/channel"
+	"github.com/hondarer/host-shell-mcp/internal/ownerdir"
 	"github.com/hondarer/host-shell-mcp/internal/policy"
 )
 
@@ -58,7 +59,7 @@ func NewTarget() (*Target, error) {
 		l.Close()
 		return nil, err
 	}
-	if err = secureDir(t.dir); err != nil {
+	if err = ownerdir.Restrict(t.dir); err != nil {
 		t.Close()
 		return nil, err
 	}

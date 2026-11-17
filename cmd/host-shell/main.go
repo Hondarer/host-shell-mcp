@@ -27,6 +27,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/audit"
 	"github.com/hondarer/host-shell-mcp/internal/bridge"
 	"github.com/hondarer/host-shell-mcp/internal/channel"
+	"github.com/hondarer/host-shell-mcp/internal/cli"
 	"github.com/hondarer/host-shell-mcp/internal/clientproxy"
 	"github.com/hondarer/host-shell-mcp/internal/config"
 	"github.com/hondarer/host-shell-mcp/internal/forward"
@@ -35,6 +36,7 @@ import (
 	"github.com/hondarer/host-shell-mcp/internal/remotedns"
 	"github.com/hondarer/host-shell-mcp/internal/routeproxy"
 	"github.com/hondarer/host-shell-mcp/internal/server"
+	"github.com/hondarer/host-shell-mcp/internal/session"
 	"github.com/hondarer/host-shell-mcp/internal/sshpass"
 	"github.com/hondarer/host-shell-mcp/internal/version"
 )
@@ -71,6 +73,19 @@ func main() {
 		os.Exit(routeproxy.Main(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
 	}
 
+	// session, call and tools let agents without MCP use a target from the shell; these
+	// commands print their results on standard output.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "session":
+			os.Exit(session.Main(os.Args[2:], os.Stdout, os.Stderr))
+		case "call":
+			os.Exit(cli.Call(os.Args[2:], os.Stdin, os.Stdout, os.Stderr))
+		case "tools":
+			os.Exit(cli.Tools(os.Args[2:], os.Stdout, os.Stderr))
+		}
+	}
+
 	if len(os.Args) > 1 && os.Args[1] == "bridge" {
 		if err := bridge.Main(os.Args[2:]); err != nil {
 			log.Fatal(err)
@@ -86,6 +101,9 @@ func main() {
 	case errors.Is(err, errUsage):
 		fmt.Fprintln(os.Stderr, "usage: host-shell --mcp [options]          (on the remote host)")
 		fmt.Fprintln(os.Stderr, "       host-shell bridge [options] -- COMMAND...  (on the local machine; see host-shell bridge -h)")
+		fmt.Fprintln(os.Stderr, "       host-shell session start|status|stop|list  (on the local machine, for agents without MCP; see host-shell session help)")
+		fmt.Fprintln(os.Stderr, "       host-shell call TOOL [KEY=VALUE ...]  (call a tool of a session; see host-shell call --help)")
+		fmt.Fprintln(os.Stderr, "       host-shell tools [--schema] [TOOL ...]  (list the tools of a session)")
 		fmt.Fprintln(os.Stderr, "       host-shell ssh-pass set|delete|list|dir [USER@HOST]  (store SSH login passwords; see host-shell ssh-pass help)")
 		fmt.Fprintln(os.Stderr, "       host-shell ssh|scp [ARGS...]  (run ssh or scp with the stored SSH login passwords; also as links named ssh, scp)")
 		fmt.Fprintln(os.Stderr, "       host-shell connect [options] -H PROXY HOST PORT  (ProxyCommand on the local machine; see host-shell connect --help)")
@@ -117,6 +135,7 @@ func parseFlags(fs *flag.FlagSet, args []string) (cfg config.Config, showVersion
 		fwdLocal   = fs.Bool("allow-forward-local", false, "permit the bridge's local forwards and SOCKS5 to connect from this host (takes no value; destinations follow --allow-host)")
 		fwdRemote  = fs.Bool("allow-forward-remote", false, "permit the bridge's remote forwards to listen on this host's loopback (takes no value)")
 		mcpMode    = fs.Bool("mcp", false, "serve MCP over stdin/stdout")
+		finishEOF  = fs.Bool("finish-on-eof", false, "at the end of standard input, write the responses to the requests already read before exiting (default: cancel them, as on an SSH disconnect)")
 		showVer    = fs.Bool("version", false, "print version and exit")
 		noLog      = fs.Bool("no-log", false, "disable the audit log")
 		logFile    = fs.String("log-file", cfg.LogFile, "audit log file (JSON Lines)")
@@ -167,6 +186,7 @@ func parseFlags(fs *flag.FlagSet, args []string) (cfg config.Config, showVersion
 		return cfg, false, err
 	}
 	cfg.ForwardRemotePorts = ports
+	cfg.FinishOnEOF = *finishEOF
 	cfg.LogFile = *logFile
 	if *noLog {
 		cfg.LogFile = ""
@@ -238,7 +258,8 @@ func run(cfg config.Config) error {
 		defer sess.Forward.Close()
 		sess.Forward.Register(&channelOptions)
 	}
-	transport := channel.Target(&mcp.StdioTransport{}, channelOptions)
+	stdio := channel.TrackRequests(&mcp.StdioTransport{}, channel.EOFOptions{Finish: cfg.FinishOnEOF})
+	transport := channel.Target(stdio, channelOptions)
 	s, closeServer := server.New(cfg, sess)
 	defer closeServer()
 
@@ -247,6 +268,9 @@ func run(cfg config.Config) error {
 	err = s.Run(ctx, transport)
 	if ctx.Err() != nil {
 		err = nil
+	}
+	if n := stdio.Unanswered(); n > 0 && err == nil {
+		err = fmt.Errorf("standard input closed with %d request(s) unanswered; the client must keep standard input open until it reads the responses (or start host-shell with --finish-on-eof)", n)
 	}
 	al.Event("server_stop", "error", fmt.Sprint(err))
 	return err

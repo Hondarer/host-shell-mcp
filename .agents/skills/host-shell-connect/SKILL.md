@@ -205,7 +205,7 @@ On Linux, a line about the remote DNS adapter precedes the final line. Keep it f
 
 `probe.sh` printing `OK:` with tool names such as `sys_get_info` confirms the server works.  
 If startup options will be used at registration, append the same options to `probe.sh` to verify them.  
-If `NG:` is printed, follow the error message. On high-latency routes, retry with `PROBE_WAIT=15`.  
+If `NG:` is printed, follow the error message.  
 An `open audit log` error means the audit log path is not writable; specify a writable path with `--log-file` or disable logging with `--no-log`.
 
 ### Presenting the registration command

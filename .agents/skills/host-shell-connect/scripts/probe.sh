@@ -1,11 +1,9 @@
 #!/bin/sh
 # Launches `host-shell --mcp` on the target over the route (see remote.sh) and verifies JSON-RPC responses
-# for initialize and tools/list.
+# for initialize and tools/list. --finish-on-eof makes host-shell answer both before it exits at the end of
+# standard input, so no fixed wait is needed.
 #
 # Usage: probe.sh ROUTE REMOTE_PATH [HOST_SHELL_OPTIONS...]
-#
-# Environment:
-#   PROBE_WAIT  seconds to wait for responses (default: 5)
 set -eu
 
 if [ $# -lt 2 ]; then
@@ -20,8 +18,8 @@ init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 initialized='{"jsonrpc":"2.0","method":"notifications/initialized"}'
 list='{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
 
-out=$( (printf '%s\n' "$init" "$initialized" "$list"; sleep "${PROBE_WAIT:-5}") |
-	"$dir/remote.sh" "$route" "$path --mcp $*" 2>"${TMPDIR:-/tmp}/host-shell-probe.$$" | tr -d '\r') || true
+out=$(printf '%s\n' "$init" "$initialized" "$list" |
+	"$dir/remote.sh" "$route" "$path --mcp --finish-on-eof $*" 2>"${TMPDIR:-/tmp}/host-shell-probe.$$" | tr -d '\r') || true
 err=$(cat "${TMPDIR:-/tmp}/host-shell-probe.$$" 2>/dev/null || true)
 rm -f "${TMPDIR:-/tmp}/host-shell-probe.$$"
 
@@ -44,7 +42,8 @@ esac
 server=$(printf '%s' "$first" | grep -oE '"serverInfo":\{[^}]*\}' || true)
 tools=$(printf '%s\n' "$out" | grep '"id":2' | grep -oE '"name":"[a-z_]+"' | sed 's/"name":"//; s/"//' | tr '\n' ' ')
 if [ -z "$tools" ]; then
-	echo "NG: initialize succeeded but tools/list returned nothing. Try PROBE_WAIT=15." >&2
+	echo "NG: initialize succeeded but tools/list returned nothing." >&2
+	[ -n "$err" ] && printf 'stderr:\n%s\n' "$err" >&2
 	exit 1
 fi
 echo "OK: $server"
