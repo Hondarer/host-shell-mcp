@@ -7,7 +7,7 @@ description: Inject code-server into a host-shell target (including closed netwo
 
 Install code-server on the target using archives fetched on the client, start it on `127.0.0.1` on the target (binding to the first free port in `8000`–`8079`), and forward a local port to it.  
 The target needs no internet access; every file is verified by SHA-256 on the client and again on the target.  
-This skill operates through the `host-shell` MCP tools of a session started with `host-shell bridge`. To deploy `host-shell` itself, use the `host-shell-connect` skill. The target may also be a Linux container reached via `podman exec -i` or a similar command (`docs/en/container.md`).
+This skill operates through the `host-shell` MCP tools of a session started with `host-shell bridge`. Without MCP (the `host-shell-cli` skill), run each tool below as `host-shell call TOOL` with the same arguments, and add the options this skill asks for in the registration to `host-shell session start` instead. To deploy `host-shell` itself, use the `host-shell-connect` skill. The target may also be a Linux container reached via `podman exec -i` or a similar command (`docs/en/container.md`).
 
 Below, `$SKILL` refers to the directory containing this `SKILL.md` (`.agents/skills/host-shell-code-server` in the repository). The user documentation is in `docs/en/code-server.md`.
 

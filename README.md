@@ -68,6 +68,7 @@ flowchart TB
 | Configuration | Route / Mechanism | Documentation |
 |---|---|---|
 | Direct or multi-hop SSH | `ssh -T [hop1 ssh -T ...] target host-shell --mcp` (works even with `AllowTcpForwarding no` and no SFTP) | [User Guide](docs/en/user-guide.md) |
+| Agents that cannot use MCP servers | `host-shell session start [--detach] -- ssh -T target host-shell --mcp`, then `host-shell call TOOL KEY=VALUE ...` and `host-shell tools` from the agent's shell | [Using host-shell from agents without MCP](docs/en/cli-without-mcp.md) |
 | SSH through an authenticated HTTP proxy (equivalent to Tera Term proxy settings) | `ProxyCommand host-shell connect -H user@proxy:port --password-file FILE %h %p` in the Host block of `~/.ssh/config` (HTTP `CONNECT` with Basic authentication) | [SSH route proxy](docs/en/ssh-proxy.md) |
 | Running containers | `[ssh -T host] podman\|docker\|kubectl exec -i <container> host-shell --mcp` | [Connecting into containers](docs/en/container.md) |
 | Direct file transfer & TCP forwarding | `host-shell bridge` (`transfer_push`, `transfer_pull`, `--forward-local`, `--forward-remote`, `--forward-socks`, `forward_open`) | [Reference](docs/en/reference.md#transfer-with-the-local-machine-bridge), [Port forwarding](docs/en/port-forward.md) |
@@ -94,6 +95,7 @@ Table: Supported configurations
 - **Progress notifications and cancellation**: Reports progress for long commands, downloads, and file transfers via MCP notifications, and terminates execution when the agent cancels a request.
 - **Policy restrictions via startup options**: Runs with the connecting user's permissions by default; startup options can restrict published tool groups, enforce read-only mode, limit allowed paths/commands/hosts, require user confirmation, and mask secrets.
 - **Self-describing agent guidance**: Initialize instructions, tool descriptions, and the `help_get` tool allow agents to choose appropriate tools without user instructions.
+- **Shell access for agents without MCP**: When an agent cannot register MCP servers, `host-shell session` keeps the connection on the local machine and `host-shell call` / `host-shell tools` give the same tools to shell commands, with tool results as JSON and confirmation of `--confirm` tools in the user's terminal.
 - **Automatic encoding and newline conversion**: Converts Shift_JIS, EUC-JP, and other encodings to UTF-8 on the target, and supports specifying encoding, BOM, and line endings when writing.
 - **Single-binary deployment**: Deploys as a single static executable with no external dependencies.
 - **Output limits, timeouts, and audit logging**: Truncates large outputs while preserving head and tail, and logs every tool call on the target.
@@ -124,7 +126,8 @@ The repository includes skills under `.agents/skills/` so coding agents can auto
 
 | Skill | Purpose |
 |---|---|
-| [`host-shell-connect`](.agents/skills/host-shell-connect/SKILL.md) | Verifies the SSH or container `exec -i` route, detects the target OS/architecture/libc, deploys the `host-shell` binary (and optional `remote-dns` adapter), and outputs the MCP registration command |
+| [`host-shell-connect`](.agents/skills/host-shell-connect/SKILL.md) | Verifies the SSH or container `exec -i` route, detects the target OS/architecture/libc, deploys the `host-shell` binary (and optional `remote-dns` adapter), and outputs the MCP registration command (or hands over to `host-shell-cli` for agents without MCP) |
+| [`host-shell-cli`](.agents/skills/host-shell-cli/SKILL.md) | Uses a prepared target through shell commands when the agent cannot use MCP: starts a `host-shell session`, lists and calls the tools with `host-shell tools` and `host-shell call`, and stops the session |
 | [`host-shell-code-server`](.agents/skills/host-shell-code-server/SKILL.md) | Downloads `code-server` and default extensions on the client, transfers and installs them offline on the target (including display locale setup and optional `remote-dns` patched-copy mode), starts `code-server` on `127.0.0.1`, and opens a local port forward |
 | [`host-shell-vscode-remote-ssh`](.agents/skills/host-shell-vscode-remote-ssh/SKILL.md) | Fetches the VS Code Server matching the local VS Code commit, places and pins it offline on a Linux target, starts a user-mode `sshd` on `127.0.0.1:2222`, and configures local `VS Code Remote - SSH` through a local port forward |
 | [`host-shell-coding-agents`](.agents/skills/host-shell-coding-agents/SKILL.md) | Guides deployment and step-by-step validation of CLI coding agents (Copilot CLI, agy, Claude Code, Codex, Grok) on isolated targets using the client HTTP proxy and `remote-dns` |
@@ -177,6 +180,7 @@ Each guide documents not only setup procedures, but also the verified scope (OS,
 | [Operations Guide](docs/en/operations.md) | Security model, restriction options, dedicated user and key, pinning the startup command, sudo configuration, audit log management |
 | [Reference](docs/en/reference.md) | Startup options, policy restrictions, MCP specification, tool inputs and outputs, bridge, process management, audit log format, limitations |
 | [Development Guide](docs/en/development.md) | Building, source layout, design rules, adding tools, testing, releases |
+| [Using host-shell from agents without MCP](docs/en/cli-without-mcp.md) | Using the tools through shell commands when the agent cannot register MCP servers (`host-shell session`, `host-shell call`, `host-shell tools`) |
 | [SSH route proxy](docs/en/ssh-proxy.md) | Connecting over SSH through an authenticated HTTP proxy (`host-shell connect`), and distinguishing the three kinds of proxy |
 | [Storing SSH passwords](docs/en/ssh-password.md) | Connecting to password-authenticated SSH servers from agents, scripts and VS Code (`host-shell ssh-pass`, `host-shell ssh`, `ProxyJump`) |
 | [HTTP proxy through the client](docs/en/client-proxy.md) | Routing target HTTP/HTTPS traffic through the bridge's network |
@@ -262,6 +266,7 @@ flowchart TB
 | 構成 | 経路・仕組み | 参照文書 |
 |---|---|---|
 | 直接または多段の SSH 接続 | `ssh -T [hop1 ssh -T ...] target host-shell --mcp` (`AllowTcpForwarding no` や SFTP 無効環境でも動作) | [利用ガイド](docs/ja/user-guide.md) |
+| MCP を使えないエージェント | `host-shell session start [--detach] -- ssh -T target host-shell --mcp` を起動し、エージェントのシェルから `host-shell call TOOL KEY=VALUE ...` と `host-shell tools` で利用 | [MCP を登録できないエージェントからの CLI での利用](docs/ja/cli-without-mcp.md) |
 | 認証付き HTTP プロキシ経由の SSH 接続 (Tera Term のプロキシ設定に相当) | `~/.ssh/config` の Host ブロックに `ProxyCommand host-shell connect -H user@proxy:port --password-file FILE %h %p` を指定 (HTTP の `CONNECT` と Basic 認証) | [SSH 経路プロキシ](docs/ja/ssh-proxy.md) |
 | 稼働中のコンテナーへの接続 | `[ssh -T host] podman\|docker\|kubectl exec -i <container> host-shell --mcp` | [コンテナーへの接続](docs/ja/container.md) |
 | ファイル直接転送・TCP ポート転送 | `host-shell bridge` (`transfer_push`、`transfer_pull`、`--forward-local`、`--forward-remote`、`--forward-socks`、`forward_open`) | [リファレンス](docs/ja/reference.md#手元との転送-bridge)、[ポート転送](docs/ja/port-forward.md) |
@@ -288,6 +293,7 @@ Table: サポートされる構成
 - **進捗通知とキャンセル**: 長時間コマンド、ダウンロード、ファイル転送の進捗を MCP 通知で送り、エージェントが要求をキャンセルすると処理を停止します。
 - **起動オプションによるポリシー制限**: 既定では接続ユーザーの全権限で動作し、必要に応じて公開ツール グループ、読み取り専用、許可パス、許可コマンド、接続先ホスト、事前確認、機密情報の伏せ字化を起動オプションで制限できます。
 - **エージェント向けの自己記述案内**: 初期化応答、ツール説明、`help_get` ツールにより、利用者が手順を指示しなくてもエージェント自身が適切なツールを選択できます。
+- **MCP を使えないエージェントからのシェルでの利用**: MCP サーバーを登録できない場合は、`host-shell session` が手元で接続を保ち、`host-shell call`・`host-shell tools` でシェルのコマンドから同じツールを使えます。結果はツールの JSON で、`--confirm` のツールは利用者の端末で確認します。
 - **文字コードと改行の自動変換**: Shift_JIS や EUC-JP などのコマンド出力やファイルを接続先側で UTF-8 に変換します。書き込み時の文字コード、BOM、改行コードも指定できます。
 - **単一バイナリ配布**: 外部依存のない単一の実行ファイルを接続先に配置するだけで動作します。
 - **出力上限・タイムアウト・操作ログ**: 大きな出力は先頭と末尾を残して切り詰め、全ツール呼び出しを接続先のログに記録します。
@@ -318,7 +324,8 @@ Table: 提供するツール
 
 | スキル | 内容 |
 |---|---|
-| [`host-shell-connect`](.agents/skills/host-shell-connect/SKILL.md) | SSH またはコンテナー `exec -i` の経路確認、接続先の OS・アーキテクチャー・libc 判定、`host-shell` バイナリ (および任意の `remote-dns` アダプター) の配置、MCP 登録コマンドの生成を行う |
+| [`host-shell-connect`](.agents/skills/host-shell-connect/SKILL.md) | SSH またはコンテナー `exec -i` の経路確認、接続先の OS・アーキテクチャー・libc 判定、`host-shell` バイナリ (および任意の `remote-dns` アダプター) の配置、MCP 登録コマンドの生成 (MCP を使えないエージェントでは `host-shell-cli` への引き継ぎ) を行う |
+| [`host-shell-cli`](.agents/skills/host-shell-cli/SKILL.md) | MCP を使えないエージェントが、準備済みの接続先をシェルのコマンドで使う。`host-shell session` の開始、`host-shell tools` と `host-shell call` によるツールの一覧と呼び出し、セッションの終了を行う |
 | [`host-shell-code-server`](.agents/skills/host-shell-code-server/SKILL.md) | クライアントで `code-server` と既定拡張機能を取得し、接続先へ転送してオフライン導入 (表示言語の設定や `remote-dns` 専用コピー モードを含む)、`127.0.0.1` で起動してローカル転送を開く |
 | [`host-shell-vscode-remote-ssh`](.agents/skills/host-shell-vscode-remote-ssh/SKILL.md) | 手元の VS Code の commit に対応する VS Code Server を取得して Linux 接続先へオフライン配置・固定し、利用者権限の `sshd` (`127.0.0.1:2222`) とローカル転送で手元の `VS Code Remote - SSH` を接続する |
 | [`host-shell-coding-agents`](.agents/skills/host-shell-coding-agents/SKILL.md) | 隔離環境の接続先へ CLI 型 AI コーディング エージェント (Copilot CLI、agy、Claude Code、Codex、Grok) を配置し、クライアント経由 HTTP プロキシと `remote-dns` を使った認証・動作を段階的に確認する |
@@ -371,6 +378,7 @@ GitHub Release には、タグ名の先頭の `v` を残したアーカイブ (`
 | [運用ガイド](docs/ja/operations.md) | セキュリティ設計、制限オプション、専用ユーザーと鍵、起動コマンドの固定、sudo 設定、操作ログ管理 |
 | [リファレンス](docs/ja/reference.md) | 起動オプション、制限 (方針)、MCP 仕様、各ツールの入出力、bridge、プロセス管理、操作ログ形式、制限事項 |
 | [開発ガイド](docs/ja/development.md) | ビルド、ソース構成、設計規約、ツールの追加手順、テスト、リリース |
+| [MCP を登録できないエージェントからの CLI での利用](docs/ja/cli-without-mcp.md) | MCP サーバーを登録できないエージェントからのシェルのコマンドでの利用 (`host-shell session`、`host-shell call`、`host-shell tools`) |
 | [SSH 経路プロキシ](docs/ja/ssh-proxy.md) | 認証付き HTTP プロキシを経由した SSH 接続 (`host-shell connect`) と、3 つのプロキシの区別 |
 | [SSH のパスワードの保存](docs/ja/ssh-password.md) | パスワード認証の SSH サーバーへの、エージェント・スクリプト・VS Code からの接続 (`host-shell ssh-pass`、`host-shell ssh`、`ProxyJump`) |
 | [クライアント経由 HTTP プロキシ](docs/ja/client-proxy.md) | 接続先の HTTP/HTTPS 通信を bridge のネットワークで中継 |

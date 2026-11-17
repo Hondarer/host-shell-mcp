@@ -1,7 +1,7 @@
 <!--
 生成元: agree-before-implement スキル
 文書種別: 検討用 Markdown (discussion)
-最終更新日時: 2026-11-18 02:17:36 JST
+最終更新日時: 2026-11-18 03:05:00 JST
 最終更新エージェント: claude code / セッション ID: session_01KJc53SwZ5UXzt7kJWHJ48p
 稼働 OS: Linux (WSL)
 下流文書: 261118-cli-session-design.md (最終仕様)、261118-cli-session-backlog.md (残課題一覧)。未作成の場合や、削除されている場合があります。
@@ -39,13 +39,13 @@
     - ✅ 3.3. 最終仕様の承認の受付 (第 2 ゲート。最終仕様の版 1 を 2026-11-18 に対話「承認」で承認)
 - 🔄 4. 承認された最終仕様に従った作業の実施
     - ✅ 4.1. Go のツールチェーンの再導入 (`/tmp/go` に go1.27.4。既存のテストがすべて成功)
-    - 🔄 4.2. `host-shell session` (`start`、`status`、`stop`、`list`)、`host-shell call`、`host-shell tools` の実装 (`cmd/host-shell/main.go`、`internal/bridge/` ほか) ← **CURRENT**
-    - ⏸️ 4.3. 標準入力の終端後の応答の扱いの修正 (`--finish-on-eof`。`internal/channel/`、`cmd/host-shell/main.go`、`probe.sh`)
-    - ⏸️ 4.4. 自動テスト (CI の Linux、Windows、macOS)
-    - ⏸️ 4.5. Linux (WSL) の実機での検証 (`claude`、`copilot`、`codex`、`agy`、`grok` からの操作、および CLI 経由での 3 つのスキルの実行) と `261118-cli-session-validation.md` への記録
-    - ⏸️ 4.6. Windows の実機での検証 (`host-shell-mcp-5b` へ依頼。作業ブランチを origin へ push して渡す) と検証記録への追記
-    - ⏸️ 4.7. 新規文書 `docs/ja/cli-without-mcp.md` と英訳 `docs/en/cli-without-mcp.md` の作成、`README.md`、`docs/README.md`、`docs/ja/reference.md`、`docs/ja/development.md`、`docs/ja/user-guide.md` と各英訳への反映
-    - ⏸️ 4.8. スキルの作成・更新 (`host-shell-cli` の新規作成、`host-shell-connect` の最後の段階の分岐、`host-shell-code-server`・`host-shell-vscode-remote-ssh`・`host-shell-coding-agents` の冒頭へのツール名の読み替えの追加)
+    - ✅ 4.2. `host-shell session` (`start`、`status`、`stop`、`list`)、`host-shell call`、`host-shell tools` の実装 (`cmd/host-shell/main.go`、`internal/bridge/` ほか)
+    - ✅ 4.3. 標準入力の終端後の応答の扱いの修正 (`--finish-on-eof`。`internal/channel/`、`cmd/host-shell/main.go`、`probe.sh`)
+    - ✅ 4.4. 自動テスト (CI の Linux、Windows、macOS。921e74d で 3 OS とも成功)
+    - 🔄 4.5. Linux (WSL) の実機での検証 (`claude`、`copilot`、`codex`、`agy`、`grok` からの操作、および CLI 経由での 3 つのスキルの実行) と `261118-cli-session-validation.md` への記録 ← **CURRENT**
+    - ✅ 4.6. Windows の実機での検証 (`host-shell-mcp-5b` へ依頼。作業ブランチを origin へ push して渡す) と検証記録への追記
+    - 🔄 4.7. 新規文書 `docs/ja/cli-without-mcp.md` と英訳 `docs/en/cli-without-mcp.md` の作成、`README.md`、`docs/README.md`、`docs/ja/reference.md`、`docs/ja/development.md`、`docs/ja/user-guide.md` と各英訳への反映
+    - 🔄 4.8. スキルの作成・更新 (`host-shell-cli` の新規作成、`host-shell-connect` の最後の段階の分岐、`host-shell-code-server`・`host-shell-vscode-remote-ssh`・`host-shell-coding-agents` の冒頭へのツール名の読み替えの追加)
     - ⏸️ 4.9. `--help` の更新
     - ⏸️ 4.10. 受入条件への適合確認
     - ⏸️ 4.11. 残課題一覧 (`261118-cli-session-backlog.md`) の整理

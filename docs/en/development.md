@@ -62,7 +62,10 @@ internal/tools/        Tool implementations
   admin.go             Input/output types and shared logic for proc_kill, svc_*, log_query, disk_list
   admin_*.go           OS-specific administration (systemd / journald, Service Control Manager / Event Log)
   registry*.go         reg_read, reg_write, reg_delete (Windows)
-internal/bridge/       host-shell bridge (local relay, transfer_push, transfer_pull, proxy and forward tools)
+internal/bridge/       host-shell bridge (local relay (Relay: one target shared by several clients), transfer_push, transfer_pull, proxy and forward tools)
+internal/session/      host-shell session (resident relay, Unix domain socket, detaching, confirmation in the terminal, status, stop, list)
+internal/cli/          host-shell call and host-shell tools (argument conversion by the input schema, output, exit codes)
+internal/ownerdir/     Directories only the current user can use (session sockets, proxy URL file)
 internal/channel/      Multiplexed channel over SSH stdio (feature negotiation, bidirectional streams, flow control) and parts shared by the features on top of it (answering and relaying connections, mapping failure codes to reasons, status-tool history and output types)
 internal/clientproxy/  HTTP proxy through the client (bridge-side destination checks and connections from the bridge, target-side authenticated proxy)
 internal/forward/      Port forwarding (persistent forward syntax, bridge listeners, SOCKS5 and forward_*, target-side connections and listeners)
@@ -102,7 +105,7 @@ docs/en/               English documentation (translations of docs/ja/)
 
 Follow these rules when modifying the codebase.
 
-- **Never write to standard output**: Standard output is reserved for MCP JSON-RPC messages. Write diagnostic logs to standard error (`log` package) and operation records to the `audit` package.
+- **Never write to standard output**: With `--mcp` and `bridge`, standard output is reserved for MCP JSON-RPC messages (local subcommands such as `session`, `call` and `tools` print their results to standard output). Write diagnostic logs to standard error (`log` package) and operation records to the `audit` package.
 - **Never inherit standard I/O in child processes**: Do not pass `os.Stdin` or `os.Stdout` to `Stdin`, `Stdout`, or `Stderr` of `exec.Cmd`. Always spawn child processes via `proc.Command` or `proc.Run`.
 - **Enforce output size limits**: Cap tool output around `--max-output` using the `limit` package or entry count limits, and indicate truncation via fields such as `truncated`.
 - **Redact sensitive arguments in audit logs**: For arguments that must not be logged in full (such as written file content or standard input), implement `AuditArgs() any` (`audit.Redactor`) on the input type.
@@ -148,6 +151,7 @@ Format error messages as a single sentence stating both cause and remedy (for ex
 Tests in `internal/server` connect a server and client over in-memory transports (`mcp.NewInMemoryTransports`) to exercise each tool. Use `connectWith` to configure policies and client capabilities (elicitation and progress notifications).  
 Test helpers used across packages (`Call` for tool calls, `ToolNames` and `ToolSet` for tool lists, `FreePort` for unused ports, `WaitFor` for polling, `Main` for test binaries that run `exec_sudo`, and more) live in `internal/testutil`; do not reimplement them in individual tests.  
 Tests in `internal/bridge` connect an agent, `bridge`, and target `host-shell` over in-memory transports to verify relaying and file transfers.  
+Tests in `internal/session` run a session on its socket against an in-memory target to verify confirmation, progress routing and cancellation. Tests in `internal/cli` start the test binary itself again as the target (in place of `host-shell --mcp`) and as a detached session, and run `call`, `tools` and `session` as commands. Because the macOS temporary directory is too long for socket paths, these tests set `HOST_SHELL_SESSION_DIR` to a short directory.  
 For tools with OS-dependent behavior, branch test commands on `runtime.GOOS`, and skip (rather than fail) tests when required system services are absent (such as `svc_list` in a container without systemd).
 
 On Linux, Windows-specific code can be checked statically via `make vet` (`GOOS=windows go vet`). After modifying files such as `proc_windows.go`, run `go test ./...` on Windows or in CI.  

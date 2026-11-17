@@ -62,7 +62,10 @@ internal/tools/        各ツールの実装
   admin.go             proc_kill、svc_*、log_query、disk_list の入出力定義と共通処理
   admin_*.go           OS 別管理実装 (systemd / journald、サービス コントロール マネージャー / イベント ログ)
   registry*.go         reg_read、reg_write、reg_delete (Windows)
-internal/bridge/       host-shell bridge (ローカル中継、transfer_push、transfer_pull、転送・プロキシ ツールの公開)
+internal/bridge/       host-shell bridge (ローカル中継 (Relay: 1 つの接続先を複数のクライアントで共用)、transfer_push、transfer_pull、転送・プロキシ ツールの公開)
+internal/session/      host-shell session (中継の常駐、Unix ドメイン ソケットでの待ち受け、切り離し、端末での確認、状態・停止・一覧)
+internal/cli/          host-shell call、host-shell tools (入力スキーマによる引数の変換、結果の出力、終了コード)
+internal/ownerdir/     本人だけが使えるディレクトリの作成と確認 (セッションのソケット、プロキシの URL ファイル)
 internal/channel/      SSH stdio 上の多重化チャネル (機能ネゴシエーション、双方向ストリーム、フロー制御) と、その上の機能が共有する部品 (接続の応答と中継、失敗コードと理由の対応、状態ツールの履歴と出力型)
 internal/clientproxy/  クライアント経由 HTTP プロキシ (bridge 側の宛先検査と bridge からの接続、接続先側の認証付きプロキシ)
 internal/forward/      ポート転送 (常設転送の書式解析、bridge 側の待ち受け・SOCKS5・forward_*、接続先側の発信と待ち受け)
@@ -102,7 +105,7 @@ docs/en/               文書の英語版 (docs/ja/ の英訳)
 
 実装を変更する際は、次の規約を遵守してください。
 
-- **標準出力への書き込み禁止**: 標準出力は MCP の JSON-RPC 通信専用です。診断ログは標準エラー (`log` パッケージ)、操作記録は `audit` パッケージへ出力します。
+- **標準出力への書き込み禁止**: `--mcp` と `bridge` では、標準出力は MCP の JSON-RPC 通信専用です (`session`、`call`、`tools` などのローカルのサブコマンドは結果を標準出力に出力します)。診断ログは標準エラー (`log` パッケージ)、操作記録は `audit` パッケージへ出力します。
 - **子プロセスへの標準入出力の継承禁止**: `exec.Cmd` の `Stdin`、`Stdout`、`Stderr` に `os.Stdin`、`os.Stdout` を渡さないでください。子プロセスの起動には必ず `proc.Command` または `proc.Run` を使用します。
 - **出力サイズの上限設定**: ツールの出力は `limit` パッケージまたは件数上限により `--max-output` 程度に収め、切り詰めた場合は `truncated` フィールド等で明示します。
 - **機密引数のログ出力抑制**: 書き込み内容や標準入力など操作ログに残すべきでない引数は、入力型に `AuditArgs() any` (`audit.Redactor`) を実装してマスクします。
@@ -148,6 +151,7 @@ add(r, groupFiles, &mcp.Tool{
 `internal/server` のテストは、インメモリ トランスポート (`mcp.NewInMemoryTransports`) でサーバーとクライアントを接続して各ツールを呼び出します。`connectWith` でポリシーとクライアント設定 (elicitation、進捗通知の受信) を指定できます。  
 パッケージをまたいで使うテスト用ヘルパー (ツール呼び出しの `Call`、ツール名一覧の `ToolNames` と `ToolSet`、空きポートの `FreePort`、条件待ちの `WaitFor`、`exec_sudo` を使うテスト バイナリ向けの `Main` など) は `internal/testutil` に置き、各テストで再実装しないでください。  
 `internal/bridge` のテストは、「エージェント - bridge - 接続先 host-shell」の 3 者をインメモリ トランスポートで接続し、中継とファイル転送を検証します。  
+`internal/session` のテストは、インメモリの接続先に対してセッションをソケットで動かし、確認、進捗の届け先、キャンセルを検証します。`internal/cli` のテストは、テスト バイナリ自身を接続先 (`host-shell --mcp` の代わり) と切り離したセッションとして再起動し、`call`、`tools`、`session` をコマンドとして検証します。macOS の一時ディレクトリはソケットのパスには長すぎるため、これらのテストは `HOST_SHELL_SESSION_DIR` に短いディレクトリを指定します。  
 OS ごとに挙動が異なるツールは `runtime.GOOS` でテスト用コマンドを切り替え、実行環境に存在しない機能 (systemd のないコンテナー環境での `svc_list` など) は失敗とせずスキップしてログに記録します。
 
 Linux 開発機では、Windows 向け実装は `make vet` (`GOOS=windows go vet`) による静的検査まで確認できます。`proc_windows.go` などを変更した場合は Windows 実機または CI で `go test ./...` を実行してください。  
