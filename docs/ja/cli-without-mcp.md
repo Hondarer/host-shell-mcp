@@ -224,8 +224,7 @@ Table: トラブルシューティング
 | 項目 | 方法・環境 | 状態 |
 | --- | --- | --- |
 | 引数の変換、セッションの開始・状態・一覧・停止、同じ名前のセッションの拒否、残ったソケットの片付け、ディレクトリの権限の確認、`--idle-timeout`、`--detach` (失敗時のログの出力を含む)、確認 (端末での承認・拒否・取り下げ、端末のないセッションでの拒否、クライアントが渡した答えを渡さないこと)、複数の呼び出しの並行と進捗の届け先、キャンセル (割り込みとプロセスの終了)、接続先の切断、`--finish-on-eof`、終了コード | 自動テスト。CI (GitHub Actions の ubuntu-latest、windows-latest、macos-latest) と Linux (WSL、Oracle Linux 8.10、go1.27.4、`-race` を含む) | 検証済 |
-| エージェントからの操作 (MCP なし、`host-shell-cli` スキル): `--detach` での開始、`tools`、`exec_run`、`fs_write`・`fs_read`、`job_start`・`job_read`、`transfer_push`、`session stop` | 手元は Linux (WSL、Oracle Linux 8.10、OpenSSH 8.0p1)、接続先は Oracle Linux 10.2 のコンテナー (Podman 4.9.4、OpenSSH 9.9p1、`ssh -T`)。Claude Code 2.1.326、GitHub Copilot CLI 1.0.112、Codex CLI 0.169.0 (sandbox の `workspace-write`。全段階を 1 回のシェルの呼び出しで実行)、Grok 1.0.77。いずれも `host-shell` だけを許可する設定 | 検証済 |
-| agy からの操作 | なし | 未検証 |
+| エージェントからの操作 (MCP なし、`host-shell-cli` スキル): `--detach` での開始、`tools`、`exec_run`、`fs_write`・`fs_read`、`job_start`・`job_read`、`transfer_push`、`session stop` | 手元は Linux (WSL、Oracle Linux 8.10、OpenSSH 8.0p1)、接続先は Oracle Linux 10.2 のコンテナー (Podman 4.9.4、OpenSSH 9.9p1、`ssh -T`)。Claude Code 2.1.326、GitHub Copilot CLI 1.0.112、Codex CLI 0.169.0 (sandbox の `workspace-write`。全段階を 1 回のシェルの呼び出しで実行)、Grok 1.0.77。いずれも `host-shell` だけを許可する設定。agy 1.5.10 (承認を一律に省略する `--dangerously-skip-permissions`) | 検証済 |
 | `code-server`、`VS Code Remote - SSH`、CLI 型 AI コーディング エージェントの各スキルの手順の `host-shell call` での実行 (転送したポートへの HTTP 要求、転送したポートへの `ssh` での接続、クライアント経由 HTTP プロキシと名前解決の中継を含む) | 上記の Linux (WSL) とコンテナー。Claude Code 2.1.326 (MCP なし)。code-server 4.144.0、VS Code Server 1.146.0、grok 1.0.77 | 検証済 |
 | ブラウザーでの code-server の画面、手元の VS Code からの接続、CLI 型 AI コーディング エージェントの認証と推論 (CLI での利用) | なし | 未検証 |
 | 前面のセッションの端末での確認 (承認・拒否) | Linux (WSL) の疑似端末。Windows 11 Pro for Workstations (ビルド 26300、PowerShell 7.7.0) の端末で利用者が操作 | 検証済 |

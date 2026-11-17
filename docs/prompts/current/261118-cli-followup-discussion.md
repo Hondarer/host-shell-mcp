@@ -1,7 +1,7 @@
 <!--
 生成元: agree-before-implement スキル
 文書種別: 検討用 Markdown (discussion)
-最終更新日時: 2026-11-18 03:45:00 JST
+最終更新日時: 2026-11-18 05:50:00 JST
 最終更新エージェント: claude code / セッション ID: session_01KJc53SwZ5UXzt7kJWHJ48p
 稼働 OS: Linux (WSL)
 上流文書: 261118-cli-session-backlog.md (対策元の残課題一覧。BL-001〜BL-003)
@@ -31,15 +31,15 @@
 - ✅ 2. 前提合意と残懸念の解消 (第 1 ゲート)
     - ✅ 2.1. 全論点に対する未解決事項および質問の解消確認
     - ✅ 2.2. 方針・前提条件の合意確定
-- 🔄 3. 最終仕様の作成と承認の受付
+- ✅ 3. 最終仕様の作成と承認の受付
     - ✅ 3.1. `261118-cli-followup-design.md` の作成 (対策元 `backlog.md` の状態を「対応中」に更新)
     - ✅ 3.2. 受入条件と整合性の確認
-    - 🚫 3.3. 最終仕様の承認の受付 (第 2 ゲート)。ユーザーの承認待ち ← **CURRENT**
-- ⏸️ 4. 承認された最終仕様に従った作業の実施
-    - ⏸️ 4.1. BL-002: スクリプトのモードの変更と CI の検査 (範囲は [Q-002](#q-002-実行権限の修正の範囲))。完了時に対策元 `backlog.md` を更新
-    - ⏸️ 4.2. BL-003: `.agents/skills/host-shell-code-server/SKILL.md`、`docs/ja/code-server.md` と英訳の記述の修正。完了時に対策元 `backlog.md` を更新
-    - ⏸️ 4.3. BL-001: agy での検証 (`--dangerously-skip-permissions` での非対話実行。[Q-001](#q-001-agy-での検証の方法))、検証記録への追記、`docs/ja/cli-without-mcp.md` と英訳の検証済みの範囲の更新。完了時に対策元 `backlog.md` を更新
-    - ⏸️ 4.4. CI での確認 (作業ブランチ `feature/cli-followup` のプル リクエスト)
+    - ✅ 3.3. 最終仕様の承認の受付 (第 2 ゲート)
+- 🔄 4. 承認された最終仕様に従った作業の実施
+    - ✅ 4.1. BL-002: スクリプトのモードの変更と CI の検査 (範囲は [Q-002](#q-002-実行権限の修正の範囲))。完了時に対策元 `backlog.md` を更新
+    - ✅ 4.2. BL-003: `.agents/skills/host-shell-code-server/SKILL.md`、`docs/ja/code-server.md` と英訳の記述の修正。完了時に対策元 `backlog.md` を更新
+    - ✅ 4.3. BL-001: agy での検証 (`--dangerously-skip-permissions` での非対話実行。[Q-001](#q-001-agy-での検証の方法))、検証記録への追記、`docs/ja/cli-without-mcp.md` と英訳の検証済みの範囲の更新。完了時に対策元 `backlog.md` を更新
+    - 🔄 4.4. CI での確認 (作業ブランチ `feature/cli-followup` のプル リクエスト) ← **CURRENT**
     - ⏸️ 4.5. 受入条件への適合確認
     - ⏸️ 4.6. 残課題一覧の整理 (対策元 `backlog.md` の全項目の最終状態の確認。残件がなければ両案件の記録を `docs/prompts/past/` へ移す)
 - ⏸️ 5. 成果物の承認の受付 (第 3 ゲート)
@@ -258,7 +258,7 @@ B: 経路の最後の SSH ホスト名 (例: target)。コンテナーの場合�
 
 検討用 Markdown の合意版 (第 1 ゲート): 版 2
 
-最終仕様 (design.md) の合意版 (第 2 ゲート): 未承認
+最終仕様 (design.md) の合意版 (第 2 ゲート): 版 1 (2026-11-18 承認、Tetsuo Honda)
 
 更新予定の成果物: `261118-cli-followup-design.md` の「更新する成果物」のとおり
 

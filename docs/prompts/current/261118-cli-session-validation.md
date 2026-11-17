@@ -1,7 +1,7 @@
 <!--
 生成元: agree-before-implement スキル (検証記録)
 文書種別: 検証記録 (validation)
-最終更新日時: 2026-11-18 03:10:00 JST
+最終更新日時: 2026-11-18 05:45:00 JST
 最終更新エージェント: claude code / セッション ID: session_01KJc53SwZ5UXzt7kJWHJ48p
 稼働 OS: Linux (WSL)
 上流文書: 261118-cli-session-discussion.md (検討用 Markdown)、261118-cli-session-design.md (最終仕様)。削除されている場合があります。
@@ -52,7 +52,7 @@ Table: 自動テスト
 | GitHub Copilot CLI | 1.0.112 | `--disable-builtin-mcps`、`host-shell` を `PATH` に置き `--allow-tool "shell(host-shell)"` | 7 段階すべて成功。実行ファイルのパスを直接許可する設定では、パスの承認が別に必要で失敗した。また、`sleep` を挟んだ呼び出しが許可の範囲外で止まったため、スキルに「`job_read` の `wait_sec` で待つ」「1 回の呼び出しで `host-shell` のコマンドを 1 つ」と追記して再実行した |
 | Codex CLI | 0.169.0 | `codex exec -s workspace-write` (sandbox あり)、ネットワークと `HOST_SHELL_SESSION_DIR` への書き込みを許可 | 7 段階すべて成功。ただし、sandbox がコマンドの終了時に子孫のプロセスを終了させるため、`--detach` のセッションがシェルの呼び出しをまたいで残らず、Codex は全段階を 1 回の呼び出しで実行した (文書の制限に記載) |
 | Grok | 1.0.77 | `--allow "Bash(<host-shell のパス>:*)"` | 7 段階すべて成功 |
-| agy | 1.5.10 | なし | 未検証。非対話の実行で限定的な許可を与えるオプションがなく、承認を一律に省略するオプションは使えないため |
+| agy | 1.5.10 | `agy -p ... --dangerously-skip-permissions` (承認を一律に省略。継続案件 261118-cli-followup で利用者が許可) | 7 段階すべて成功 (継続案件 261118-cli-followup で追加。手元と接続先の `host-shell` を 962fbb5 に更新して実行。所要 92 秒)。今回は作業環境に拒否されなかった。接続先のファイル (`written by agy`、19 バイト) と、停止後の `session list` が空であることを別に確認した |
 
 Table: エージェントからの操作
 
@@ -94,5 +94,4 @@ Table: Windows の実機
 ## 未検証
 
 - macOS の実機 (自動テストは CI で成功)。
-- agy からの操作。
 - Windows の実機での ssh 経由の接続先 (同じ機械の `host-shell.exe --mcp` を接続先として確認)。Windows のエージェント (Windows 側の Claude Code) が自身のシェルから `--detach` で開始したセッションが、別のシェルの呼び出しでも使えることは確認済み。
