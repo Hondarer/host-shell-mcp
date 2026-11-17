@@ -282,6 +282,8 @@ C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe --mcp --windows-shel
 
 ## Registering with the agent
 
+Agents that cannot register MCP servers, for example because of an organization policy, can use the same tools through shell commands. See [Using host-shell from agents without MCP](cli-without-mcp.md).
+
 For registration commands targeting `host-shell` inside a container, see [Connecting into containers](container.md#registration-commands).
 
 ### Claude Code
@@ -361,11 +363,11 @@ Any MCP client supporting `stdio` servers can register `host-shell bridge -- ssh
 
 ### Without an agent
 
-Send a single `initialize` request and verify that a JSON-RPC response is returned (`sleep` keeps standard input open until the response arrives):
+Send a single `initialize` request and verify that a JSON-RPC response is returned. With `--finish-on-eof`, host-shell writes the response before it exits at the end of standard input (without it, the end of standard input counts as an SSH disconnect: host-shell exits with status 1 without answering).
 
 ```bash
-(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"check","version":"0"}}}'; sleep 2) \
-    | ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"check","version":"0"}}}' \
+    | ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp --finish-on-eof
 ```
 
 A single line matching `{"jsonrpc":"2.0","id":1,"result":{...,"serverInfo":{"name":"host-shell",...}}}` confirms normal operation. If any text appears before that line, see [Keep the target shell quiet](#keep-the-target-shell-quiet).

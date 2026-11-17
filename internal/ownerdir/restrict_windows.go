@@ -1,8 +1,10 @@
-package clientproxy
+package ownerdir
 
 import "golang.org/x/sys/windows"
 
-func secureDir(path string) error {
+// Restrict replaces the DACL of the directory at path with a protected one that grants full
+// access to the current user only; files created inside inherit it.
+func Restrict(path string) error {
 	token, err := windows.OpenCurrentProcessToken()
 	if err != nil {
 		return err
@@ -22,3 +24,5 @@ func secureDir(path string) error {
 	}
 	return windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, acl, nil)
 }
+
+func check(path string) error { return Restrict(path) }

@@ -27,6 +27,7 @@
 - [Windows のレジストリ](#windows-のレジストリ)
 - [手元との転送 (bridge)](#手元との転送-bridge)
 - [SSH 経路プロキシ (connect)](#ssh-経路プロキシ-connect)
+- [シェルからの利用 (session、call、tools)](#シェルからの利用-sessioncalltools)
 - [プロセスの起動と終了](#プロセスの起動と終了)
 - [操作ログ](#操作ログ)
 - [制限事項](#制限事項)
@@ -41,6 +42,9 @@ host-shell bridge [bridge-options] -- COMMAND...  (ローカル)
 host-shell connect [options] -H PROXY HOST PORT   (ローカル、ssh の ProxyCommand)
 host-shell ssh-pass set|delete|list|dir [USER@HOST]  (ローカル、SSH のパスワードの保存)
 host-shell ssh|scp [引数...]                     (ローカル、保存したパスワードを使う ssh・scp)
+host-shell session start|status|stop|list [...]  (ローカル、MCP を使わないエージェント向けのセッション)
+host-shell call TOOL [KEY=VALUE ...]             (ローカル、セッションのツールの呼び出し)
+host-shell tools [--schema] [TOOL ...]           (ローカル、セッションのツールの一覧)
 host-shell --version
 ```
 
@@ -48,6 +52,7 @@ host-shell --version
 `bridge` はローカル側で接続先の `host-shell` を中継するサブコマンドです ([手元との転送 (bridge)](#手元との転送-bridge) を参照)。  
 `connect` は、SSH 接続を SSH 経路プロキシ (HTTP の `CONNECT`) 経由で中継する `ssh` の `ProxyCommand` 用のサブコマンドです ([SSH 経路プロキシ (connect)](#ssh-経路プロキシ-connect) を参照)。  
 `ssh-pass` は、パスワード認証の SSH サーバー向けにパスワードを保存するサブコマンドです。`bridge` (が起動する `ssh`) と `host-shell ssh` は、保存したパスワードを `SSH_ASKPASS` で `ssh` へ渡します。`host-shell ssh`・`host-shell scp` は `ssh`・`scp` の代わりに使うラッパーで、実行ファイルを `ssh`・`scp` という名前で置くとサブコマンドなしで同じ動作になります (VS Code の `remote.SSH.path` 用)。詳細は [SSH のパスワードの保存 (ssh-pass)](ssh-password.md) を参照してください。  
+`session`、`call`、`tools` は、MCP サーバーを登録できないエージェントがシェルのコマンドで接続先のツールを使うためのサブコマンドです ([シェルからの利用 (session、call、tools)](#シェルからの利用-sessioncalltools) を参照)。  
 `--mcp`、`bridge`、`--version` のいずれも指定しない場合は、使い方を標準エラーに出力して終了コード 2 で終了します。
 
 ### オプション
@@ -56,6 +61,7 @@ host-shell --version
 |---|---|---|---|
 | `--mcp` | なし | | MCP サーバーとして標準入出力で待ち受ける |
 | `--version` | なし | | バージョンを標準出力に出力して終了する |
+| `--finish-on-eof` | なし | | 標準入力の終端に達したとき、読み取り済みの要求の応答をすべて書いてから終了する ([入出力と終了](#入出力と終了)) |
 | `--log-file` | パス | [操作ログ](#操作ログ) を参照 | 操作ログの基準パス (拡張子の直前に日付を挿入したファイルへ出力) |
 | `--no-log` | なし | | 操作ログを記録しない (`--log-file` より優先) |
 | `--max-output` | バイト数 (1024 以上) | `65536` | 1 出力あたりのサイズ上限 |
@@ -95,7 +101,9 @@ Table: 起動オプション
 | 標準出力 | MCP の JSON-RPC メッセージのみを出力する (それ以外は一切出力しない) |
 | 標準エラー | 起動失敗などの診断メッセージを出力する |
 | 作業ディレクトリ | 起動時のカレント ディレクトリ (SSH 経由時は通常ユーザーのホーム ディレクトリ) |
-| 正常終了 | 標準入力のクローズ (SSH 切断) または SIGINT・SIGTERM 受信時 (終了コード 0) |
+| 標準入力の終端 | 既定では SSH の切断として扱い、処理中の要求をキャンセルして終了する。`--finish-on-eof` を指定した場合は、読み取り済みの要求の応答をすべて書いてから終了する (各ツールのタイムアウトまで待つ) |
+| 正常終了 | 標準入力の終端、または SIGINT・SIGTERM 受信時 (終了コード 0) |
+| 異常終了 | 応答を書いていない要求を残して標準入力の終端に達した場合は、件数を標準エラーに出力して終了コード 1 で終了する |
 | 終了時処理 | 実行中の全ジョブとコマンドを停止し、ポート転送・クライアント経由 HTTP プロキシ・名前解決 (`remote-dns`) の待ち受けを閉じる (プロキシの URL ファイルおよび `remote-dns` の一時ディレクトリも削除する) |
 
 Table: 入出力と終了
@@ -149,6 +157,7 @@ Table: --tools の例
 - その他の対応プロトコル バージョンのクライアントには、SDK が `elicitation/create` を送信して回答を受け取り、処理を継続します。
 - クライアントが elicitation 非対応の場合は実行せずにエラーを返します。
 - 確認要求の発生は操作ログに `<ツール名> (confirmation requested)` として記録されます。
+- [シェルからの利用](#シェルからの利用-sessioncalltools) では、前面で起動したセッションがその端末で利用者に確認します。切り離したセッションと端末のないセッションでは、対象のツールはエラーになります。
 
 ### ファイルの場所 (--allow-path、--allow-read-path)
 
@@ -1611,6 +1620,33 @@ host-shell connect [-d] [-w SECONDS] [--password-file PATH] -H [http://][USER@]P
 Table: host-shell connect の概要
 
 Host ブロックの書き方、資格情報とパスワード ファイルの権限、Tera Term の設定との対応、検証済みの範囲は [SSH 経路プロキシ](ssh-proxy.md) を参照してください。
+
+## シェルからの利用 (session、call、tools)
+
+MCP サーバーを登録できないエージェントが、シェルのコマンドで接続先のツールを使うためのサブコマンドです。`session start` が手元で `bridge` と同じ中継を常駐させ、Unix ドメイン ソケットで MCP を待ち受けます。`call` と `tools` は、実行のたびにソケットでセッションに接続します。手順、確認が必要なツールの扱い、検証済みの範囲は [MCP を登録できないエージェントからの CLI での利用](cli-without-mcp.md) を参照してください。
+
+```text
+host-shell session start [--name NAME] [--detach] [--idle-timeout DURATION] [bridge-options] -- COMMAND...
+host-shell session status [--name NAME]
+host-shell session stop [--name NAME]
+host-shell session list
+host-shell call TOOL [--session NAME] [--json FILE] [--quiet] [KEY=VALUE ...]
+host-shell tools [--session NAME] [--schema] [--instructions] [TOOL ...]
+```
+
+| 項目 | 内容 |
+| --- | --- |
+| `session start` | `bridge` のオプションをすべて受け付ける。`--name` (既定 `default`。英数字、`.`、`_`、`-` の 1〜32 文字)、`--detach` (切り離して起動し、接続できた時点で状態を JSON で出力して戻る。失敗時はログを標準エラーに出力して終了コード 1)、`--idle-timeout` (クライアントの接続がない状態が続いたら終了。既定は終了しない) |
+| `session status`、`stop`、`list` | `status` は状態を 1 行の JSON で、`list` は動作中のセッションを 1 行に 1 つ出力する。`stop` は終了を要求し、終了するまで待つ。`--name` の既定は環境変数 `HOST_SHELL_SESSION`、それもなければ `default` |
+| `call` | `TOOL` は `call` の直後に置く。引数は `KEY=VALUE` (入力スキーマの型に変換。文字列の配列は繰り返しで要素を追加)、`KEY=@FILE` (ファイルの内容)、`--json FILE` (`-` は標準入力)。結果のツールの JSON を 1 行で標準出力に、進捗を標準エラーに出力する。割り込みで接続先の処理をキャンセルする |
+| `call` の終了コード | 0 成功、1 ツールのエラー、2 使い方の誤り (未知のツール・引数を含む)、3 セッションに接続できない・接続が切れた、130 割り込み |
+| `tools` | ツール名と説明の最初の文を 1 行に 1 つ出力する。`--schema` は説明の全文と入力スキーマを JSON で、`--instructions` はエージェントへの案内を出力する |
+| 確認 (`--confirm`) | 前面で起動し、標準入力と標準エラーが端末であるセッションが、その端末で尋ねる。それ以外のセッションでは対象のツールをエラーにする。クライアントが添えた答えは接続先へ渡さない |
+| ソケット | `$XDG_RUNTIME_DIR/host-shell/sessions` (Linux)、一時ディレクトリの `host-shell-UID/sessions` (Linux で `XDG_RUNTIME_DIR` がない場合)、`/tmp/host-shell-UID/sessions` (macOS)、`%LOCALAPPDATA%\host-shell\sessions` (Windows)。`HOST_SHELL_SESSION_DIR` で変更できる。本人だけが使える権限で作り、他の利用者が使えるディレクトリは拒否する |
+
+Table: host-shell session、call、tools の概要
+
+`session`、`call`、`tools` は結果を標準出力に出力します。標準出力を MCP の通信だけに使うのは `--mcp` と `bridge` です。
 
 ## プロセスの起動と終了
 

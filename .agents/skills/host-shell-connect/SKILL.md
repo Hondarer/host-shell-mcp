@@ -1,11 +1,11 @@
 ---
 name: host-shell-connect
-description: Deploy, update, or verify host-shell (an MCP server running on the SSH target or inside a podman, docker or Kubernetes container) over SSH or container exec, and prepare the agent registration command. Use for requests such as "put host-shell on target", "make target operable over MCP through hop1", "put host-shell into the web container", or "update host-shell".
+description: Deploy, update, or verify host-shell (an MCP server running on the SSH target or inside a podman, docker or Kubernetes container) over SSH or container exec, and prepare the agent registration command, or the host-shell session command for agents that cannot use MCP. Use for requests such as "put host-shell on target", "make target operable over MCP through hop1", "put host-shell into the web container", or "update host-shell".
 ---
 
 # Preparing a host-shell connection
 
-Deploy `host-shell` to the target machine or container, verify that it starts as an MCP server over the SSH route or container exec, and prepare the agent registration command.  
+Deploy `host-shell` to the target machine or container, verify that it starts as an MCP server over the SSH route or container exec, and prepare how the agent connects to it: an MCP registration command, or, for agents that cannot use MCP, a `host-shell session` command (the `host-shell-cli` skill).  
 Do not start the MCP server in this skill; the agent starts it after registration.
 
 Below, `$SKILL` refers to the directory containing `SKILL.md` (`.agents/skills/host-shell-connect` in the repository).
@@ -205,10 +205,17 @@ On Linux, a line about the remote DNS adapter precedes the final line. Keep it f
 
 `probe.sh` printing `OK:` with tool names such as `sys_get_info` confirms the server works.  
 If startup options will be used at registration, append the same options to `probe.sh` to verify them.  
-If `NG:` is printed, follow the error message. On high-latency routes, retry with `PROBE_WAIT=15`.  
+If `NG:` is printed, follow the error message.  
 An `open audit log` error means the audit log path is not writable; specify a writable path with `--log-file` or disable logging with `--no-log`.
 
 ### Presenting the registration command
+
+Choose how the agent connects:
+
+- **MCP**: the agent can register MCP servers. Continue with this section.
+- **Shell commands**: the agent cannot use MCP servers, for example because an organization policy disables them, but can run shell commands. Continue with the `host-shell-cli` skill (`.agents/skills/host-shell-cli`). Its `host-shell session start` command takes the same options and COMMAND as the `bridge` registration below. The optional features at the end of this skill apply to it in the same way.
+
+If it is unclear which applies, ask the user.
 
 Present the registration command and configuration examples to the user; run registration commands only if the user asks.
 
@@ -291,7 +298,7 @@ When finished, report the following items together:
 - Installation path, version, SHA-256, and whether the binary was newly deployed (`deployed`) or already current (`up to date`)
 - On Linux, the `dns adapter` result (path, or why it is unavailable)
 - `probe.sh` result (version and number of published tools)
-- Registration command (with or without `bridge` and any restriction options) and how to reload the MCP server
+- Registration command (with or without `bridge` and any restriction options) and how to reload the MCP server, or, without MCP, the `host-shell session start` command and the session state (`host-shell-cli` skill)
 
 ## Optional client HTTP proxy
 

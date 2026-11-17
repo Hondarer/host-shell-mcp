@@ -283,6 +283,8 @@ C:/Users/alice/AppData/Local/Temp/host-shell/host-shell.exe --mcp --windows-shel
 
 ## エージェントへの登録
 
+組織のポリシーなどで MCP サーバーを登録できないエージェントは、シェルのコマンドで同じツールを使えます。[MCP を登録できないエージェントからの CLI での利用](cli-without-mcp.md) を参照してください。
+
 コンテナー内の `host-shell` を登録するコマンドについては、[コンテナーへの接続](container.md#登録コマンド) を参照してください。
 
 ### Claude Code
@@ -362,11 +364,11 @@ MCP の stdio サーバーに対応する任意のエージェントで同様に
 
 ### エージェントを使わずに確かめる
 
-初期化リクエストを 1 行送り、JSON-RPC 応答が返ることを確認します (標準入力が即座に閉じると応答前に終了するため `sleep` を挟みます)。
+初期化リクエストを 1 行送り、JSON-RPC 応答が返ることを確認します。`--finish-on-eof` を付けると、標準入力が閉じても応答を書いてから終了します (付けない場合は、標準入力の終端を SSH の切断として扱い、応答せずに終了コード 1 で終了します)。
 
 ```bash
-(printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"check","version":"0"}}}'; sleep 2) \
-    | ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"check","version":"0"}}}' \
+    | ssh -T hop1 ssh -T target /tmp/host-shell-1000/host-shell --mcp --finish-on-eof
 ```
 
 `{"jsonrpc":"2.0","id":1,"result":{...,"serverInfo":{"name":"host-shell",...}}}` が 1 行返れば正常です。この行より前に別の文字列が出力される場合は、[接続先のシェルが余計な出力をしない](#接続先のシェルが余計な出力をしない) を確認してください。

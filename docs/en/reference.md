@@ -27,6 +27,7 @@ For setup and usage examples, see the [User Guide](user-guide.md); for security 
 - [Windows registry](#windows-registry)
 - [Transfer with the local machine (bridge)](#transfer-with-the-local-machine-bridge)
 - [SSH route proxy (connect)](#ssh-route-proxy-connect)
+- [Use from the shell (session, call, tools)](#use-from-the-shell-session-call-tools)
 - [Starting and ending processes](#starting-and-ending-processes)
 - [Audit log](#audit-log)
 - [Limitations](#limitations)
@@ -41,6 +42,9 @@ host-shell bridge [bridge-options] -- COMMAND...  (local)
 host-shell connect [options] -H PROXY HOST PORT   (local, ProxyCommand of ssh)
 host-shell ssh-pass set|delete|list|dir [USER@HOST]  (local, stores SSH passwords)
 host-shell ssh|scp [ARGS...]                     (local, ssh and scp with the stored passwords)
+host-shell session start|status|stop|list [...]  (local, sessions for agents without MCP)
+host-shell call TOOL [KEY=VALUE ...]             (local, calls a tool of a session)
+host-shell tools [--schema] [TOOL ...]           (local, lists the tools of a session)
 host-shell --version
 ```
 
@@ -48,6 +52,7 @@ host-shell --version
 `bridge` is a local relay subcommand that connects to `host-shell` on the target (see [Transfer with the local machine (bridge)](#transfer-with-the-local-machine-bridge)).  
 `connect` is a subcommand for the `ProxyCommand` of `ssh` that relays the SSH connection through an SSH route proxy (HTTP `CONNECT`) (see [SSH route proxy (connect)](#ssh-route-proxy-connect)).  
 `ssh-pass` is a subcommand that stores passwords for password-authenticated SSH servers. `bridge` (for the `ssh` it starts) and `host-shell ssh` pass the stored passwords to `ssh` through `SSH_ASKPASS`. `host-shell ssh` and `host-shell scp` are wrappers used in place of `ssh` and `scp`; the executable placed under the names `ssh` and `scp` behaves the same without the subcommand (for VS Code's `remote.SSH.path`). See [Storing SSH passwords (ssh-pass)](ssh-password.md).  
+`session`, `call` and `tools` let agents that cannot register MCP servers use the target's tools through shell commands (see [Use from the shell (session, call, tools)](#use-from-the-shell-session-call-tools)).  
 If none of `--mcp`, `bridge`, or `--version` is specified, `host-shell` prints usage information to standard error and exits with code 2.
 
 ### Options
@@ -56,6 +61,7 @@ If none of `--mcp`, `bridge`, or `--version` is specified, `host-shell` prints u
 |---|---|---|---|
 | `--mcp` | None | | Run as an MCP server over standard input and output |
 | `--version` | None | | Print the version to standard output and exit |
+| `--finish-on-eof` | None | | At the end of standard input, write the responses to all requests already read before exiting ([Input, output and exit](#input-output-and-exit)) |
 | `--log-file` | Path | See [Audit log](#audit-log) | Base path for the audit log (written to a daily file with the date inserted before the extension) |
 | `--no-log` | None | | Disable audit logging (takes precedence over `--log-file`) |
 | `--max-output` | Bytes (1024 or more) | `65536` | Maximum output size per call |
@@ -95,7 +101,9 @@ Passing an unknown flag or an invalid value type prints usage information to sta
 | Standard output | Writes only MCP JSON-RPC messages (never writes any other output) |
 | Standard error | Writes diagnostic messages such as startup errors |
 | Working directory | Current working directory at startup (typically the user's home directory over SSH) |
-| Normal exit | When standard input closes (SSH disconnect) or upon receiving `SIGINT` or `SIGTERM` (exit code 0) |
+| End of standard input | By default treated as an SSH disconnect: requests in progress are cancelled and `host-shell` exits. With `--finish-on-eof`, it writes the responses to all requests already read first (waiting up to each tool's timeout) |
+| Normal exit | At the end of standard input, or upon receiving `SIGINT` or `SIGTERM` (exit code 0) |
+| Abnormal exit | When standard input ends with requests left unanswered, `host-shell` prints their number to standard error and exits with code 1 |
 | Cleanup on exit | Terminates all running jobs and commands and closes port forwarding, client proxy, and `remote-dns` listeners (also deleting the proxy URL file and the `remote-dns` temporary directory) |
 
 Table: Input, output and exit
@@ -149,6 +157,7 @@ Prompts the user for approval via MCP elicitation before running matching tools,
 - For clients on other supported protocol versions, the SDK sends an `elicitation/create` request to the client and waits for the response before continuing.
 - If the client does not support elicitation, matching tool calls fail with an error without executing.
 - Confirmation prompts are logged in the audit log as `<tool name> (confirmation requested)`.
+- When the target is [used from the shell](#use-from-the-shell-session-call-tools), a session started in the foreground asks the user in its terminal. In a detached session or a session without a terminal, matching tools fail with an error.
 
 ### File locations (--allow-path, --allow-read-path)
 
@@ -1610,6 +1619,33 @@ host-shell connect [-d] [-w SECONDS] [--password-file PATH] -H [http://][USER@]P
 Table: Summary of host-shell connect
 
 See [SSH route proxy](ssh-proxy.md) for Host blocks, credentials and password file permissions, the mapping from Tera Term settings, and the verified scope.
+
+## Use from the shell (session, call, tools)
+
+These subcommands let agents that cannot register MCP servers use the target's tools through shell commands. `session start` keeps the same relay as `bridge` running on the local machine and serves MCP on a Unix domain socket; `call` and `tools` connect to the session through the socket each time they run. See [Using host-shell from agents without MCP](cli-without-mcp.md) for procedures, tools that need confirmation, and the verified scope.
+
+```text
+host-shell session start [--name NAME] [--detach] [--idle-timeout DURATION] [bridge-options] -- COMMAND...
+host-shell session status [--name NAME]
+host-shell session stop [--name NAME]
+host-shell session list
+host-shell call TOOL [--session NAME] [--json FILE] [--quiet] [KEY=VALUE ...]
+host-shell tools [--session NAME] [--schema] [--instructions] [TOOL ...]
+```
+
+| Item | Description |
+| --- | --- |
+| `session start` | Accepts all `bridge` options. `--name` (default `default`; 1 to 32 letters, digits, `.`, `_` or `-`), `--detach` (start in the background and print the state as JSON once connected; on failure print the log to standard error and exit with code 1), `--idle-timeout` (end when no client has been connected for this long; by default the session does not end) |
+| `session status`, `stop`, `list` | `status` prints the state as one line of JSON and `list` one line per running session. `stop` asks the session to end and waits until it has. `--name` defaults to the environment variable `HOST_SHELL_SESSION`, then `default` |
+| `call` | `TOOL` comes right after `call`. Arguments: `KEY=VALUE` (converted to the type in the input schema; repeat for elements of a string array), `KEY=@FILE` (contents of a file), `--json FILE` (`-` for standard input). Prints the tool's JSON result as one line to standard output and progress to standard error. An interrupt cancels the call on the target |
+| Exit codes of `call` | 0 success, 1 tool error, 2 wrong usage (including unknown tools and arguments), 3 no session or the connection was lost, 130 interrupted |
+| `tools` | Prints one line per tool with its name and the first sentence of its description. `--schema` prints full descriptions and input schemas as JSON, `--instructions` the guidance for agents |
+| Confirmation (`--confirm`) | A session started in the foreground with a terminal on standard input and standard error asks in that terminal. Other sessions fail matching tools. Answers attached by clients are not passed to the target |
+| Socket | `$XDG_RUNTIME_DIR/host-shell/sessions` (Linux), `host-shell-UID/sessions` in the temporary directory (Linux without `XDG_RUNTIME_DIR`), `/tmp/host-shell-UID/sessions` (macOS), `%LOCALAPPDATA%\host-shell\sessions` (Windows). `HOST_SHELL_SESSION_DIR` overrides it. Created for the current user only; directories other users can use are rejected |
+
+Table: Overview of host-shell session, call and tools
+
+`session`, `call` and `tools` print their results to standard output. Only `--mcp` and `bridge` reserve standard output for MCP messages.
 
 ## Starting and ending processes
 

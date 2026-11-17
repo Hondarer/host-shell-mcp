@@ -6,7 +6,7 @@ description: Connect the user's VS Code (Remote - SSH extension) to a Linux host
 # VS Code Remote - SSH to a host-shell target
 
 The target runs a second, user-mode `sshd` that listens on `127.0.0.1:2222` only. `host-shell` forwards a local port on the client to it, and VS Code Remote - SSH connects to that local port with a dedicated key. The VS Code CLI and server for the client's exact commit are fetched on the client, verified by SHA-256, and placed on the target, so the target needs no internet access.  
-This skill operates through the `host-shell` MCP tools of a session started with `host-shell bridge`. To deploy `host-shell` itself, use the `host-shell-connect` skill. The target may also be a Linux container reached via `podman exec -i` or a similar command.
+This skill operates through the `host-shell` MCP tools of a session started with `host-shell bridge`. Without MCP (the `host-shell-cli` skill), run each tool below as `host-shell call TOOL` with the same arguments, and add the options this skill asks for in the registration to `host-shell session start` instead. To deploy `host-shell` itself, use the `host-shell-connect` skill. The target may also be a Linux container reached via `podman exec -i` or a similar command.
 
 The user documentation is in `docs/en/vscode-remote-ssh.md` (the Japanese version `docs/ja/vscode-remote-ssh.md` is authoritative); read its verified scope before reporting what works.
 

@@ -7,7 +7,7 @@ description: Prepare deployment and validation of CLI coding agents such as Copi
 
 This is an initial workflow scaffold, not a verified installer. No CLI archives or provider-specific installation scripts are bundled. Only Copilot CLI has been validated on a target (an isolated Linux x86_64 container with code-server); other CLIs have only local version checks. See the guide's verified scope for verified and unverified stages, and report stages separately.
 
-The target needs an SSH stdio route (or container exec), and the client needs access to the authentication and AI services. Direct target internet access is optional. Do not change target service configuration for this workflow.
+The target needs an SSH stdio route (or container exec), and the client needs access to the authentication and AI services. The steps name `host-shell` MCP tools. Without MCP (the `host-shell-cli` skill), run each tool below as `host-shell call TOOL` with the same arguments, and add the options this skill asks for in the registration to `host-shell session start` instead. Direct target internet access is optional. Do not change target service configuration for this workflow.
 
 ## References and scope
 

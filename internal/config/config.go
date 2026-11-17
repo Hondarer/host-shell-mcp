@@ -25,6 +25,9 @@ type Config struct {
 	ForwardLocal, ForwardRemote bool
 	// ForwardRemotePorts limits the ports remote forwards listen on (--allow-forward-remote-port); nil permits any port.
 	ForwardRemotePorts policy.Ports
+	// FinishOnEOF answers the requests already read before ending at the end of standard input
+	// (--finish-on-eof); by default the end of input cancels them like an SSH disconnect.
+	FinishOnEOF bool
 	// MaxOutputBytes caps individual output streams (stdout, stderr, file content, etc.);
 	// longer output is middle-truncated, keeping its head and tail.
 	MaxOutputBytes int
