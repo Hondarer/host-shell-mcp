@@ -1,7 +1,7 @@
 <!--
 生成元: agree-before-implement スキル
 文書種別: 検討用 Markdown (discussion)
-最終更新日時: 2026-11-18 05:50:00 JST
+最終更新日時: 2026-11-18 06:10:00 JST
 最終更新エージェント: claude code / セッション ID: session_01KJc53SwZ5UXzt7kJWHJ48p
 稼働 OS: Linux (WSL)
 上流文書: 261118-cli-session-backlog.md (対策元の残課題一覧。BL-001〜BL-003)
@@ -35,16 +35,16 @@
     - ✅ 3.1. `261118-cli-followup-design.md` の作成 (対策元 `backlog.md` の状態を「対応中」に更新)
     - ✅ 3.2. 受入条件と整合性の確認
     - ✅ 3.3. 最終仕様の承認の受付 (第 2 ゲート)
-- 🔄 4. 承認された最終仕様に従った作業の実施
+- ✅ 4. 承認された最終仕様に従った作業の実施
     - ✅ 4.1. BL-002: スクリプトのモードの変更と CI の検査 (範囲は [Q-002](#q-002-実行権限の修正の範囲))。完了時に対策元 `backlog.md` を更新
     - ✅ 4.2. BL-003: `.agents/skills/host-shell-code-server/SKILL.md`、`docs/ja/code-server.md` と英訳の記述の修正。完了時に対策元 `backlog.md` を更新
     - ✅ 4.3. BL-001: agy での検証 (`--dangerously-skip-permissions` での非対話実行。[Q-001](#q-001-agy-での検証の方法))、検証記録への追記、`docs/ja/cli-without-mcp.md` と英訳の検証済みの範囲の更新。完了時に対策元 `backlog.md` を更新
-    - 🔄 4.4. CI での確認 (作業ブランチ `feature/cli-followup` のプル リクエスト) ← **CURRENT**
-    - ⏸️ 4.5. 受入条件への適合確認
-    - ⏸️ 4.6. 残課題一覧の整理 (対策元 `backlog.md` の全項目の最終状態の確認。残件がなければ両案件の記録を `docs/prompts/past/` へ移す)
-- ⏸️ 5. 成果物の承認の受付 (第 3 ゲート)
-    - ⏸️ 5.1. 成果物・検証結果・残課題の提示
-    - ⏸️ 5.2. 成果物の承認の受付
+    - ✅ 4.4. CI での確認 (作業ブランチ `feature/cli-followup` のプル リクエスト #10。全ジョブ成功)
+    - ✅ 4.5. 受入条件への適合確認
+    - ✅ 4.6. 残課題一覧の整理 (対策元 `backlog.md` の全項目の最終状態を確認。残件なし、この案件の `backlog.md` は作成しない。両案件の記録は第 3 ゲートの承認後に `docs/prompts/past/` へ移す)
+- 🔄 5. 成果物の承認の受付 (第 3 ゲート)
+    - ✅ 5.1. 成果物・検証結果・残課題の提示
+    - 🚫 5.2. 成果物の承認の受付。ユーザーの承認待ち ← **CURRENT**
 
 ## 対象と参照資料
 
@@ -266,4 +266,12 @@ B: 経路の最後の SSH ホスト名 (例: target)。コンテナーの場合�
 
 ## 反映と検証の記録
 
-未着手。
+| 受入条件 | 結果 | 根拠 |
+| --- | --- | --- |
+| 1. すべての `.sh` が 100755 | 適合 | `git ls-files -s .agents/skills` で 19 個すべて 100755 |
+| 2. CI の検査 | 適合 | 手元で `fetch.sh` の実行権限を外すと失敗、付け直すと成功。PR #10 の `Check skill script modes` が成功 |
+| 3. クライアント側スクリプトの直接実行 | 適合 | `fetch.sh`、`ssh-key.sh` を直接実行して使い方を表示 (終了コード 2) |
+| 4. code-server の記述 | 適合 | スキルの手順 1.4・手順 5、`docs/ja/code-server.md`・英訳のパスワードの節とセキュリティ上の注意。`restrictions` に伏せ字 (`Secrets in output`) と確認 (`Confirmation required`) が載ることを `internal/policy/policy.go` で確認 |
+| 5. agy の検証 | 適合 | agy 1.5.10、`--dangerously-skip-permissions`、7 段階すべて成功 (92 秒)。`261118-cli-session-validation.md` と `docs/ja/cli-without-mcp.md`・英訳に反映 |
+| 6. CI | 適合 | PR #10 の全ジョブ (test 3 OS、dns-lib 2 種、build) 成功 |
+| 7. 対策元の残課題一覧 | 適合 | BL-001 完了、BL-002・BL-003 対応済み。残件なし |
